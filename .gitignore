@@ -1,0 +1,42 @@
+# dependencies
+/node_modules
+
+# next
+/.next
+/out
+next-env.d.ts
+
+# databases (env-specific, never commit real data)
+# NOTE: *.db does NOT match SQLite's -shm / -wal / -journal sidecar files, and
+# those can hold uncheckpointed rows — ignore every sidecar explicitly.
+prisma/*.db
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# uploaded files (durable storage; not source)
+/uploads/*
+!/uploads/.gitkeep
+
+# env
+.env
+.env.demo
+.env.production
+.env*.local
+
+# misc
+.DS_Store
+*.log
+
+# large proof import files.
+# NOTE: `/imports/*.csv` alone does NOT match `imports/cdn/*.csv` — a single `*`
+# never crosses a directory separator, so the 626 CDN files would have been
+# committed. Match at any depth instead.
+/imports/**/*.csv
+/imports/**/*.CSV
+/imports/**/*.txt
+/imports/**/*.zip
+
+# scratch / verification output
+/scratchpad/

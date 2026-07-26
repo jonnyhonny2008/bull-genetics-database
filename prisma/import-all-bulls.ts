@@ -1,0 +1,172 @@
+// ---------------------------------------------------------------------------
+// Bulk import of EVERY bull in a Lactanet proof CSV — MULTI-ROUND aware.
+//
+// - New bull  -> create animal + identifiers + roles + this round's evaluation.
+// - Existing bull (same reg from an earlier import) -> ADD this round's
+//   evaluation (so proof-to-proof history builds up for rollback analysis).
+// - Same round already imported for a bull -> skipped (idempotent / resumable).
+// - isPreferred is kept on the LATEST-dated evaluation per bull.
+//
+// Streams the file; chunked createMany; WAL so the live server keeps serving.
+//
+// Usage:  npx tsx prisma/import-all-bulls.ts [fileName] [limit]
+// ---------------------------------------------------------------------------
+
+import { PrismaClient } from "@prisma/client";
+import fs from "fs";
+import path from "path";
+import readline from "readline";
+import crypto from "crypto";
+import { parseHeader, parseRow, type ParsedBull } from "../src/lib/lactanet";
+import { packTraits } from "../src/lib/eval-traits";
+
+const prisma = new PrismaClient();
+
+const fileName = process.argv[2] || "aiobgepa2604_ho.csv";
+const limit = process.argv[3] ? parseInt(process.argv[3]) : Infinity;
+const importsDir = process.env.IMPORTS_DIR || "./imports";
+const fullPath = path.join(importsDir, fileName);
+const BATCH_BULLS = 2000;
+const MAX_VARS = 18000;
+
+function proofRun(gerun: string | null): { label: string; date: Date } {
+  const m = (gerun ?? "").match(/^(\d{2})(\d{2})$/);
+  if (!m) return { label: "April 2026", date: new Date(Date.UTC(2026, 3, 1)) };
+  const yy = parseInt(m[1]);
+  const year = yy > 50 ? 1900 + yy : 2000 + yy;
+  const month = Math.min(12, Math.max(1, parseInt(m[2])));
+  const name = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][month];
+  return { label: `${name} ${year}`, date: new Date(Date.UTC(year, month - 1, 1)) };
+}
+
+async function insertChunked(model: { createMany: (a: { data: any[] }) => Promise<unknown> }, rows: any[], cols: number) {
+  if (rows.length === 0) return;
+  const chunk = Math.max(1, Math.floor(MAX_VARS / cols));
+  for (let i = 0; i < rows.length; i += chunk) await model.createMany({ data: rows.slice(i, i + chunk) });
+}
+
+async function main() {
+  if (!fs.existsSync(fullPath)) { console.error(`[import-all] File not found: ${fullPath}`); process.exit(1); }
+  console.log(`[import-all] importing ${fileName} (limit ${limit})`);
+
+  await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL;");
+  await prisma.$queryRawUnsafe("PRAGMA busy_timeout=15000;");
+  await prisma.$queryRawUnsafe("PRAGMA synchronous=NORMAL;");
+
+  const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
+  const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
+  const admin = await prisma.user.findFirst({ where: { role: "admin" } });
+
+  // reg -> animalId for every existing registration/NAAB identifier.
+  const regToAnimal = new Map<string, string>();
+  for (const r of await prisma.animalIdentifier.findMany({
+    where: { idType: { in: ["registration_ca", "registration_us", "registration_int"] } },
+    select: { idValue: true, animalId: true },
+  })) regToAnimal.set(r.idValue.toUpperCase(), r.animalId);
+
+  // existing evaluations: which (animalId|proofRun) already exist, and latest date per animal.
+  const evalKey = new Set<string>();
+  const maxDate = new Map<string, number>();
+  for (const e of await prisma.geneticEvaluation.findMany({ select: { animalId: true, proofRun: true, evaluationDate: true } })) {
+    evalKey.add(`${e.animalId}|${e.proofRun ?? ""}`);
+    const t = e.evaluationDate.getTime();
+    if (!maxDate.has(e.animalId) || t > maxDate.get(e.animalId)!) maxDate.set(e.animalId, t);
+  }
+  console.log(`[import-all] existing: ${regToAnimal.size} bulls, ${evalKey.size} evaluations`);
+
+  const capture = await prisma.sourceCapture.create({
+    data: { sourceId: source?.sourceId, captureType: "report", originalFileName: fileName, capturedById: admin?.id, extractionStatus: "extracted", confidenceScore: 1, notes: `Bulk import of all bulls from ${fileName}` },
+  });
+
+  const buf = { animals: [] as any[], ids: [] as any[], roles: [] as any[], evals: [] as any[], peds: [] as any[] };
+  const unprefer = new Set<string>(); // existing animals that received a newer round
+  let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0;
+
+  async function flush() {
+    if (buf.evals.length === 0 && buf.animals.length === 0) return;
+    await insertChunked(prisma.animal, buf.animals, 10);
+    await insertChunked(prisma.animalIdentifier, buf.ids, 7);
+    await insertChunked(prisma.animalRole, buf.roles, 4);
+    await insertChunked(prisma.geneticEvaluation, buf.evals, 42);
+    await insertChunked(prisma.pedigreeReference, buf.peds, 6);
+    buf.animals = []; buf.ids = []; buf.roles = []; buf.evals = []; buf.peds = [];
+    inBatch = 0;
+    process.stdout.write(`\r[import-all] processed ${processed} · new bulls ${newBulls} · new proofs ${newEvals} · skipped ${skipped}   `);
+  }
+
+  function queue(bull: ParsedBull) {
+    const reg = bull.registrationNumber.toUpperCase();
+    const { label, date } = proofRun(bull.proofRun);
+    let animalId = regToAnimal.get(reg);
+    const isNew = !animalId;
+
+    if (isNew) {
+      animalId = crypto.randomUUID();
+      regToAnimal.set(reg, animalId);
+      buf.animals.push({ id: animalId, primaryName: bull.registeredName, shortName: bull.shortName, sex: "M", breedId: holstein?.breedId ?? null, birthDate: bull.birthDate ? new Date(bull.birthDate + "T00:00:00Z") : null, countryOfOrigin: bull.country, currentStatus: "proven", createdById: admin?.id, notes: `Imported from ${fileName}.` });
+      buf.ids.push({ animalId, idType: bull.regIdType, idValue: bull.registrationNumber, issuingCountry: bull.country, sourceId: source?.sourceId, isPrimary: true });
+      if (bull.naabCode) buf.ids.push({ animalId, idType: "naab", idValue: bull.naabCode, sourceId: source?.sourceId, isPrimary: false });
+      if (bull.naabMarketingCode) buf.ids.push({ animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: source?.sourceId, isPrimary: false });
+      buf.roles.push({ animalId, roleType: "reference_sire", active: true });
+    }
+
+    // Skip if this exact round already exists for this bull.
+    if (evalKey.has(`${animalId}|${label}`)) { skipped++; return; }
+    evalKey.add(`${animalId}|${label}`);
+
+    const priorMax = maxDate.get(animalId!) ?? -Infinity;
+    const isPreferred = date.getTime() >= priorMax; // latest round is preferred
+    if (isPreferred && !isNew) unprefer.add(animalId!); // older rounds must lose preferred
+    if (date.getTime() > priorMax) maxDate.set(animalId!, date.getTime());
+
+    const evaluationId = crypto.randomUUID();
+    const lpiRel = bull.traits.find((t) => t.traitCode === "LPI")?.reliability ?? null;
+    const descriptive = ([["A2", bull.betaCasein], ["POLLED", bull.polled], ["COLOUR", bull.colourCode]] as const)
+      .filter(([, v]) => v)
+      .map(([code, v]) => ({ traitCode: code, numericValue: null, textValue: v as string, reliability: null, percentileRank: null }));
+    const packed = packTraits([...bull.traits, ...descriptive]);
+    buf.evals.push({ evaluationId, animalId, sourceId: source?.sourceId, captureId: capture.captureId, evaluationDate: date, proofRun: label, countrySystem: "CA", breedContext: "Holstein", reliabilityOverall: lpiRel != null ? lpiRel / 100 : null, isPreferred, approvalStatus: "approved", approvedById: admin?.id, approvedAt: date, createdById: admin?.id, traitsJson: packed.traitsJson, ...packed.columns });
+    if (isNew && bull.pedigree.length) {
+      const summary = bull.pedigree.map((p) => `${p.relation.toUpperCase()}: ${p.name ?? "?"}${p.reg ? ` (${p.reg})` : ""}`).join(" · ");
+      buf.peds.push({ animalId, sourceId: source?.sourceId, displayStatus: "linked", lastCheckedAt: date, notes: `Pedigree (from proof): ${summary}` });
+    }
+    if (isNew) newBulls++;
+    newEvals++;
+    inBatch++;
+  }
+
+  const rl = readline.createInterface({ input: fs.createReadStream(fullPath), crlfDelay: Infinity });
+  let idx: Map<string, number> | null = null;
+  for await (const line of rl) {
+    if (!idx) { idx = parseHeader(line); continue; }
+    if (processed >= limit) break;
+    const bull = parseRow(line.split(","), idx);
+    processed++;
+    if (!bull) { skipped++; continue; }
+    queue(bull);
+    if (inBatch >= BATCH_BULLS) await flush();
+  }
+  rl.close();
+  await flush();
+
+  // Enforce the invariant: exactly ONE preferred eval per bull (latest approved
+  // round). Single window-function pass — correct regardless of file/import order.
+  void unprefer;
+  await prisma.$executeRawUnsafe(`UPDATE "GeneticEvaluation" SET "isPreferred" = false WHERE "isPreferred" = true`);
+  await prisma.$executeRawUnsafe(`
+    WITH ranked AS (
+      SELECT "evaluationId",
+             ROW_NUMBER() OVER (PARTITION BY "animalId"
+               ORDER BY "evaluationDate" DESC, "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
+      FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
+    )
+    UPDATE "GeneticEvaluation" g SET "isPreferred" = true
+    FROM ranked r WHERE g."evaluationId" = r."evaluationId" AND r.rn = 1
+  `);
+  console.log(`\n[import-all] normalized preferred flag to latest round per bull`);
+
+  await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `Bulk import ${fileName}: ${newBulls} new bulls, ${newEvals} new proofs, ${skipped} skipped` } });
+  console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, skipped ${skipped}, processed ${processed}`);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bull Stud Genetics Intelligence Platform — Package Index</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --muted:#64748b; --brand:#2f6551; --line:#e2e8f0; --code:#f8fafc; }
+  @media (prefers-color-scheme: dark){ :root{ --bg:#0b1220; --card:#111a2b; --ink:#e6edf6; --muted:#93a4bc; --brand:#5e9c82; --line:#22304a; --code:#0d1626; } }
+  *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  .wrap{ max-width:900px; margin:0 auto; padding:32px 20px 64px; }
+  header{ display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .logo{ width:46px; height:46px; border-radius:10px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+  h1{ font-size:22px; margin:0; } .sub{ color:var(--muted); margin:2px 0 0; font-size:13px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin-top:18px; }
+  h2{ font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+  code,pre{ background:var(--code); border:1px solid var(--line); border-radius:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+  code{ padding:1px 6px; } pre{ padding:12px 14px; overflow:auto; }
+  ul{ margin:8px 0; padding-left:20px; } li{ margin:3px 0; }
+  a{ color:var(--brand); } .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media(max-width:640px){ .grid{ grid-template-columns:1fr; } }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:999px; background:var(--brand); color:#fff; font-size:11px; font-weight:700; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; } td,th{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .muted{ color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">BS</div>
+    <div>
+      <h1>Bull Stud Genetics Intelligence Platform</h1>
+      <p class="sub">Phase 1 — Historical Genetic Proof Database · deployable package index</p>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>What this is</h2>
+    <p>A private, role-based web app for a bull stud: historical genetic proofs, milk &amp; classification records,
+    source tracking with a preferred-value engine, uploads/review workflow, animal profiles, search, comparison, a
+    <strong>Lactanet bull-proof CSV importer</strong>, a <strong>Holstein.ca paste importer</strong> for females, and a
+    proof-style <strong>linear conformation graph</strong>. Runs as two isolated environments on one codebase — a
+    seeded <span class="pill">DEMO</span> and a clean <span class="pill">PRODUCTION</span>.</p>
+  </div>
+
+  <div class="card">
+    <h2>Quick start (deploy / run)</h2>
+    <pre># prerequisites: Node.js 18+ (built &amp; verified on Node 20.18)
+npm install
+
+# DEMO — seeded sample data, http://localhost:3000
+npm run setup:demo
+npm run dev:demo        # or: npm run build &amp;&amp; npm run start:demo
+
+# PRODUCTION — clean (config only, no fake animals), http://localhost:3100
+npm run setup:prod
+npm run build
+npm run start:prod</pre>
+    <p class="muted">Default admin login (both environments): <code>admin@studgenetics.local</code> / <code>Admin#12345</code>
+    — change it before real production use (see <code>docs/GO-LIVE.md</code>).</p>
+  </div>
+
+  <div class="card">
+    <h2>Documentation</h2>
+    <div class="grid">
+      <ul>
+        <li><a href="README.md">README.md</a> — overview &amp; scripts</li>
+        <li><a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a></li>
+        <li><a href="docs/DATA-MODEL.md">DATA-MODEL.md</a></li>
+        <li><a href="docs/DEMO-VS-PRODUCTION.md">DEMO-VS-PRODUCTION.md</a></li>
+        <li><a href="docs/SOURCE-PRIORITY.md">SOURCE-PRIORITY.md</a></li>
+      </ul>
+      <ul>
+        <li><a href="docs/UPLOAD-REVIEW.md">UPLOAD-REVIEW.md</a></li>
+        <li><a href="docs/IMPORTERS.md">IMPORTERS.md</a> — Lactanet CSV &amp; Holstein.ca paste</li>
+        <li><a href="docs/DATA-SOURCES.md">DATA-SOURCES.md</a> — official export options</li>
+        <li><a href="docs/EXTENDING.md">EXTENDING.md</a></li>
+        <li><a href="docs/GO-LIVE.md">GO-LIVE.md</a> &middot; <a href="docs/BACKUP.md">BACKUP.md</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Key screens</h2>
+    <table>
+      <tr><th>Route</th><th>Purpose</th></tr>
+      <tr><td><code>/dashboard</code></td><td>KPIs, env banner, recent activity, data-quality alerts</td></tr>
+      <tr><td><code>/animals</code></td><td>Search &amp; filter; profiles with proofs, milk, classification, linear graph</td></tr>
+      <tr><td><code>/import-proofs</code></td><td>Import bulls from the official Lactanet proof CSV (reg / NAAB / bulk)</td></tr>
+      <tr><td><code>/holstein-lookup</code></td><td>Compliant paste importer for Holstein.ca female pages</td></tr>
+      <tr><td><code>/comparison</code></td><td>Side-by-side animal comparison</td></tr>
+      <tr><td><code>/uploads</code> &middot; <code>/review</code></td><td>Source capture &amp; import review queue</td></tr>
+      <tr><td><code>/admin</code></td><td>Breeds, traits, sources, priority rules, users, data quality</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Notes for deployment</h2>
+    <ul>
+      <li>Stack: Next.js 14 + Prisma 5 + SQLite (swap to PostgreSQL via <code>prisma/schema.prisma</code> + <code>DATABASE_URL</code>).</li>
+      <li>Environment vars per env: <code>APP_ENV</code>, <code>DATABASE_URL</code>, <code>SESSION_SECRET</code>, <code>UPLOAD_DIR</code>, <code>IMPORTS_DIR</code>.</li>
+      <li>Drop large Lactanet proof CSVs into <code>imports/</code> (not bundled — see <code>imports/README.txt</code>).</li>
+      <li>This <code>index.html</code> is documentation only; the running app is served by Next.js from <code>src/app</code>.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
