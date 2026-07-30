@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { HScroll } from "./HScroll";
 import type { ReportRow, TraitChange } from "@/lib/proof-change";
@@ -33,6 +33,22 @@ export function ProofChangeTable({
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
   const cols = 3 + keyTraits.length;
 
+  // An expanded panel lives inside the table, so without help it inherits the
+  // table's full (scrolled) width — it would drift off-screen with the table and
+  // never notice its own overflow. Measuring the visible card and pinning the
+  // panel to that width keeps it in view and lets it scroll on its own.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [panelW, setPanelW] = useState(0);
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const update = () => setPanelW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Clicking a header sorts by it; clicking the active one flips direction.
   const sortHref = (code: string) => {
     const p = new URLSearchParams(params);
@@ -46,9 +62,10 @@ export function ProofChangeTable({
     `th cursor-pointer select-none whitespace-nowrap hover:text-brand-700 ${sort === code ? "text-brand-700" : ""}`;
 
   return (
-    <div className="card">
-      {/* Mirror scrollbar so you can pan the wide table without scrolling down */}
-      <HScroll label="drag or shift+scroll">
+    <div className="card" ref={cardRef}>
+      {/* Mirror scrollbar so you can pan the wide table without scrolling down.
+          stickyTop keeps it reachable at any row of a long list. */}
+      <HScroll label="drag or shift+scroll" stickyTop>
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -116,8 +133,13 @@ export function ProofChangeTable({
                   </tr>
                   {isOpen && (
                     <tr className="bg-slate-50/60">
-                      <td className="td" colSpan={cols + 2}>
-                        <BullDetail change={c} />
+                      <td className="p-0" colSpan={cols + 2}>
+                        {/* sticky left-0 + the measured card width keeps this
+                            panel on screen no matter how far the table is
+                            scrolled, so its own scrollbar governs it. */}
+                        <div className="sticky left-0 px-3 py-2" style={panelW ? { width: panelW } : undefined}>
+                          <BullDetail change={c} />
+                        </div>
                       </td>
                     </tr>
                   )}

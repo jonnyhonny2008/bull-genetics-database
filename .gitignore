@@ -44,3 +44,6 @@ tsconfig.tsbuildinfo
 
 # scratch / verification output
 /scratchpad/
+
+# Lactanet HTML fixtures (large; regenerate with the saved URLs)
+/imports/**/*.html

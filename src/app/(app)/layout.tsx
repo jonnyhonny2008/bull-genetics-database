@@ -61,8 +61,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </form>
             </div>
           </header>
-          {/* pb-24 keeps the floating assistant button from covering page content */}
-          <main className="flex-1 overflow-x-hidden p-5 pb-24">{children}</main>
+          {/* pb-24 keeps the floating assistant button from covering page content.
+              overflow-x-CLIP (not hidden): `hidden` makes this a scroll container,
+              which silently disables `position: sticky` for everything inside —
+              `clip` contains overflow the same way without that side effect. */}
+          <main className="flex-1 overflow-x-clip p-5 pb-24">{children}</main>
         </div>
       </div>
       <GeneticsAssistant />

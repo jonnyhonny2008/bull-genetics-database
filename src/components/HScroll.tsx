@@ -14,11 +14,15 @@ export function HScroll({
   children,
   className = "",
   label,
+  stickyTop = false,
 }: {
   children: ReactNode;
   className?: string;
   /** Optional hint shown beside the mirror bar when scrolling is possible. */
   label?: string;
+  /** Keep the mirror bar pinned to the top of the viewport while scrolling a
+   *  long list, so side-to-side scrolling stays reachable at any row. */
+  stickyTop?: boolean;
 }) {
   const topRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -65,7 +69,7 @@ export function HScroll({
   return (
     <div className={className}>
       {needed && (
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${stickyTop ? "sticky top-0 z-20 border-b border-slate-200 bg-white py-1" : ""}`}>
           <div
             ref={topRef}
             onScroll={onTopScroll}
