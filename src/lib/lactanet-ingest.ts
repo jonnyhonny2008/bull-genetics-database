@@ -18,6 +18,7 @@ import { fetchLactanetAnimal, parseReg, type LactanetFetchResult } from "./lacta
 import { parseLactanetAnimal } from "./lactanet-parse";
 import { storeHolsteinProfile } from "./holstein-import";
 import { recomputePreferredForAnimal } from "./priority";
+import { packTraits } from "./eval-traits";
 
 export interface LactanetIngestDeps {
   breedId: string | null;
@@ -43,6 +44,8 @@ export interface LactanetIngestOutcome {
   animalId?: string;
   name?: string | null;
   created?: boolean;
+  traitCount?: number;
+  proofRun?: string | null;
   ancestors?: number;
   progeny?: number;
   classifications?: number;
@@ -149,6 +152,50 @@ export async function ingestLactanetReg(
 
     await prisma.sourceCapture.update({ where: { captureId: capture.captureId }, data: { animalId } });
 
+    // --- genetic evaluation -------------------------------------------------
+    // Upsert by (animal, proof run): re-running a lookup refreshes that round
+    // instead of stacking duplicate rows, which would corrupt proof-round counts
+    // and the Proof Change Report's "previous official proof" pick.
+    let traitCount = 0;
+    const ev = parsed.evaluation;
+    if (ev.traits.length && ev.runDate) {
+      const packed = packTraits(
+        ev.traits.map((t) => ({
+          traitCode: t.code, numericValue: t.numericValue, textValue: t.textValue,
+          reliability: t.reliability, percentileRank: t.percentileRank,
+        })),
+      );
+      const evaluationDate = new Date(`${ev.runDate}T00:00:00Z`);
+      const existingEval = await prisma.geneticEvaluation.findFirst({
+        where: { animalId, evaluationDate, sourceId: deps.lactanetSourceId ?? undefined },
+        select: { evaluationId: true },
+      });
+      const data = {
+        evaluationDate,
+        proofRun: ev.runLabel ?? undefined,
+        countrySystem: "CA",
+        breedContext: "Holstein",
+        reliabilityOverall: ev.reliability,
+        approvalStatus: "approved",
+        traitsJson: packed.traitsJson,
+        ...packed.columns,
+        notes: `Lactanet Genetics query${ev.basis ? ` (${ev.basis})` : ""}.`,
+      };
+      if (existingEval) {
+        await prisma.geneticEvaluation.update({ where: { evaluationId: existingEval.evaluationId }, data });
+      } else {
+        await prisma.geneticEvaluation.create({
+          data: {
+            ...data, animalId,
+            sourceId: deps.lactanetSourceId ?? undefined,
+            captureId: capture.captureId,
+            createdById: userId ?? undefined,
+          },
+        });
+      }
+      traitCount = ev.traits.length;
+    }
+
     // Rich profile — same shape the Holstein.ca path produced, so the UI is unchanged.
     const stored = await storeHolsteinProfile(prisma, animalId, parsed.profile, {
       holCanadaSourceId: deps.lactanetSourceId,
@@ -158,6 +205,8 @@ export async function ingestLactanetReg(
 
     return {
       reg: R, ok: true, animalId, name, created,
+      traitCount,
+      proofRun: ev.runLabel,
       ancestors: parsed.profile.familyTree.length,
       progeny: parsed.profile.progeny.length,
       classifications: stored.classifications,

@@ -29,6 +29,10 @@ import type {
 
 const ENT: Record<string, string> = {
   amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'", "#160": " ",
+  // Lactanet writes the proof-run separator as &ast; ("GEBV 26&ast;APR"). Missing
+  // this silently broke run detection, which meant no evaluation was written at
+  // all — i.e. every imported animal came back with zero traits.
+  ast: "*", ndash: "-", mdash: "-", minus: "-", deg: "°", frac12: "1/2",
 };
 
 export function decodeEntities(s: string): string {
@@ -332,11 +336,187 @@ export function parseLactations(html: string, sex: "M" | "F"): Lactation[] {
   return out;
 }
 
+// --- genetic traits (summary.php + type.php) ---------------------------------
+
+/**
+ * Lactanet's on-page label -> our TraitDefinition.traitCode.
+ *
+ * Most labels equal traitName exactly, so this only has to carry the ones that
+ * differ plus the index names (Lactanet calls them "LPI Subindexes" and prints
+ * the short label). Keys are normalised (lowercase, alphanumerics only).
+ */
+const TRAIT_LABELS: Record<string, string> = {
+  // headline
+  lpi: "LPI", pro$: "PRO$", prodollar: "PRO$",
+  // production
+  milk: "MILK", fat: "FAT", protein: "PROT",
+  somaticcellscore: "SCS", scs: "SCS",
+  // LPI subindexes — page prints the short name
+  production: "PI", longevitytype: "LTI", healthwelfare: "HWI",
+  reproduction: "RI", milkability: "MI", environmentalimpact: "EI",
+  // conformation composites
+  conformation: "CONF", mammarysystem: "MAMM", feetlegs: "FL",
+  dairystrength: "DS", rump: "RUMP", averagedaughterfinalscore: "AFS",
+  // functional / health
+  methaneefficiency: "METH", feedefficiency: "FE",
+  bodymaintenancerequirements: "BMR", herdlife: "HL",
+  mastitisresistance: "MR", metabolicdiseaseresistance: "MDR",
+  hoofhealth: "HH", calfhealth: "CH", lactationpersistency: "LP",
+  daughterfertility: "DF", milkingspeed: "MSPD", milkingtemperament: "MTMP",
+  calvingability: "CA", daughtercalvingability: "DCA",
+  bodyconditionscore: "BCS", semenfertility: "SEMFERT",
+  gestationlength: "GL", calvingease: "CE",
+  // linear (type.php descriptive traits)
+  udderfloor: "UFLOOR", udderdepth: "UDEP", uddertexture: "UTEX",
+  mediansuspensory: "MSUS", foreattachment: "FUA",
+  frontteatplacement: "FTP", foreteatplacement: "FTP",
+  rearattachmentheight: "RAH", rearattachmentwidth: "RAW",
+  rearteatplacement: "RTP", teatlength: "TL",
+  footangle: "FA", heeldepth: "HD", bonequality: "BQ",
+  rearlegssideview: "RLSV", rearlegsrearview: "RLRV",
+  frontlegview: "FLV", frontlegsview: "FLV", locomotion: "LOCO",
+  stature: "STA", heightatfrontend: "HFE", chestwidth: "CHW",
+  bodydepth: "BODY", ribstructure: "RIB", ribstructureangularity: "RIB",
+  loinstrength: "LOIN", rumpangle: "RA", pinwidth: "PW",
+  thurlplacement: "THURL",
+};
+
+const normLabel = (s: string) => s.toLowerCase().replace(/&/g, "").replace(/[^a-z0-9$]/g, "");
+
+export interface LactanetTrait {
+  code: string;
+  numericValue: number | null;
+  textValue: string | null;
+  reliability: number | null;   // 0-1
+  percentileRank: number | null;
+}
+
+export interface LactanetEvaluation {
+  runLabel: string | null;  // "April 2026"
+  runDate: string | null;   // ISO
+  basis: string | null;     // GEBV | EBV | PA | GPA
+  reliability: number | null; // 0-1
+  traits: LactanetTrait[];
+}
+
+const RUN_MONTHS: Record<string, [string, string]> = {
+  APR: ["04", "April"], AUG: ["08", "August"], DEC: ["12", "December"],
+  JAN: ["01", "January"], FEB: ["02", "February"], MAR: ["03", "March"],
+  MAY: ["05", "May"], JUN: ["06", "June"], JUL: ["07", "July"],
+  SEP: ["09", "September"], OCT: ["10", "October"], NOV: ["11", "November"],
+};
+
+/**
+ * Pull every trait Lactanet publishes for the animal.
+ *
+ * Table-driven and label-keyed rather than positional, so a column being added
+ * or reordered upstream degrades to "that trait is missing" instead of silently
+ * importing the wrong number into the wrong trait.
+ */
+export function parseTraits(summaryHtml?: string, typeHtml?: string): LactanetEvaluation {
+  const out: LactanetEvaluation = { runLabel: null, runDate: null, basis: null, reliability: null, traits: [] };
+  const seen = new Set<string>();
+
+  const push = (code: string, numericValue: number | null, reliability: number | null, percentileRank: number | null) => {
+    if (!code || seen.has(code)) return;
+    if (numericValue == null) return;
+    seen.add(code);
+    out.traits.push({ code, numericValue, textValue: null, reliability, percentileRank });
+  };
+
+  const text = summaryHtml ? stripTags(summaryHtml) : "";
+
+  // Proof run: "GEBV 26*APR" / "EBV 26*APR" / "GPA 25*DEC"
+  const run = /\b(GEBV|GPA|EBV|PA)\s+(\d{2})\s*\*\s*([A-Z]{3})\b/i.exec(text);
+  if (run) {
+    out.basis = run[1].toUpperCase();
+    const mm = RUN_MONTHS[run[3].toUpperCase()];
+    if (mm) {
+      const year = `20${run[2]}`;
+      out.runDate = `${year}-${mm[0]}-01`;
+      out.runLabel = `${mm[1]} ${year}`;
+    }
+  }
+  // Headline reliability, e.g. "Rel: 95%"
+  const relPct = numOrNull(/Rel:?\s*(\d{1,3})\s*%/i.exec(text)?.[1] ?? null);
+  if (relPct != null) out.reliability = Math.min(1, relPct / 100);
+
+  // LPI + Pro$ read off the text; they're rendered as headline blocks, not rows.
+  const lpi = numOrNull(/\bLPI\s*\n?\s*(-?[\d,]+)/i.exec(text)?.[1] ?? null);
+  if (lpi != null) push("LPI", lpi, out.reliability, numOrNull(/%RK:?\s*(\d{1,3})/i.exec(text)?.[1] ?? null));
+  const prod = numOrNull((/Pro\$\s*\n?\s*(-?\$?[\d,]+)/i.exec(text)?.[1] ?? "").replace("$", ""));
+  if (prod != null) push("PRO$", prod, out.reliability, null);
+
+  // Every table on both pages: row label in cell 0, first numeric cell is the value.
+  for (const html of [summaryHtml, typeHtml]) {
+    if (!html) continue;
+    for (const t of extractTables(html)) {
+      for (const row of [t.headers, ...t.rows]) {
+        if (row.length < 2) continue;
+        // The label is NOT always cell 0 — the production table packs two
+        // logical columns per row, e.g.
+        //   ["Herds","294","Milk","-223","23",""]
+        //   ["Daughters/Lactations","603/938","Fat","-43","2","-0.29"]
+        // so scan every cell for a known trait name.
+        for (let li = 0; li < row.length - 1; li++) {
+          const code = TRAIT_LABELS[normLabel(row[li])];
+          if (!code) continue;
+
+          // First cell after the label that parses as a number is the rating.
+          // Strip a trailing basis marker ("102 G", "97 GPA").
+          let value: number | null = null;
+          let vi = -1;
+          for (let i = li + 1; i < row.length; i++) {
+            const n = numOrNull(row[i].replace(/\s*(GEBV|GPA|EBV|PA|G)\s*$/i, ""));
+            if (n != null) { value = n; vi = i; break; }
+          }
+          if (value == null) continue;
+
+          // Then: a "%"-suffixed cell is reliability; a bare 0-100 integer is
+          // %RK; a further decimal is the %Dev column (fat/protein percent).
+          let rel: number | null = null;
+          let rk: number | null = null;
+          let dev: number | null = null;
+          for (let i = vi + 1; i < Math.min(row.length, vi + 4); i++) {
+            const c = row[i].trim();
+            if (!c) continue;
+            const n = numOrNull(c);
+            if (n == null) continue;
+            if (/%$/.test(c)) { if (rel == null) rel = Math.min(1, n / 100); }
+            else if (rk == null && Number.isInteger(n) && n >= 0 && n <= 100) rk = n;
+            else if (dev == null) dev = n;
+          }
+
+          push(code, value, rel ?? out.reliability, rk);
+          // Fat/Protein carry their percent deviation in the same row.
+          if (dev != null && (code === "FAT" || code === "PROT")) {
+            push(code === "FAT" ? "FATPCT" : "PROTPCT", dev, rel ?? out.reliability, null);
+          }
+        }
+      }
+    }
+  }
+
+  // Fat % / Protein % live in the production table's "%Dev" column, which the
+  // generic pass above skips (the row label is "Fat"/"Protein", already taken).
+  const dev = (label: string) => {
+    const re = new RegExp(`${label}\\s+(-?[\\d.]+)\\s+(\\d{1,3})\\s+(-?[\\d.]+)`, "i");
+    return numOrNull(re.exec(text)?.[3] ?? null);
+  };
+  const fatDev = dev("Fat");
+  if (fatDev != null) push("FATPCT", fatDev, out.reliability, null);
+  const protDev = dev("Protein");
+  if (protDev != null) push("PROTPCT", protDev, out.reliability, null);
+
+  return out;
+}
+
 // --- assembly ----------------------------------------------------------------
 
 export interface LactanetParsed {
   identity: LactanetIdentity;
   profile: HolsteinProfile;
+  evaluation: LactanetEvaluation;
   progenyTotal: number | null;
   progenyCapped: boolean;
   warnings: string[];
@@ -365,6 +545,10 @@ export function parseLactanetAnimal(
   const classifications = tabs.type ? parseClassifications(tabs.type, sex) : [];
   const lactations = tabs.production ? parseLactations(tabs.production, sex) : [];
 
+  const evaluation = parseTraits(tabs.summary, tabs.type);
+  if (!evaluation.traits.length) warnings.push("no genetic traits found on the summary/type pages");
+  else if (!evaluation.runDate) warnings.push("traits found but the proof run could not be read — evaluation not dated");
+
   const profile: HolsteinProfile = {
     reg: identity.reg ?? reg,
     owners: [],   // not published by Lactanet
@@ -377,5 +561,5 @@ export function parseLactanetAnimal(
     scrapedAt: fetchedAt,
   };
 
-  return { identity, profile, progenyTotal: prog.total, progenyCapped: prog.capped, warnings };
+  return { identity, profile, evaluation, progenyTotal: prog.total, progenyCapped: prog.capped, warnings };
 }
