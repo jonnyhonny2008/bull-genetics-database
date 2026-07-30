@@ -13,7 +13,7 @@ export default function RefreshHolstein({ reg }: { reg: string }) {
   async function refresh() {
     setBusy(true); setMsg(null);
     try {
-      const r = await fetch("/api/holstein/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reg }) });
+      const r = await fetch("/api/lactanet/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reg }) });
       const j = await r.json();
       if (j.ok) { setMsg("Updated"); router.refresh(); setTimeout(() => setMsg(null), 2500); }
       else setMsg(j.error ? `Failed: ${String(j.error).slice(0, 60)}` : "Failed");

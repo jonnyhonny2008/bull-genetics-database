@@ -16,7 +16,7 @@ import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { PedigreeTree } from "@/components/PedigreeTree";
 import {
-  HolsteinFamilyTreeCard, HolsteinOwnersCard, HolsteinProgenyCard, HolsteinAwardsCard, HolsteinLactationsCard,
+  HolsteinFamilyTreeCard, HolsteinProgenyCard, HolsteinLactationsCard,
 } from "@/components/HolsteinProfile";
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
 import RefreshHolstein from "./RefreshHolstein";
@@ -58,7 +58,9 @@ export default async function AnimalProfile({
 
   const isFemale = a.sex === "F";
   const profile = parseHolsteinProfileJson(a.holsteinProfileJson);
-  const hasOwners = !!profile && (profile.owners.length > 0 || profile.breeders.length > 0);
+  // Owners/breeders and show awards are breed-association registry data. The
+  // Lactanet source doesn't publish them, so those two tabs are gone rather
+  // than sitting there permanently empty.
   const hasProgeny = !!profile && profile.progeny.length > 0;
 
   // Sex-aware, holstein.ca-style tab set. Owner History / Progeny appear only
@@ -69,7 +71,6 @@ export default async function AnimalProfile({
     { code: "conformation", label: "Conformation" },
     ...(isFemale ? [{ code: "lactations", label: "Lactations" }] : []),
     { code: "familytree", label: "Family Tree" },
-    ...(hasOwners ? [{ code: "owners", label: "Owner History" }] : []),
     ...(hasProgeny ? [{ code: "progeny", label: "Progeny" }] : []),
   ];
   const tab = TABS.find((t) => t.code === searchParams.tab)?.code ?? "main";
@@ -289,8 +290,6 @@ export default async function AnimalProfile({
               </div>
             </div>
           </Card>
-
-          <HolsteinAwardsCard profile={profile ?? { reg: null, owners: [], breeders: [], familyTree: [], progeny: [], classifications: [], lactations: [], awards: [], scrapedAt: null }} />
 
           <Card title={`Identifiers (${a.identifiers.length})`}>
             {a.identifiers.length === 0 ? <EmptyState message="No identifiers." /> : (
@@ -692,10 +691,8 @@ export default async function AnimalProfile({
         </div>
       )}
 
-      {/* ================= OWNER HISTORY ================= */}
-      {tab === "owners" && profile && (
-        <div className="space-y-4"><HolsteinOwnersCard profile={profile} /></div>
-      )}
+      {/* Owner History removed: owners/breeders are breed-association registry
+          data, which the Lactanet source does not publish. */}
 
       {/* ================= PROGENY ================= */}
       {tab === "progeny" && profile && (

@@ -34,7 +34,7 @@ export default function LiveScrape() {
     e.preventDefault();
     setSingleBusy(true); setSingle(null);
     try {
-      const r = await fetch("/api/holstein/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reg }) });
+      const r = await fetch("/api/lactanet/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reg }) });
       setSingle(await r.json());
     } catch (err) {
       setSingle({ reg, ok: false, error: String(err) });
@@ -49,7 +49,8 @@ export default function LiveScrape() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const regs = useMemo(() => [...new Set((raw.toUpperCase().match(/HOCAN[FM]?\d{4,}|HO\d{6,}/g) ?? []))], [raw]);
+  // Full registrations: breed(2) + country(3, may be numeric like 840) + sex + digits.
+  const regs = useMemo(() => [...new Set((raw.toUpperCase().match(/\b[A-Z]{2}[A-Z0-9]{3}[MF]\d{4,}\b/g) ?? []))], [raw]);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -62,7 +63,7 @@ export default function LiveScrape() {
     if (!regs.length || bulkBusy) return;
     setBulkBusy(true); setRows([]); setSummary(null); setProgress({ done: 0, total: regs.length });
     try {
-      const resp = await fetch("/api/holstein/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ regs }) });
+      const resp = await fetch("/api/lactanet/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ regs }) });
       if (!resp.body) throw new Error("no stream");
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
