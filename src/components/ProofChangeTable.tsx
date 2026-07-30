@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
+import { HScroll } from "./HScroll";
 import type { ReportRow, TraitChange } from "@/lib/proof-change";
 
 // Trim to at most 2 decimals without trailing zeros.
@@ -32,33 +33,6 @@ export function ProofChangeTable({
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
   const cols = 3 + keyTraits.length;
 
-  // --- horizontal scrollbar mirrored above the table ---------------------
-  const topRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const [scrollW, setScrollW] = useState(0);
-  const lock = useRef<"top" | "body" | null>(null);
-
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    const update = () => setScrollW(el.scrollWidth);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [rows, open]);
-
-  const onTopScroll = useCallback(() => {
-    if (lock.current === "body") { lock.current = null; return; }
-    lock.current = "top";
-    if (bodyRef.current && topRef.current) bodyRef.current.scrollLeft = topRef.current.scrollLeft;
-  }, []);
-  const onBodyScroll = useCallback(() => {
-    if (lock.current === "top") { lock.current = null; return; }
-    lock.current = "body";
-    if (bodyRef.current && topRef.current) topRef.current.scrollLeft = bodyRef.current.scrollLeft;
-  }, []);
-
   // Clicking a header sorts by it; clicking the active one flips direction.
   const sortHref = (code: string) => {
     const p = new URLSearchParams(params);
@@ -74,11 +48,7 @@ export function ProofChangeTable({
   return (
     <div className="card">
       {/* Mirror scrollbar so you can pan the wide table without scrolling down */}
-      <div ref={topRef} onScroll={onTopScroll} className="overflow-x-auto overflow-y-hidden border-b border-slate-100" style={{ scrollbarWidth: "thin" }}>
-        <div style={{ width: scrollW, height: 1 }} />
-      </div>
-
-      <div ref={bodyRef} onScroll={onBodyScroll} className="overflow-x-auto">
+      <HScroll label="drag or shift+scroll">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -156,28 +126,32 @@ export function ProofChangeTable({
             })}
           </tbody>
         </table>
-      </div>
+      </HScroll>
     </div>
   );
 }
 
-/** One compact line per trait: the CHANGE first, then the name and detail. */
+/**
+ * One compact line per trait: the CHANGE first, then the name and detail.
+ * Nothing truncates — the line sizes to its content and the panel scrolls
+ * sideways instead, so a long trait name is never cut off.
+ */
 function TraitLine({ t }: { t: TraitChange }) {
   return (
-    <div className={`flex items-baseline gap-2 rounded px-1.5 py-[3px] ${t.flagged ? "bg-amber-50" : t.key ? "bg-brand-50/40" : ""}`}>
+    <div className={`flex items-baseline gap-2 whitespace-nowrap rounded px-1.5 py-[3px] ${t.flagged ? "bg-amber-50" : t.key ? "bg-brand-50/40" : ""}`}>
       <span className={`w-[68px] shrink-0 text-right text-xs font-semibold tabular-nums ${deltaClass(t.delta)}`}>
         {arrow(t.delta)} {signed(t.delta)}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[11px] text-slate-700" title={t.name}>
+      <span className="min-w-[140px] shrink-0 text-[11px] text-slate-700">
         {t.name}{t.key && <span className="ml-1 text-[8px] uppercase text-brand-500">key</span>}
       </span>
-      <span className="shrink-0 text-[10px] tabular-nums text-slate-400" title="previous → latest">
+      <span className="ml-auto shrink-0 pl-2 text-[10px] tabular-nums text-slate-400" title="previous → latest">
         {fmt(t.previous)}→{fmt(t.latest)}
       </span>
       <span className={`w-11 shrink-0 text-right text-[10px] tabular-nums ${t.flagged ? "font-semibold text-amber-700" : "text-slate-400"}`} title="SD from how the lineup moved">
         {t.z == null ? "—" : `${t.z > 0 ? "+" : ""}${t.z}`}
       </span>
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-slate-300" title="% change (reference only)">
+      <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-slate-300" title="% change (reference only)">
         {pctStr(t.pct)}
       </span>
     </div>
@@ -191,20 +165,26 @@ function BullDetail({ change }: { change: ReportRow["change"] }) {
     <div className="space-y-2 py-1">
       <div className="text-xs text-slate-600"><span className="font-semibold">What changed most:</span> {change.summary}</div>
 
+      {/* Each block scrolls side to side on its own, with the scrollbar right
+          at the top of the block — no need to jump back to the table header. */}
       <div>
         <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Key traits</div>
-        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2 xl:grid-cols-3">
-          {keys.map((t) => <TraitLine key={t.code} t={t} />)}
-        </div>
+        <HScroll label="scroll for cut-off values">
+          <div className="grid grid-cols-[repeat(3,max-content)] gap-x-6">
+            {keys.map((t) => <TraitLine key={t.code} t={t} />)}
+          </div>
+        </HScroll>
       </div>
 
       <div>
         <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           All other traits ({others.length}) · {change.flaggedCount - change.keyFlaggedCount} flagged
         </div>
-        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2 xl:grid-cols-3">
-          {others.map((t) => <TraitLine key={t.code} t={t} />)}
-        </div>
+        <HScroll label="scroll for cut-off values">
+          <div className="grid grid-cols-[repeat(3,max-content)] gap-x-6">
+            {others.map((t) => <TraitLine key={t.code} t={t} />)}
+          </div>
+        </HScroll>
       </div>
 
       <div className="text-[10px] text-slate-400">

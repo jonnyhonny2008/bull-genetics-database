@@ -29,6 +29,10 @@ prisma/*.db
 .DS_Store
 *.log
 
+# build artifacts / scratch (regenerated locally, pure noise in diffs)
+tsconfig.tsbuildinfo
+.write_test
+
 # large proof import files.
 # NOTE: `/imports/*.csv` alone does NOT match `imports/cdn/*.csv` — a single `*`
 # never crosses a directory separator, so the 626 CDN files would have been
