@@ -28,6 +28,15 @@ export function Sidebar({ items }: { items: NavItem[] }) {
             )}
             <Link
               href={item.href}
+              // prefetch={false} is load-bearing, not a micro-optimisation.
+              // Every destination here is `dynamic = "force-dynamic"`, so a
+              // prefetch is a FULL server render that opens database
+              // connections. With ~12 links rendered twice (desktop sidebar +
+              // mobile drawer), Next would fire ~24 renders the moment the nav
+              // mounted and blow straight through Supabase's connection cap:
+              //   FATAL: (EMAXCONNSESSION) max clients reached ... pool_size: 15
+              // Navigation is still instant enough; correctness wins here.
+              prefetch={false}
               className={`block rounded-md px-3 py-2 text-sm font-medium transition ${
                 active ? "bg-brand-600 text-white" : "text-slate-200 hover:bg-brand-800 hover:text-white"
               }`}

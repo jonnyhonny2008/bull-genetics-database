@@ -22,7 +22,13 @@ function withPoolLimits(url: string | undefined): string | undefined {
   try {
     const u = new URL(url);
     if (!u.searchParams.has("connection_limit")) {
-      u.searchParams.set("connection_limit", process.env.DB_CONNECTION_LIMIT ?? "5");
+      // On a serverless host EVERY warm instance holds its own pool, so the
+      // per-instance limit must be tiny: at the default of 5, three warm lambdas
+      // already exceed Supabase's 15-client cap and every query dies with
+      //   FATAL: (EMAXCONNSESSION) max clients reached in session mode
+      // Default to 1 there and 5 on a long-lived server, still overridable.
+      const serverless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+      u.searchParams.set("connection_limit", process.env.DB_CONNECTION_LIMIT ?? (serverless ? "1" : "5"));
     }
     // Wait for a free connection rather than failing instantly under burst.
     if (!u.searchParams.has("pool_timeout")) u.searchParams.set("pool_timeout", "20");
