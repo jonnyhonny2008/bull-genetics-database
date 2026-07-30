@@ -7,7 +7,18 @@
 // - Same round already imported for a bull -> skipped (idempotent / resumable).
 // - isPreferred is kept on the LATEST-dated evaluation per bull.
 //
-// Streams the file; chunked createMany; WAL so the live server keeps serving.
+// After the rows land it refreshes every DERIVED column (sire class, proof
+// counts, rollback scores, pedigree index) — without that a new bull imports
+// with proofRoundCount = 0 and is invisible to the Proof Change Report and the
+// role filters, and existing bulls keep stale counts.
+//
+// Run it via `npm run import:all` — NOT bare `tsx`. This file reaches
+// src/lib/lactanet.ts, which starts with `import "server-only"`; that package
+// throws unless Node resolves it with the `react-server` condition, so the npm
+// script passes `--conditions=react-server`. (Next.js aliases the package
+// internally, which is why `next build` never surfaced this.)
+//
+// Streams the file; chunked createMany.
 //
 // Usage:  npx tsx prisma/import-all-bulls.ts [fileName] [limit]
 // ---------------------------------------------------------------------------
@@ -19,6 +30,9 @@ import readline from "readline";
 import crypto from "crypto";
 import { parseHeader, parseRow, type ParsedBull } from "../src/lib/lactanet";
 import { packTraits } from "../src/lib/eval-traits";
+import { classifySires } from "./classify-sires";
+import { computeRollbackRatings } from "./compute-rollback";
+import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
 const prisma = new PrismaClient();
 
@@ -49,9 +63,10 @@ async function main() {
   if (!fs.existsSync(fullPath)) { console.error(`[import-all] File not found: ${fullPath}`); process.exit(1); }
   console.log(`[import-all] importing ${fileName} (limit ${limit})`);
 
-  await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL;");
-  await prisma.$queryRawUnsafe("PRAGMA busy_timeout=15000;");
-  await prisma.$queryRawUnsafe("PRAGMA synchronous=NORMAL;");
+  // (The three SQLite PRAGMAs that used to live here — WAL / busy_timeout /
+  //  synchronous — were left over from the SQLite era and threw a syntax error
+  //  against PostgreSQL, which broke every run of this script after the
+  //  Postgres migration. Postgres needs no equivalent session tuning here.)
 
   const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
   const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
@@ -63,6 +78,17 @@ async function main() {
     where: { idType: { in: ["registration_ca", "registration_us", "registration_int"] } },
     select: { idValue: true, animalId: true },
   })) regToAnimal.set(r.idValue.toUpperCase(), r.animalId);
+
+  // Which animals already carry a NAAB / marketing code. A bull that entered the
+  // database before it was assigned a stud code would otherwise never pick one
+  // up on a later round — and the Proof Change Report only covers NAAB bulls, so
+  // it would stay invisible forever. Backfill it the first time a file has one.
+  const hasNaab = new Set<string>();
+  const hasMarketing = new Set<string>();
+  for (const r of await prisma.animalIdentifier.findMany({
+    where: { idType: { in: ["naab", "marketing_code"] } },
+    select: { idType: true, animalId: true },
+  })) (r.idType === "naab" ? hasNaab : hasMarketing).add(r.animalId);
 
   // existing evaluations: which (animalId|proofRun) already exist, and latest date per animal.
   const evalKey = new Set<string>();
@@ -80,7 +106,7 @@ async function main() {
 
   const buf = { animals: [] as any[], ids: [] as any[], roles: [] as any[], evals: [] as any[], peds: [] as any[] };
   const unprefer = new Set<string>(); // existing animals that received a newer round
-  let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0;
+  let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0, newNaab = 0;
 
   async function flush() {
     if (buf.evals.length === 0 && buf.animals.length === 0) return;
@@ -108,6 +134,19 @@ async function main() {
       if (bull.naabCode) buf.ids.push({ animalId, idType: "naab", idValue: bull.naabCode, sourceId: source?.sourceId, isPrimary: false });
       if (bull.naabMarketingCode) buf.ids.push({ animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: source?.sourceId, isPrimary: false });
       buf.roles.push({ animalId, roleType: "reference_sire", active: true });
+      if (bull.naabCode) hasNaab.add(animalId);
+      if (bull.naabMarketingCode) hasMarketing.add(animalId);
+    } else {
+      // Existing bull that has since been assigned a stud code — add it now.
+      if (bull.naabCode && !hasNaab.has(animalId!)) {
+        hasNaab.add(animalId!);
+        buf.ids.push({ animalId, idType: "naab", idValue: bull.naabCode, sourceId: source?.sourceId, isPrimary: false });
+        newNaab++;
+      }
+      if (bull.naabMarketingCode && !hasMarketing.has(animalId!)) {
+        hasMarketing.add(animalId!);
+        buf.ids.push({ animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: source?.sourceId, isPrimary: false });
+      }
     }
 
     // Skip if this exact round already exists for this bull.
@@ -165,8 +204,25 @@ async function main() {
   `);
   console.log(`\n[import-all] normalized preferred flag to latest round per bull`);
 
-  await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `Bulk import ${fileName}: ${newBulls} new bulls, ${newEvals} new proofs, ${skipped} skipped` } });
-  console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, skipped ${skipped}, processed ${processed}`);
+  // ---------------------------------------------------------------------
+  // Refresh every derived column the app filters and reports on. Without
+  // this a newly imported bull lands with proofRoundCount = 0 and no
+  // sireType, so it is INVISIBLE to the Proof Change Report (which requires
+  // >= 2 rounds), to the proven/genomic/active/inactive filters, and to
+  // Proof Trends — and existing bulls keep last month's stale counts.
+  // Chaining it here means every import path gets it for free, including
+  // the "start bulk import" button (which shells out to `npm run import:all`).
+  // ---------------------------------------------------------------------
+  console.log(`[import-all] refreshing derived columns…`);
+  const cls = await classifySires(prisma);
+  console.log(`[import-all]   sire classes — latest round ${cls.latestRound ?? "?"}: ${cls.active} active, ${cls.inactive} inactive, ${cls.proven} proven, ${cls.genomic} genomic`);
+  const rb = await computeRollbackRatings(prisma);
+  console.log(`[import-all]   rollback — ${rb.scored} scored, ${rb.rated} rated (base ${Math.round(rb.mean * 10) / 10}, SD ${Math.round(rb.sd * 100) / 100})`);
+  const pi = await computePedigreeIndexAll(prisma);
+  console.log(`[import-all]   pedigree index — ${pi.withIndex}/${pi.animals} animals (${pi.highConfidence} high confidence)`);
+
+  await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `Bulk import ${fileName}: ${newBulls} new bulls, ${newEvals} new proofs, ${skipped} skipped; refreshed ${cls.active + cls.inactive} sire classifications, ${rb.scored} rollback scores` } });
+  console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, NAAB codes backfilled ${newNaab}, skipped ${skipped}, processed ${processed}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });
