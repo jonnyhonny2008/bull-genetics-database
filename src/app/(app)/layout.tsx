@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can, ROLES } from "@/lib/constants";
 import { EnvBanner } from "@/components/EnvBanner";
-import { Sidebar, type NavItem } from "@/components/Sidebar";
+import { type NavItem } from "@/components/Sidebar";
+import { NavProvider, NavToggle, AppSidebar } from "@/components/AppNav";
 import { logoutAction } from "@/app/actions/session";
 import { GeneticsAssistant } from "@/components/GeneticsAssistant";
 
@@ -27,30 +28,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const items = all.filter((i) => !i.need || can(user.role, i.need));
 
   return (
+    <NavProvider>
     <div className="min-h-screen">
       <EnvBanner />
       <div className="flex min-h-[calc(100vh-24px)]">
-        {/* sticky + self-start + h-screen keeps the nav pinned while the page
-            scrolls (a stretched flex item has no room to stick). */}
-        <aside className="hidden w-60 shrink-0 flex-col bg-brand-900 md:sticky md:top-0 md:flex md:h-screen md:self-start">
-          <div className="flex items-center gap-2 px-4 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">BS</div>
-            <div className="leading-tight">
-              <div className="text-sm font-bold text-white">Bull Stud Genetics</div>
-              <div className="text-[10px] uppercase tracking-widest text-brand-300">Genetics Intelligence</div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <Sidebar items={items} />
-          </div>
-          <div className="border-t border-brand-800 p-3 text-[11px] text-brand-300">
-            Phase 1 · Historical Proof DB
-          </div>
-        </aside>
+        {/* Desktop sidebar (collapsible) + mobile drawer. sticky + self-start +
+            h-screen keeps the nav pinned while the page scrolls (a stretched
+            flex item has no room to stick). */}
+        <AppSidebar items={items} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
-            <div className="text-sm text-slate-500 md:hidden">Bull Stud Genetics</div>
+            <div className="flex items-center gap-2">
+              <NavToggle />
+              <div className="text-sm text-slate-500 md:hidden">Bull Stud Genetics</div>
+            </div>
             <div className="ml-auto flex items-center gap-3">
               <div className="text-right leading-tight">
                 <div className="text-sm font-medium text-slate-800">{user.name}</div>
@@ -70,5 +62,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <GeneticsAssistant />
     </div>
+    </NavProvider>
   );
 }
