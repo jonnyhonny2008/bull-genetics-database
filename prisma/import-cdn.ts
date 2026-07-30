@@ -17,6 +17,7 @@ import { packTraits } from "../src/lib/eval-traits";
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { computeRollbackRatings } from "./compute-rollback";
+import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
 const prisma = new PrismaClient();
 const stageDir = process.argv[2] || path.join(process.env.IMPORTS_DIR || "./imports", "cdn");
@@ -168,6 +169,9 @@ async function main() {
   // the (possibly changed) active lineup.
   const rb = await computeRollbackRatings(prisma);
   console.log(`[cdn] rollback ratings: ${rb.rated} bulls · baseline n=${rb.baselineN} mean=${rb.mean}% sd=${rb.sd}`);
+  // Re-estimate the pedigree index now that new ancestors may be resolvable.
+  const pi = await computePedigreeIndexAll(prisma);
+  console.log(`[cdn] pedigree index: ${pi.withIndex}/${pi.animals} animals got an index (${pi.highConfidence} at ≥85% confidence)`);
 
   await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `CDN import: ${newAnimals} animals, ${newEvals} proof rounds from ${files.length} files` } });
   console.log(`\n[cdn] DONE — files ${files.length}, rows ${rowsSeen}, new animals ${newAnimals}, new proof rounds ${newEvals}, skipped ${skipped}`);

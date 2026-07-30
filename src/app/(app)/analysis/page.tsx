@@ -3,10 +3,10 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { PageHeader, Card, Table, Badge, EmptyState, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
-import { computeRollback, baselineOf, relativeRating, ratingVerdict, ROLLBACK_TRAIT_LABELS, type RollbackResult } from "@/lib/rollback";
+import { computeRollback, baselineOf, relativeRating, ratingVerdict, ROLLBACK_TRAIT_LABELS, isOfficialProof, isRollbackRound, type RollbackResult } from "@/lib/rollback";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { LineChart, CompareBars, type LineSeries } from "@/components/TrendCharts";
-import { SireRolePills, SireRoleField, SireSortField, SireClassBadges } from "@/components/SireFilters";
+import { SireRolePills, SireRoleField, SireSortField } from "@/components/SireFilters";
 import { sireRoleWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
 
@@ -23,7 +23,6 @@ const CHART_TRAITS: { code: string; col: string; label: string }[] = [
 export default async function AnalysisPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const sp = searchParams;
   const view = sp.view === "charts" ? "charts" : "rankings";
-  const bullId = sp.bull || null;
   const chartTrait = CHART_TRAITS.find((t) => t.code === (sp.trait ?? "LPI").toUpperCase()) ?? CHART_TRAITS[0];
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const sortDef = resolveSort(sp.sort);
@@ -173,37 +172,102 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
       if (sortDef?.code === "name" && dir === "desc") pickerBulls.reverse();
   }
 
-  // Bull picking: a type-ahead box backed by a <datalist> beats a 287-option
-  // <select> you have to scroll. `bullName` is what the box submits; `bull` (an
-  // id) still works so existing links and bookmarks keep resolving.
-  const typed = (sp.bullName ?? "").trim();
-  const byTypedName = typed
-    ? (pickerBulls.find((b) => b.name.toLowerCase() === typed.toLowerCase())
-      ?? pickerBulls.find((b) => b.name.toLowerCase().includes(typed.toLowerCase())))
-    : null;
-  // Only complain when something was typed and nothing matched at all.
-  const bullNotFound = typed.length > 0 && !byTypedName;
+  // Multi-sire selection (up to 5), by career STAGE. Each sire's proof rounds
+  // are indexed 1..N (round 1 = their first proof), so bulls that debuted in
+  // different years line up at the same point in their active life.
+  const col = chartTrait.col;
+  // Career-stage basis: align sires by their Nth proof round, Nth official proof
+  // (April / August / December), or Nth rollback (April base change). This is
+  // what makes "a sire at its 2nd rollback" comparable to every other sire at
+  // THEIR 2nd rollback, rather than comparing by calendar date.
+  // Default alignment is Rollback (April rounds) — this page is framed around
+  // Rollback Resistance, and it's the comparison the user cares about most.
+  const alignBy = sp.align === "proof" ? "proof" : sp.align === "official" ? "official" : "rollback";
+  const basisMatch = (d: Date) => (alignBy === "rollback" ? isRollbackRound(d) : alignBy === "official" ? isOfficialProof(d) : true);
+  const stageNoun = alignBy === "rollback" ? "rollback (April round)" : alignBy === "official" ? "official proof" : "proof round";
+  const xUnit = alignBy === "rollback" ? "Rollback " : alignBy === "official" ? "Official proof " : "Proof round ";
+  const MAX_SIRES = 5;
+  const rawIds = (sp.bulls ?? sp.bull ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  let selectedIds = Array.from(new Set(rawIds)).filter((id) => pickerBulls.some((b) => b.id === id)).slice(0, MAX_SIRES);
+  // "add" a sire by name — server-driven multi-select, no client JS needed.
+  const addName = (sp.add ?? "").trim();
+  let addNotFound = false;
+  if (addName && selectedIds.length < MAX_SIRES) {
+    const match = pickerBulls.find((b) => b.name.toLowerCase() === addName.toLowerCase())
+      ?? pickerBulls.find((b) => b.name.toLowerCase().includes(addName.toLowerCase()));
+    if (match) { if (!selectedIds.includes(match.id)) selectedIds.push(match.id); }
+    else addNotFound = true;
+  }
+  // Default to the first sire so the chart isn't empty on first open.
+  if (selectedIds.length === 0 && pickerBulls[0]) selectedIds = [pickerBulls[0].id];
 
-  // Only the CHARTS view needs a bull's full round history, and only for the one
-  // bull on screen — a single query, not 287 of them.
-  const selId = byTypedName?.id ?? (bullId && pickerBulls.some((b) => b.id === bullId) ? bullId : null) ?? pickerBulls[0]?.id ?? null;
-  const selBull = view === "charts" && selId
-    ? await prisma.animal.findUnique({
-        where: { id: selId },
-        include: { evaluations: { orderBy: { evaluationDate: "asc" } } },
+  const evalSelect = { evaluationDate: true, [col]: true } as Prisma.GeneticEvaluationSelect;
+  const selBulls = view === "charts" && selectedIds.length
+    ? await prisma.animal.findMany({
+        where: { id: { in: selectedIds } },
+        select: { id: true, primaryName: true, evaluations: { orderBy: { evaluationDate: "asc" }, select: evalSelect } },
       })
-    : null;
+    : [];
+  const selById = new Map(selBulls.map((b) => [b.id, b]));
+  const orderedSel = selectedIds.map((id) => selById.get(id)).filter((b): b is (typeof selBulls)[number] => !!b);
 
-  type EvalRow = NonNullable<typeof selBull>["evaluations"][number];
-  const col = chartTrait.col as keyof EvalRow;
-  const trendSeries: LineSeries[] = selBull ? [{
-    label: chartTrait.label, color: "#2f6551",
-    points: selBull.evaluations.map((e) => ({ x: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7), y: (e[col] as number | null) ?? null })),
-  }] : [];
-  const selPref = selBull ? (selBull.evaluations.find((e) => e.isPreferred) ?? selBull.evaluations[selBull.evaluations.length - 1]) : null;
-  const compareRows = selPref ? CHART_TRAITS.map((t) => ({
+  // Stage-aligned lineup average: the average of the trait at each career stage
+  // across the whole population (active unless the inactive toggle is on).
+  const avgRows = view === "charts"
+    ? await prisma.geneticEvaluation.findMany({
+        where: { animal: animalWhere },
+        select: { animalId: true, evaluationDate: true, [col]: true } as Prisma.GeneticEvaluationSelect,
+        orderBy: [{ animalId: "asc" }, { evaluationDate: "asc" }],
+      })
+    : [];
+  const stageSum: number[] = []; const stageCnt: number[] = [];
+  {
+    let cur: string | null = null; let stage = 0;
+    for (const row of avgRows) {
+      const r = row as unknown as { animalId: string; evaluationDate: Date; [k: string]: unknown };
+      if (r.animalId !== cur) { cur = r.animalId; stage = 0; }
+      if (!basisMatch(r.evaluationDate)) continue; // interim rounds don't advance an official / rollback stage
+      const v = r[col];
+      if (typeof v === "number") { stageSum[stage] = (stageSum[stage] ?? 0) + v; stageCnt[stage] = (stageCnt[stage] ?? 0) + 1; }
+      stage++;
+    }
+  }
+
+  const SERIES_COLORS = ["#2f6551", "#d97706", "#2563eb", "#7c3aed", "#dc2626"];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const roundLabel = (e: { evaluationDate?: Date } | undefined) => {
+    const d = e?.evaluationDate; return d ? `${MON[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}` : "";
+  };
+  // Each sire's rounds on the chosen basis, oldest first.
+  const selRounds = orderedSel.map((b) => b.evaluations.filter((e) => basisMatch((e as unknown as { evaluationDate: Date }).evaluationDate)));
+  const maxStage = Math.max(0, ...selRounds.map((r) => r.length));
+  const xs = Array.from({ length: maxStage }, (_, i) => `${i + 1}`);
+  const sireSeries: LineSeries[] = orderedSel.map((b, idx) => ({
+    label: b.primaryName,
+    color: SERIES_COLORS[idx % SERIES_COLORS.length],
+    points: xs.map((x, i) => {
+      const e = selRounds[idx][i] as unknown as { evaluationDate?: Date; [k: string]: unknown } | undefined;
+      const y = e ? e[col] : null;
+      return { x, y: typeof y === "number" ? y : null, note: e ? roundLabel(e) : undefined };
+    }),
+  }));
+  const avgSeries: LineSeries = {
+    label: `Lineup average (${includeInactive ? "all" : "active"})`,
+    color: "#94a3b8", dashed: true,
+    points: xs.map((x, i) => ({ x, y: stageCnt[i] ? Math.round(stageSum[i] / stageCnt[i]) : null, note: stageCnt[i] ? `${stageCnt[i]} sires` : undefined })),
+  };
+  const trendSeries: LineSeries[] = maxStage ? [...sireSeries, avgSeries] : [];
+
+  // Single-sire extra: the familiar bull-vs-lineup bars, only when exactly one
+  // sire is selected (across-all-traits view for a single bull's latest proof).
+  const singleSel = orderedSel.length === 1 ? orderedSel[0] : null;
+  const singlePref = singleSel
+    ? (await prisma.geneticEvaluation.findFirst({ where: { animalId: singleSel.id, isPreferred: true } })
+      ?? await prisma.geneticEvaluation.findFirst({ where: { animalId: singleSel.id }, orderBy: { evaluationDate: "desc" } }))
+    : null;
+  const compareRows = singlePref ? CHART_TRAITS.map((t) => ({
     label: t.label,
-    a: (selPref[t.col as keyof typeof selPref] as number | null) ?? null,
+    a: (singlePref[t.col as keyof typeof singlePref] as number | null) ?? null,
     b: lineupAvg[t.col] != null ? Math.round(lineupAvg[t.col] as number) : null,
   })) : [];
 
@@ -218,6 +282,22 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   const popLabel = sp.role
     ? `${sp.role} sires`
     : includeInactive ? "all sires (active + inactive)" : "active sires only";
+
+  // Build a charts URL for a specific set of selected sire ids, preserving the
+  // trait, alignment basis, role, sort and inactive filters.
+  const chartsUrl = (ids: string[], extra: Record<string, string> = {}) => {
+    const p = new URLSearchParams();
+    p.set("view", "charts");
+    if (ids.length) p.set("bulls", ids.join(","));
+    p.set("trait", chartTrait.code);
+    p.set("align", alignBy);
+    if (sp.role) p.set("role", sp.role);
+    if (sp.sort) p.set("sort", sp.sort);
+    if (sp.dir) p.set("dir", sp.dir);
+    if (includeInactive) p.set("includeInactive", "1");
+    for (const [k, v] of Object.entries(extra)) p.set(k, v);
+    return `/analysis?${p.toString()}`;
+  };
 
   return (
     <div>
@@ -246,8 +326,8 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
           these forward as hidden fields so neither form clobbers the other. */}
       <form method="get" className="card card-pad mt-3 flex flex-wrap items-end gap-3">
         {view === "charts" && <input type="hidden" name="view" value="charts" />}
-        {bullId && <input type="hidden" name="bull" value={bullId} />}
-        {typed && <input type="hidden" name="bullName" value={typed} />}
+        {selectedIds.length > 0 && <input type="hidden" name="bulls" value={selectedIds.join(",")} />}
+        <input type="hidden" name="align" value={alignBy} />
         <input type="hidden" name="trait" value={chartTrait.code} />
         <SireRoleField value={sp.role} />
         <SireSortField sort={sp.sort} dir={sp.dir} />
@@ -286,21 +366,32 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
                     : "Inactive sires are excluded, so the average reflects the sires actually in recent proofs. Use the toggle below to include them."}
                 </p>
               </Card>
-              <Card title="Bull trend & comparison">
-                <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
+              <Card title="Compare sires by career stage">
+                {/* Selected sires (up to 5) as removable chips */}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  {orderedSel.map((b, idx) => (
+                    <span key={b.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-2 pr-1 text-xs">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: SERIES_COLORS[idx % SERIES_COLORS.length] }} />
+                      <Link href={`/animals/${b.id}`} className="font-medium text-slate-700 hover:text-brand-700">{b.primaryName}</Link>
+                      <a href={chartsUrl(selectedIds.filter((id) => id !== b.id))} title="Remove" className="flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700">×</a>
+                    </span>
+                  ))}
+                  {orderedSel.length === 0 && <span className="text-xs text-slate-400">No sires selected.</span>}
+                </div>
+
+                {/* Add a sire (up to 5), pick the trait, and the career-stage basis */}
+                <form method="get" className="mb-3 flex flex-wrap items-end gap-3">
                   <input type="hidden" name="view" value="charts" />
+                  {selectedIds.length > 0 && <input type="hidden" name="bulls" value={selectedIds.join(",")} />}
+                  {sp.role && <input type="hidden" name="role" value={sp.role} />}
+                  {sp.sort && <input type="hidden" name="sort" value={sp.sort} />}
+                  {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
+                  {includeInactive && <input type="hidden" name="includeInactive" value="1" />}
                   <div>
-                    <label className="label" htmlFor="bull-search">Bull ({fmtNum(pickerBulls.length)})</label>
-                    <input
-                      id="bull-search" name="bullName" list="bull-options" autoComplete="off"
-                      defaultValue={typed || selBull?.primaryName || ""}
-                      placeholder="Start typing a name…"
-                      className="input min-w-[260px]"
-                    />
-                    {/* Native type-ahead: no client JS, and the browser filters
-                        all 287 names as you type. */}
+                    <label className="label" htmlFor="add-sire">Add a sire ({selectedIds.length}/{MAX_SIRES})</label>
+                    <input id="add-sire" name="add" list="bull-options" autoComplete="off" placeholder="Type a name…" disabled={selectedIds.length >= MAX_SIRES} className="input min-w-[240px] disabled:bg-slate-50" />
                     <datalist id="bull-options">
-                      {pickerBulls.map((b) => <option key={b.id} value={b.name} />)}
+                      {pickerBulls.filter((b) => !selectedIds.includes(b.id)).map((b) => <option key={b.id} value={b.name} />)}
                     </datalist>
                   </div>
                   <div>
@@ -309,36 +400,44 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
                       {CHART_TRAITS.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                     </select>
                   </div>
-                  {sp.role && <input type="hidden" name="role" value={sp.role} />}
-                  {sp.sort && <input type="hidden" name="sort" value={sp.sort} />}
-                  {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
-                  {includeInactive && <input type="hidden" name="includeInactive" value="1" />}
-                  <button type="submit" className="btn-primary">Show</button>
+                  <div>
+                    <label className="label">Align by</label>
+                    <select name="align" defaultValue={alignBy} className="input">
+                      <option value="proof">Proof round (all)</option>
+                      <option value="official">Official proof (Apr/Aug/Dec)</option>
+                      <option value="rollback">Rollback (April)</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="btn-primary">Add / update</button>
+                  {selectedIds.length > 0 && <a href={chartsUrl([])} className="btn-secondary">Clear</a>}
                 </form>
-                {bullNotFound && (
+                {addNotFound && (
                   <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    No bull matching &ldquo;{typed}&rdquo; in the current filter. Showing {selBull?.primaryName ?? "nothing"} instead —
-                    clear the box, or widen the sire role / inactive filters above.
+                    No sire matching &ldquo;{addName}&rdquo; in the current filter. Check the spelling, or widen the sire role / inactive filters above.
                   </p>
                 )}
-                {selBull && (
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {selectedIds.length >= MAX_SIRES && <p className="mb-3 text-[11px] text-amber-600">Up to {MAX_SIRES} sires at once — remove one to add another.</p>}
+
+                {trendSeries.length > 0 ? (
+                  <div className="space-y-6">
                     <div>
-                      <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
-                        <span>{selBull.primaryName} — {chartTrait.label} over proof rounds</span>
-                        <SireClassBadges
-                          sireType={selBull.sireType} proofStatus={selBull.proofStatus}
-                          rollbackCount={selBull.rollbackCount} proofRoundCount={selBull.proofRoundCount}
-                          activityCode={selBull.latestActivityCode}
-                        />
+                      <div className="mb-2 text-sm font-semibold text-slate-700">{chartTrait.label} by {stageNoun} (career stage)</div>
+                      <div className="rounded-lg border border-slate-100 bg-white px-2 py-3 sm:px-4 sm:py-4">
+                        <LineChart series={trendSeries} yLabel={chartTrait.label} xUnit={xUnit} />
                       </div>
-                      <LineChart series={trendSeries} yLabel={chartTrait.label} />
+                      <p className="mt-2 text-[11px] text-slate-400">
+                        The x-axis is each sire&apos;s {stageNoun} number — stage 1 is their first {stageNoun}, so sires that debuted in different years line up at the same point in their career. The dashed line is the {includeInactive ? "whole" : "active"} lineup&apos;s average at that same stage (every sire compared at their 2nd, 3rd, … {stageNoun}). Official proofs are April, August and December; all others are interims{alignBy === "proof" ? " — both are counted here" : alignBy === "official" ? " — interims are skipped" : " — only April rollbacks are counted"}. Hover for values; click a legend label to toggle a line.
+                      </p>
                     </div>
-                    <div>
-                      <div className="mb-2 text-sm font-semibold text-slate-700">{selBull.primaryName} vs lineup average (latest proof)</div>
-                      <CompareBars rows={compareRows} aLabel={selBull.primaryName} bLabel={includeInactive ? "Lineup avg (all)" : "Lineup avg (active)"} />
-                    </div>
+                    {singleSel && compareRows.length > 0 && (
+                      <div className="lg:max-w-2xl">
+                        <div className="mb-2 text-sm font-semibold text-slate-700">{singleSel.primaryName} vs lineup average (latest proof)</div>
+                        <CompareBars rows={compareRows} aLabel={singleSel.primaryName} bLabel={includeInactive ? "Lineup avg (all)" : "Lineup avg (active)"} />
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <EmptyState message={`Add one or more sires above to chart them by ${stageNoun}.`} />
                 )}
               </Card>
             </>

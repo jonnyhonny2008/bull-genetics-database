@@ -4,7 +4,8 @@ import { currentUser } from "@/lib/auth";
 import { can, ROLES } from "@/lib/constants";
 import { PageHeader, Card, Table, Badge, EmptyState } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { saveUser } from "@/app/(app)/admin/actions";
+import { saveUser, deleteUser } from "@/app/(app)/admin/actions";
+import { DeleteUserButton } from "@/components/DeleteUserButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,19 @@ export default async function UsersPage() {
                   <td className="td text-xs">{u.email}</td>
                   <td className="td"><Badge tone="brand">{ROLES[u.role as keyof typeof ROLES] ?? u.role}</Badge></td>
                   <td className="td">{u.active ? <Badge tone="green">active</Badge> : <Badge>inactive</Badge>}</td>
-                  <td className="td"><details><summary className="link cursor-pointer text-xs">edit</summary><div className="mt-2 w-72"><UserForm user={u} /></div></details></td>
+                  <td className="td">
+                    <details>
+                      <summary className="link cursor-pointer text-xs">edit</summary>
+                      <div className="mt-2 w-72 space-y-3">
+                        <UserForm user={u} />
+                        {me?.uid !== u.id && (
+                          <div className="border-t border-slate-100 pt-3">
+                            <DeleteUserButton id={u.id} name={u.name} action={deleteUser} />
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  </td>
                 </tr>
               ))}
             </Table>

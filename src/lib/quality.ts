@@ -62,7 +62,7 @@ export async function findDuplicateGroups(maxGroups = 50): Promise<DuplicateGrou
   const strongTypes = ["registration_ca", "registration_us", "registration_int", "naab", "semen_code"];
   const dup = await prisma.animalIdentifier.groupBy({
     by: ["idType", "idValue"],
-    where: { idType: { in: strongTypes } },
+    where: { idType: { in: strongTypes }, animal: { archived: false } },
     _count: { idValue: true },
     having: { idValue: { _count: { gt: 1 } } },
   });
@@ -70,7 +70,7 @@ export async function findDuplicateGroups(maxGroups = 50): Promise<DuplicateGrou
   const groups: DuplicateGroup[] = [];
   for (const d of dup.slice(0, maxGroups)) {
     const idfs = await prisma.animalIdentifier.findMany({
-      where: { idType: d.idType, idValue: d.idValue },
+      where: { idType: d.idType, idValue: d.idValue, animal: { archived: false } },
       include: { animal: { include: { breed: true } } },
       take: 12,
     });
@@ -100,7 +100,7 @@ export async function matchExistingAnimals(input: {
     for (const id of input.identifiers) {
       if (!id.idValue) continue;
       const hits = await prisma.animalIdentifier.findMany({
-        where: { idType: id.idType, idValue: id.idValue },
+        where: { idType: id.idType, idValue: id.idValue, animal: { archived: false } },
         include: { animal: true },
       });
       for (const h of hits) {
@@ -117,7 +117,7 @@ export async function matchExistingAnimals(input: {
   if (input.name) {
     const norm = input.name.trim();
     const nameHits = await prisma.animal.findMany({
-      where: { primaryName: { contains: norm } },
+      where: { primaryName: { contains: norm }, archived: false },
       take: 10,
     });
     for (const h of nameHits) {

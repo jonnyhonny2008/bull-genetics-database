@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { can, SEXES, ID_TYPES, label, COUNTRIES } from "@/lib/constants";
 import { SireClassBadges } from "@/components/SireFilters";
-import { activityLabel } from "@/lib/sire-class";
+import { activityLabel, officialLabel, isGenotyped } from "@/lib/sire-class";
 import { PageHeader, Card, Badge, Table, EmptyState, statusTone } from "@/components/ui";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { loadRankMap, pickPreferred } from "@/lib/priority";
@@ -12,17 +12,37 @@ import { qualityFlagsFor } from "@/lib/quality";
 import { matchExistingAnimals } from "@/lib/quality";
 import { archiveAnimal, addNote } from "../actions";
 import { LinearGraph, type LinearGroup, type LinearTraitDatum } from "@/components/LinearGraph";
-import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS } from "@/lib/rollback";
+import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from "@/lib/rollback";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
+import { PedigreeTree } from "@/components/PedigreeTree";
+import {
+  HolsteinFamilyTreeCard, HolsteinOwnersCard, HolsteinProgenyCard, HolsteinAwardsCard, HolsteinLactationsCard,
+} from "@/components/HolsteinProfile";
+import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
+import RefreshHolstein from "./RefreshHolstein";
+import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex, OBTAINABLE_WEIGHT } from "@/lib/pedigree";
 
 export const dynamic = "force-dynamic";
 
-export default async function AnimalProfile({ params }: { params: { id: string } }) {
+// The headline index traits shown on the Genetics summary (indexed eval columns).
+const KEY_TRAITS: { col: string; label: string }[] = [
+  { col: "lpi", label: "LPI" }, { col: "proDollar", label: "Pro$" }, { col: "conf", label: "Conformation" },
+  { col: "milk", label: "Milk" }, { col: "fat", label: "Fat" }, { col: "prot", label: "Protein" },
+  { col: "mamm", label: "Mammary" }, { col: "fl", label: "Feet & Legs" }, { col: "ds", label: "Dairy Strength" },
+];
+
+export default async function AnimalProfile({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: Record<string, string | undefined>;
+}) {
   const user = currentUser();
   const writable = can(user?.role, "animal:write");
 
-  const a = await prisma.animal.findUnique({
-    where: { id: params.id },
+  const a = await prisma.animal.findFirst({
+    where: { id: params.id, archived: false },
     include: {
       breed: true,
       identifiers: { orderBy: [{ isPrimary: "desc" }, { idType: "asc" }], include: { source: true } },
@@ -31,20 +51,36 @@ export default async function AnimalProfile({ params }: { params: { id: string }
       classifications: { orderBy: { classificationDate: "desc" }, include: { traitValues: { orderBy: { displayOrder: "asc" } }, source: true } },
       animalNotes: { orderBy: { createdAt: "desc" }, include: {} },
       pedigreeRefs: { include: { source: true } },
-      pedigreeIndex: { orderBy: { createdAt: "desc" } },
       captures: { orderBy: { capturedAt: "desc" }, include: { source: true } },
     },
   });
   if (!a) notFound();
+
+  const isFemale = a.sex === "F";
+  const profile = parseHolsteinProfileJson(a.holsteinProfileJson);
+  const hasOwners = !!profile && (profile.owners.length > 0 || profile.breeders.length > 0);
+  const hasProgeny = !!profile && profile.progeny.length > 0;
+
+  // Sex-aware, holstein.ca-style tab set. Owner History / Progeny appear only
+  // when the scrape captured that data (so CDN-only bulls don't get empty tabs).
+  const TABS: { code: string; label: string }[] = [
+    { code: "main", label: "Main" },
+    { code: "genetics", label: "Genetics" },
+    { code: "conformation", label: "Conformation" },
+    ...(isFemale ? [{ code: "lactations", label: "Lactations" }] : []),
+    { code: "familytree", label: "Family Tree" },
+    ...(hasOwners ? [{ code: "owners", label: "Owner History" }] : []),
+    ...(hasProgeny ? [{ code: "progeny", label: "Progeny" }] : []),
+  ];
+  const tab = TABS.find((t) => t.code === searchParams.tab)?.code ?? "main";
 
   // Rebuild the familiar traitValues[] array from packed storage.
   const defMap = await traitDefMap();
   const evaluations = attachTraits(a.evaluations, defMap);
 
   // Live preferred resolution + reasons.
-  const [geRank, mkRank, clRank] = await Promise.all([
+  const [geRank, clRank] = await Promise.all([
     loadRankMap("genetic_evaluation", a.breedId),
-    loadRankMap("milk_record", a.breedId),
     loadRankMap("classification", a.breedId),
   ]);
   const prefProof = pickPreferred(evaluations, {
@@ -57,21 +93,28 @@ export default async function AnimalProfile({ params }: { params: { id: string }
   });
 
   const quality = qualityFlagsFor(a as any);
-  const dupes = (await matchExistingAnimals({
-    name: a.primaryName,
-    identifiers: a.identifiers.map((i) => ({ idType: i.idType, idValue: i.idValue })),
-    breedId: a.breedId, sex: a.sex,
-  })).filter((d) => d.id !== a.id);
+  // Duplicate detection is rendered only by the Main tab's "Data quality" card,
+  // and it costs an unindexed primaryName LIKE scan — don't pay for it elsewhere.
+  const dupes = tab === "main"
+    ? (await matchExistingAnimals({
+        name: a.primaryName,
+        identifiers: a.identifiers.map((i) => ({ idType: i.idType, idValue: i.idValue })),
+        breedId: a.breedId, sex: a.sex,
+      })).filter((d) => d.id !== a.id)
+    : [];
 
   const primary = a.identifiers.find((i) => i.isPrimary);
+  const naab = a.identifiers.find((i) => i.idType === "naab")?.idValue ?? null;
+  const caReg = a.identifiers.find((i) => i.idType === "registration_ca")?.idValue ?? null;
   const preferredEvalId = prefProof.chosen?.evaluationId;
   const preferredClassId = prefClass.chosen?.classificationId;
+  const pref = prefProof.chosen;
+  const latestClass = prefClass.chosen ?? a.classifications[0] ?? null;
 
-  // Group preferred proof trait values by category (exclude linear traits — they
-  // get their own graph below).
+  // Group preferred proof trait values by category (exclude linear traits — they get their own graph).
   const linearDefs = await prisma.traitDefinition.findMany({ where: { domain: "genetic", isLinear: true } });
   const linDef = new Map(linearDefs.map((d) => [d.traitCode, d]));
-  const prefTraits = prefProof.chosen?.traitValues ?? [];
+  const prefTraits = pref?.traitValues ?? [];
   const byCat = new Map<string, typeof prefTraits>();
   for (const t of prefTraits) {
     if (linDef.has(t.traitCode)) continue;
@@ -81,7 +124,7 @@ export default async function AnimalProfile({ params }: { params: { id: string }
     byCat.set(c, arr);
   }
 
-  // Build the linear conformation graph from the preferred proof's linear values.
+  // Linear conformation graph from the preferred proof's linear values.
   const linByGroup = new Map<string, { order: number; datum: LinearTraitDatum }[]>();
   for (const tv of prefTraits) {
     const d = linDef.get(tv.traitCode);
@@ -96,21 +139,39 @@ export default async function AnimalProfile({ params }: { params: { id: string }
     .map(([group, arr]) => ({ group, traits: arr.sort((x, y) => x.order - y.order).map((x) => x.datum) }))
     .sort((x, y) => (GROUP_ORDER.indexOf(x.group) + 99) - (GROUP_ORDER.indexOf(y.group) + 99));
 
-  // Proof Performance is self-contained, so it is computed live from this bull's
-  // rounds. Rollback Resistance is comparative — it needs the whole active
-  // lineup's spread — so it is read from the materialised column that
-  // prisma/compute-rollback.ts writes after each import.
+  // Proof Performance (live) + Rollback Resistance (materialised).
   const rollback = computeRollback(evaluations.map((e) => ({ evaluationDate: e.evaluationDate, proofRun: e.proofRun, reliabilityOverall: e.reliabilityOverall, traitValues: e.traitValues })));
   const rbVerdict = a.rollbackResistance != null ? ratingVerdict(a.rollbackResistance) : null;
+
+  // Pedigree — resolved live only on the Family Tree tab.
+  const pedNotes = a.pedigreeRefs.map((p) => p.notes).find((n) => n && /\bSIRE:/i.test(n)) ?? null;
+  const parsedAncestors = parsePedigreeNotes(pedNotes);
+  const pedAncestors = tab === "familytree" ? await resolveAncestors(prisma, parsedAncestors) : [];
+  const pedIndex = tab === "familytree" ? computePedigreeIndex(pedAncestors) : null;
+
+  const tabHref = (t: string) => (t === "main" ? `/animals/${a.id}` : `/animals/${a.id}?tab=${t}`);
+  const keyVal = (col: string) => (pref ? (pref as Record<string, unknown>)[col] as number | null : null);
+  const latestLactation = profile?.lactations?.length ? profile.lactations[profile.lactations.length - 1] : null;
 
   return (
     <div>
       <PageHeader
         title={a.primaryName}
-        subtitle={`${a.breed?.breedName ?? "No breed"} · ${SEXES[a.sex as keyof typeof SEXES] ?? a.sex}${a.shortName ? ` · "${a.shortName}"` : ""}`}
+        subtitle={
+          <span className="block">
+            {`${a.breed?.breedName ?? "No breed"} · ${SEXES[a.sex as keyof typeof SEXES] ?? a.sex}${a.shortName ? ` · "${a.shortName}"` : ""}`}
+            {(primary || naab) && (
+              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {primary && <span className="font-mono text-slate-500" title="Primary registration number">{primary.idValue}</span>}
+                {naab && <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono font-medium text-brand-700" title="NAAB stud code (secondary identifier)">NAAB {naab}</span>}
+              </span>
+            )}
+          </span>
+        }
         actions={
-          <div className="flex gap-2">
-            <Link href={`/comparison?ids=${a.id}`} className="btn-secondary">Compare</Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {writable && caReg && <RefreshHolstein reg={caReg} />}
+            <Link href={`/analysis?view=charts&bulls=${a.id}`} className="btn-secondary">Compare</Link>
             {writable && <Link href={`/animals/${a.id}/edit`} className="btn-secondary">Edit</Link>}
             {writable && (
               <form action={archiveAnimal}>
@@ -122,72 +183,222 @@ export default async function AnimalProfile({ params }: { params: { id: string }
         }
       />
 
-      {/* Header facts + quality */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card title="Overview" className="lg:col-span-2">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
-            <Fact k="Internal system ID" v={<span className="font-mono text-xs">{a.id}</span>} />
-            <Fact k="Breed" v={a.breed?.breedName ?? "—"} />
-            <Fact k="Sex" v={SEXES[a.sex as keyof typeof SEXES] ?? a.sex} />
-            <Fact k="Birth date" v={fmtDate(a.birthDate)} />
-            <Fact k="Country" v={label(COUNTRIES, a.countryOfOrigin)} />
-            <Fact k="Status" v={<Badge>{a.currentStatus}</Badge>} />
-            <Fact k="Primary identifier" v={primary ? <span className="font-mono text-xs">{primary.idValue}</span> : "—"} />
-            <Fact k="Sire role" v={
-              a.sireType || a.proofStatus
-                ? <SireClassBadges sireType={a.sireType} proofStatus={a.proofStatus} rollbackCount={a.rollbackCount} proofRoundCount={a.proofRoundCount} activityCode={a.latestActivityCode} />
-                : <span className="text-slate-400" title="Set on proof import — this animal has no approved genetic proof yet.">not classified</span>
-            } />
-            <Fact k="Proof rounds" v={a.proofRoundCount ? `${a.proofRoundCount}${a.latestProofRun ? ` · latest ${a.latestProofRun}` : ""}` : "—"} />
-            <Fact k="Rollbacks (April base changes)" v={
-              a.rollbackCount
-                ? <span title={`${a.rollbackCount} of this sire's ${a.proofRoundCount} rounds are April base changes. Every other round carries updated information.`}>{a.rollbackCount}× of {a.proofRoundCount}</span>
-                : "0"
-            } />
-            <Fact k="Lactanet activity code" v={a.latestActivityCode ? <span title={activityLabel(a.latestActivityCode) ?? undefined}><span className="font-mono">{a.latestActivityCode}</span> — {activityLabel(a.latestActivityCode) ?? "unknown"}</span> : "—"} />
-          </dl>
-          {a.notes && <p className="mt-3 rounded-md bg-slate-50 p-2 text-sm text-slate-600">{a.notes}</p>}
-        </Card>
-
-        <Card title="Data quality">
-          {quality.length === 0 && dupes.length === 0 ? (
-            <div className="text-sm text-emerald-700">✓ No data-quality issues detected.</div>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {quality.map((q) => (
-                <li key={q.code} className="flex items-center gap-2">
-                  <Badge tone={q.severity === "error" ? "red" : q.severity === "warn" ? "amber" : "slate"}>{q.severity}</Badge>
-                  {q.label}
-                </li>
-              ))}
-              {dupes.length > 0 && (
-                <li className="flex items-center gap-2">
-                  <Badge tone="purple">duplicate?</Badge>
-                  Possible match: {dupes.slice(0, 2).map((d) => <Link key={d.id} href={`/animals/${d.id}`} className="link ml-1">{d.primaryName}</Link>)}
-                </li>
-              )}
-            </ul>
-          )}
-        </Card>
+      {/* Tabs */}
+      <div className="mb-4 flex flex-wrap gap-2 text-sm">
+        {TABS.map((t) => (
+          <Link
+            key={t.code}
+            href={tabHref(t.code)}
+            className={`rounded-full px-4 py-1.5 font-medium ${tab === t.code ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            {t.label}
+          </Link>
+        ))}
       </div>
 
-      {/* Latest preferred genetic proof */}
-      <div className="mt-4">
-        <Card
-          title="Latest preferred genetic proof"
-          actions={writable ? <Link href={`/animals/${a.id}/proofs/new`} className="link text-xs">+ Add proof</Link> : undefined}
-        >
-          {!prefProof.chosen ? (
-            <EmptyState message="No approved genetic proof on file." />
-          ) : (
-            <div>
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <Badge tone="green">Preferred</Badge>
-                <span className="font-medium">{prefProof.chosen.source?.sourceName ?? "—"}</span>
-                <span className="text-slate-400">·</span>
-                <span>{prefProof.chosen.proofRun ?? fmtDate(prefProof.chosen.evaluationDate)}</span>
-                {prefProof.chosen.reliabilityOverall != null && <><span className="text-slate-400">·</span><span>Rel {(prefProof.chosen.reliabilityOverall * 100).toFixed(0)}%</span></>}
+      {/* ================= MAIN (summary) ================= */}
+      {tab === "main" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Card title="Overview" className="lg:col-span-2">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
+                <Fact k="Breed" v={a.breed?.breedName ?? "—"} />
+                <Fact k="Sex" v={SEXES[a.sex as keyof typeof SEXES] ?? a.sex} />
+                <Fact k="Birth date" v={fmtDate(a.birthDate)} />
+                <Fact k="Country" v={label(COUNTRIES, a.countryOfOrigin)} />
+                <Fact k="Status" v={<Badge>{a.currentStatus}</Badge>} />
+                <Fact k="Primary identifier" v={primary ? <span className="font-mono text-xs">{primary.idValue}</span> : "—"} />
+                {!isFemale && (
+                  <Fact k="Sire role" v={
+                    a.sireType || a.proofStatus
+                      ? <SireClassBadges sireType={a.sireType} proofStatus={a.proofStatus} rollbackCount={a.rollbackCount} proofRoundCount={a.proofRoundCount} activityCode={a.latestActivityCode} />
+                      : <span className="text-slate-400" title="Set on proof import — this animal has no approved genetic proof yet.">not classified</span>
+                  } />
+                )}
+                {!isFemale && <Fact k="Proof rounds" v={a.proofRoundCount ? `${a.proofRoundCount}${a.latestProofRun ? ` · latest ${a.latestProofRun}` : ""}` : "—"} />}
+                {isFemale && <Fact k="Classification" v={latestClass ? `${latestClass.classificationCode ?? ""} ${latestClass.finalScore ?? ""}`.trim() || "—" : "—"} />}
+                {isFemale && <Fact k="Lactations" v={a.milkRecords.length || profile?.lactations?.length || "—"} />}
+                <Fact k="Internal system ID" v={<span className="font-mono text-[10px] text-slate-400">{a.id}</span>} />
+              </dl>
+              {a.notes && <p className="mt-3 rounded-md bg-slate-50 p-2 text-sm text-slate-600">{a.notes}</p>}
+            </Card>
+
+            <Card title="Data quality">
+              {quality.length === 0 && dupes.length === 0 ? (
+                <div className="text-sm text-emerald-700">✓ No data-quality issues detected.</div>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {quality.map((q) => (
+                    <li key={q.code} className="flex items-center gap-2">
+                      <Badge tone={q.severity === "error" ? "red" : q.severity === "warn" ? "amber" : "slate"}>{q.severity}</Badge>
+                      {q.label}
+                    </li>
+                  ))}
+                  {dupes.length > 0 && (
+                    <li className="flex items-center gap-2">
+                      <Badge tone="purple">duplicate?</Badge>
+                      Possible match: {dupes.slice(0, 2).map((d) => <Link key={d.id} href={`/animals/${d.id}`} className="link ml-1">{d.primaryName}</Link>)}
+                    </li>
+                  )}
+                </ul>
+              )}
+            </Card>
+          </div>
+
+          {/* Summary digest — mirrors holstein.ca's main page highlights */}
+          <Card title="Summary" actions={<Link href={tabHref("genetics")} className="link text-xs">Full genetics →</Link>}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Genetic indices {pref?.proofRun ? <span className="text-slate-400">· {pref.proofRun}</span> : null}</div>
+                {pref ? (
+                  <div className="space-y-1 text-sm">
+                    {[["LPI", "lpi"], ["Pro$", "proDollar"], ["Conformation", "conf"]].map(([lab, col]) => (
+                      <div key={col} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1">
+                        <span className="text-slate-600">{lab}</span><span className="font-semibold tabular-nums">{keyVal(col) ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : <EmptyState message="No genetic proof yet." />}
               </div>
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Classification</div>
+                {latestClass ? (
+                  <Link href={tabHref("conformation")} className="block rounded-md border border-slate-100 px-3 py-2 hover:bg-slate-50">
+                    <div className="text-lg font-bold text-slate-800">{latestClass.classificationCode ?? "—"} {latestClass.finalScore ?? ""}</div>
+                    <div className="text-xs text-slate-400">{fmtDate(latestClass.classificationDate)}{latestClass.lactationNumber ? ` · Lact ${latestClass.lactationNumber}` : ""}</div>
+                  </Link>
+                ) : <EmptyState message={isFemale ? "Not yet classified." : "Bulls are not classified."} />}
+              </div>
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{isFemale ? "Latest lactation" : "Proof performance"}</div>
+                {isFemale ? (
+                  latestLactation ? (
+                    <Link href={tabHref("lactations")} className="block rounded-md border border-slate-100 px-3 py-2 hover:bg-slate-50">
+                      <div className="text-sm font-semibold text-slate-800">Lact {latestLactation.lactationNumber} · {latestLactation.milk?.toLocaleString() ?? "—"} kg</div>
+                      <div className="text-xs text-slate-400">{latestLactation.dim ?? "—"} DIM · Fat {latestLactation.fat ?? "—"} · Prot {latestLactation.prot ?? "—"}</div>
+                    </Link>
+                  ) : <EmptyState message="No lactation records." />
+                ) : (
+                  rollback.hasHistory ? (
+                    <Link href={tabHref("genetics")} className="block rounded-md border border-slate-100 px-3 py-2 hover:bg-slate-50">
+                      <div className="text-lg font-bold text-slate-800">{rollback.proofPerformance}<span className="text-xs text-slate-400"> / 100</span></div>
+                      <div className="text-xs text-slate-400">{rollback.rounds.length} rounds{a.rollbackResistance != null ? ` · Rollback ${a.rollbackResistance}` : ""}</div>
+                    </Link>
+                  ) : <EmptyState message="Single proof round." />
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <HolsteinAwardsCard profile={profile ?? { reg: null, owners: [], breeders: [], familyTree: [], progeny: [], classifications: [], lactations: [], awards: [], scrapedAt: null }} />
+
+          <Card title={`Identifiers (${a.identifiers.length})`}>
+            {a.identifiers.length === 0 ? <EmptyState message="No identifiers." /> : (
+              <Table head={<><th className="th">Type</th><th className="th">Value</th><th className="th">Source</th><th className="th">Primary</th></>}>
+                {a.identifiers.map((i) => (
+                  <tr key={i.identifierId}>
+                    <td className="td">{label(ID_TYPES, i.idType)}</td>
+                    <td className="td font-mono text-xs">{i.idValue}</td>
+                    <td className="td text-xs text-slate-500">{i.source?.sourceName ?? "—"}</td>
+                    <td className="td">{i.isPrimary ? <Badge tone="green">primary</Badge> : ""}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Card>
+
+          <Card title="Source history (uploads & captures)">
+            {a.captures.length === 0 ? <EmptyState message="No source captures linked." /> : (
+              <Table head={<><th className="th">When</th><th className="th">Type</th><th className="th">File / URL</th><th className="th">Source</th><th className="th">Extraction</th></>}>
+                {a.captures.map((c) => (
+                  <tr key={c.captureId}>
+                    <td className="td">{fmtDate(c.capturedAt)}</td>
+                    <td className="td">{c.captureType}</td>
+                    <td className="td text-xs">{c.originalFileName ?? c.sourceUrl ?? "—"}</td>
+                    <td className="td text-xs text-slate-500">{c.source?.sourceName ?? "—"}</td>
+                    <td className="td"><Badge>{c.extractionStatus}</Badge></td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Card>
+
+          <Card title="Notes">
+            {writable && (
+              <form action={addNote} className="mb-3 flex gap-2">
+                <input type="hidden" name="animalId" value={a.id} />
+                <select name="noteType" className="input max-w-[160px]">
+                  <option value="general">General</option>
+                  <option value="data_quality">Data quality</option>
+                </select>
+                <input name="body" placeholder="Add an internal note…" className="input flex-1" />
+                <button type="submit" className="btn-primary">Add</button>
+              </form>
+            )}
+            {a.animalNotes.length === 0 ? <EmptyState message="No notes." /> : (
+              <ul className="space-y-2">
+                {a.animalNotes.map((n) => (
+                  <li key={n.id} className="rounded-md border border-slate-200 p-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge tone={n.noteType === "data_quality" ? "amber" : "slate"}>{n.noteType}</Badge>
+                      <span className="text-xs text-slate-400">{fmtDate(n.createdAt)}</span>
+                    </div>
+                    <div className="mt-1 text-slate-700">{n.body}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ================= GENETICS ================= */}
+      {tab === "genetics" && (
+        <div className="space-y-4">
+          <Card title="Genomic status">
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <Fact k="Classification" v={
+                a.sireType
+                  ? <span>{a.sireType === "proven" ? "Proven" : "Genomic"} — {a.sireType === "proven" ? "has daughter-based EBVs" : "GPA genomics only, not yet proven"}</span>
+                  : "Not classified (no approved proof)"
+              } />
+              <Fact k="Genotyped" v={
+                a.latestActivityCode
+                  ? (isGenotyped(a.latestActivityCode)
+                      ? <Badge tone="blue">Yes — breeding values include genomics</Badge>
+                      : <Badge tone="slate">No genomic indicator on latest round</Badge>)
+                  : "—"
+              } />
+              <Fact k="Proof status" v={
+                a.proofStatus === "active" ? "Active — in the most recent round on file"
+                  : a.proofStatus === "inactive" ? "Inactive — latest proof predates the most recent round"
+                  : "—"
+              } />
+              <Fact k="Lactanet activity code" v={a.latestActivityCode ? <span title={activityLabel(a.latestActivityCode) ?? undefined}><span className="font-mono">{a.latestActivityCode}</span> — {activityLabel(a.latestActivityCode) ?? "unknown"}</span> : "—"} />
+              <Fact k="LPI official code" v={pref?.officialCode ? <span><span className="font-mono">{pref.officialCode}</span> — {officialLabel(pref.officialCode) ?? "unknown"}</span> : "—"} />
+              <Fact k="Daughters (latest)" v={pref?.daughters != null ? fmtNum(pref.daughters) : "—"} />
+            </dl>
+            <p className="mt-3 text-[11px] text-slate-400">
+              Proven vs genomic comes from the Lactanet proof-activity code (column 24). A genomic (GPA) evaluation is a
+              genomic parent average — the values below are that estimate until the animal has milking daughters.
+            </p>
+          </Card>
+
+          <Card title={pref ? `Key index values — ${pref.proofRun ?? fmtDate(pref.evaluationDate)}` : "Key index values"}>
+            {!pref ? <EmptyState message="No approved genetic proof on file." /> : (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
+                {KEY_TRAITS.map((t) => (
+                  <div key={t.col} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1">
+                    <span className="text-slate-600">{t.label}</span>
+                    <span className="font-semibold tabular-nums">{keyVal(t.col) ?? "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {pref && byCat.size > 0 && (
+            <Card title="Trait detail — preferred proof" actions={<span className="text-xs text-slate-400">{pref.source?.sourceName ?? ""}</span>}>
               <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                 <span className="font-semibold">Why preferred:</span> {prefProof.reason}
               </div>
@@ -208,322 +419,288 @@ export default async function AnimalProfile({ params }: { params: { id: string }
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
-        </Card>
-      </div>
 
-      {/* Proof-to-proof rollback resistance */}
-      <div className="mt-4">
-        <Card title="Proof Performance · Rollback Resistance">
-          {!rollback.hasHistory ? (
-            <div className="text-sm text-slate-600">
-              <div className="mb-1"><Badge tone="slate">Single proof round</Badge> on file{rollback.rounds[0] ? ` (${rollback.rounds[0].label})` : ""}.</div>
-              <p className="text-slate-500">Both scores calculate automatically once an <strong>earlier or later</strong> proof round is imported for this bull — import another round&apos;s Lactanet file (e.g. an earlier December run) and this fills in with per-trait retention. Rollback Resistance additionally needs at least one <strong>April</strong> round, since that is the base change it measures.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="mb-4 flex flex-wrap items-center gap-6">
-                {/* Proof Performance — absolute, every round. */}
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-16 w-16 flex-col items-center justify-center rounded-lg text-white ${rollback.verdict.tone === "good" ? "bg-brand-600" : rollback.verdict.tone === "warn" ? "bg-amber-500" : "bg-red-600"}`}>
-                    <span className="text-2xl font-bold leading-none">{rollback.proofPerformance}</span>
-                    <span className="text-[9px] uppercase tracking-wide">/ 100</span>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">Proof Performance</div>
-                    <Badge tone={rollback.verdict.tone === "good" ? "green" : rollback.verdict.tone === "warn" ? "amber" : "red"}>{rollback.verdict.label}</Badge>
-                    <div className="mt-1 text-[11px] text-slate-400">
-                      Every round · {rollback.proofSteps} step{rollback.proofSteps === 1 ? "" : "s"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Rollback Resistance — comparative, April rounds only. Read from
-                    the materialised column so the whole lineup does not have to be
-                    re-scored on a profile view. */}
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-16 w-16 flex-col items-center justify-center rounded-lg ${
-                    a.rollbackResistance == null ? "bg-slate-200 text-slate-500"
-                      : a.rollbackResistance >= 105 ? "bg-brand-600 text-white"
-                      : a.rollbackResistance < 95 ? "bg-red-600 text-white" : "bg-slate-500 text-white"}`}>
-                    <span className="text-2xl font-bold leading-none">{a.rollbackResistance ?? "—"}</span>
-                    <span className="text-[9px] uppercase tracking-wide">base 100</span>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">Rollback Resistance</div>
-                    {a.rollbackResistance != null ? (
-                      <Badge tone={rbVerdict!.tone === "good" ? "green" : rbVerdict!.tone === "warn" ? "amber" : rbVerdict!.tone === "danger" ? "red" : "slate"}>{rbVerdict!.label}</Badge>
-                    ) : (
-                      <Badge tone="slate">No April round yet</Badge>
-                    )}
-                    <div className="mt-1 text-[11px] text-slate-400">
-                      {rollback.rollbackSteps} April step{rollback.rollbackSteps === 1 ? "" : "s"}
-                      {rollback.rollbackRaw != null && <> · raw {rollback.rollbackRaw}%</>}
-                      {a.rollbackCohortN != null && <> · vs {a.rollbackCohortN} sires at the same stage</>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-xs text-slate-500">
-                  <div><span className="font-semibold">{rollback.rounds.length}</span> proof rounds, {rollback.rounds.filter((r) => r.isRollback).length} of them April base changes</div>
-                  <div className="mt-0.5">Lifetime drift (first → last round): <span className="font-semibold">{rollback.headline}</span> / 100</div>
-                  <div className="mt-0.5">Change basis: {rollback.progeny === "progeny" ? "progeny-driven (reliability rose — daughters added)" : rollback.progeny === "genomic" ? "genomic re-evaluation (reliability stable)" : "reliability trend unavailable"}</div>
-                  <div className="mt-0.5">100 = average of sires with the same number of April rounds · 5 points = 1 standard deviation</div>
-                </div>
+          <Card title="Proof Performance · Rollback Resistance">
+            {!rollback.hasHistory ? (
+              <div className="text-sm text-slate-600">
+                <div className="mb-1"><Badge tone="slate">Single proof round</Badge> on file{rollback.rounds[0] ? ` (${rollback.rounds[0].label})` : ""}.</div>
+                <p className="text-slate-500">Both scores calculate automatically once an <strong>earlier or later</strong> proof round is imported for this animal. Rollback Resistance additionally needs at least one <strong>April</strong> round, since that is the base change it measures.</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="th">Trait</th>
-                      <th className="th">First</th>
-                      <th className="th">Latest</th>
-                      <th className="th">Change</th>
-                      <th className="th" title="Mean retention across every consecutive pair of rounds">Proof Perf.</th>
-                      <th className="th" title="Mean retention across April base-change rounds only">April only</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {Object.values(rollback.traits).map((t) => (
-                      <tr key={t.code}>
-                        <td className="td font-medium">{ROLLBACK_TRAIT_LABELS[t.code] ?? t.code}</td>
-                        <td className="td">{t.first}</td>
-                        <td className="td">{t.latest}</td>
-                        <td className={`td font-medium ${t.delta > 0 ? "text-brand-700" : t.delta < 0 ? "text-red-600" : "text-slate-500"}`}>{t.delta > 0 ? "+" : ""}{Math.round(t.delta * 100) / 100}</td>
-                        <td className="td">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-16 rounded-full bg-slate-100">
-                              <div className={`h-2 rounded-full ${t.stepResistance >= 99 ? "bg-brand-500" : t.stepResistance >= 97 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${t.stepResistance}%` }} />
-                            </div>
-                            <span className="font-semibold tabular-nums">{Math.round(t.stepResistance * 10) / 10}</span>
-                          </div>
-                        </td>
-                        <td className="td tabular-nums" title={t.rollbackSteps ? `${t.rollbackSteps} April step${t.rollbackSteps === 1 ? "" : "s"}` : "No April round on file for this trait"}>
-                          {t.rollbackResistance == null
-                            ? <span className="text-slate-300">—</span>
-                            : <span className={`font-semibold ${t.rollbackResistance >= 99 ? "text-brand-700" : t.rollbackResistance >= 97 ? "text-amber-600" : "text-red-600"}`}>{Math.round(t.rollbackResistance * 10) / 10}</span>}
-                        </td>
+            ) : (
+              <div>
+                <div className="mb-4 flex flex-wrap items-center gap-6">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-16 w-16 flex-col items-center justify-center rounded-lg text-white ${rollback.verdict.tone === "good" ? "bg-brand-600" : rollback.verdict.tone === "warn" ? "bg-amber-500" : "bg-red-600"}`}>
+                      <span className="text-2xl font-bold leading-none">{rollback.proofPerformance}</span>
+                      <span className="text-[9px] uppercase tracking-wide">/ 100</span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Proof Performance</div>
+                      <Badge tone={rollback.verdict.tone === "good" ? "green" : rollback.verdict.tone === "warn" ? "amber" : "red"}>{rollback.verdict.label}</Badge>
+                      <div className="mt-1 text-[11px] text-slate-400">Every round · {rollback.proofSteps} step{rollback.proofSteps === 1 ? "" : "s"}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-16 w-16 flex-col items-center justify-center rounded-lg ${
+                      a.rollbackResistance == null ? "bg-slate-200 text-slate-500"
+                        : a.rollbackResistance >= 105 ? "bg-brand-600 text-white"
+                        : a.rollbackResistance < 95 ? "bg-red-600 text-white" : "bg-slate-500 text-white"}`}>
+                      <span className="text-2xl font-bold leading-none">{a.rollbackResistance ?? "—"}</span>
+                      <span className="text-[9px] uppercase tracking-wide">base 100</span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Rollback Resistance</div>
+                      {a.rollbackResistance != null ? (
+                        <Badge tone={rbVerdict!.tone === "good" ? "green" : rbVerdict!.tone === "warn" ? "amber" : rbVerdict!.tone === "danger" ? "red" : "slate"}>{rbVerdict!.label}</Badge>
+                      ) : (
+                        <Badge tone="slate">No April round yet</Badge>
+                      )}
+                      <div className="mt-1 text-[11px] text-slate-400">
+                        {rollback.rollbackSteps} April step{rollback.rollbackSteps === 1 ? "" : "s"}
+                        {rollback.rollbackRaw != null && <> · raw {rollback.rollbackRaw}%</>}
+                        {a.rollbackCohortN != null && <> · vs {a.rollbackCohortN} sires at the same stage</>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-500">
+                    <div><span className="font-semibold">{rollback.rounds.length}</span> proof rounds, {rollback.rounds.filter((r) => r.isRollback).length} of them April base changes</div>
+                    <div className="mt-0.5">Lifetime drift (first → last round): <span className="font-semibold">{rollback.headline}</span> / 100</div>
+                    <div className="mt-0.5">100 = average of sires with the same number of April rounds · 5 points = 1 standard deviation</div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="th">Trait</th><th className="th">First</th><th className="th">Latest</th><th className="th">Change</th>
+                        <th className="th" title="Mean retention across every consecutive pair of rounds">Proof Perf.</th>
+                        <th className="th" title="Mean retention across April base-change rounds only">April only</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {Object.values(rollback.traits).map((t) => (
+                        <tr key={t.code}>
+                          <td className="td font-medium">{ROLLBACK_TRAIT_LABELS[t.code] ?? t.code}</td>
+                          <td className="td">{t.first}</td>
+                          <td className="td">{t.latest}</td>
+                          <td className={`td font-medium ${t.delta > 0 ? "text-brand-700" : t.delta < 0 ? "text-red-600" : "text-slate-500"}`}>{t.delta > 0 ? "+" : ""}{Math.round(t.delta * 100) / 100}</td>
+                          <td className="td">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-16 rounded-full bg-slate-100">
+                                <div className={`h-2 rounded-full ${t.stepResistance >= 99 ? "bg-brand-500" : t.stepResistance >= 97 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${t.stepResistance}%` }} />
+                              </div>
+                              <span className="font-semibold tabular-nums">{Math.round(t.stepResistance * 10) / 10}</span>
+                            </div>
+                          </td>
+                          <td className="td tabular-nums" title={t.rollbackSteps ? `${t.rollbackSteps} April step${t.rollbackSteps === 1 ? "" : "s"}` : "No April round on file for this trait"}>
+                            {t.rollbackResistance == null
+                              ? <span className="text-slate-300">—</span>
+                              : <span className={`font-semibold ${t.rollbackResistance >= 99 ? "text-brand-700" : t.rollbackResistance >= 97 ? "text-amber-600" : "text-red-600"}`}>{Math.round(t.rollbackResistance * 10) / 10}</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <p className="mt-3 text-[11px] text-slate-400">
-                Retention per step = clamp(100 + %change, 0, 100) — 100 held or gained, 50 lost half.
-                <strong> Proof Performance</strong> averages every consecutive pair of rounds;
-                <strong> April only</strong> averages just the steps into an April base change, and is what
-                Rollback Resistance is built from. Trait weights: LPI 32 · Conformation 22 · Milk 16 · Fat 8 ·
-                Protein 8 · remaining traits 12.
-              </p>
-            </div>
-          )}
-        </Card>
-      </div>
+            )}
+          </Card>
 
-      {/* Linear conformation graph (like a proof's linear) */}
-      {linearGroups.length > 0 && (
-        <div className="mt-4">
-          <Card title="Linear conformation profile" actions={<span className="text-xs text-slate-400">{prefProof.chosen?.proofRun ?? ""} · {prefProof.chosen?.source?.sourceName ?? ""}</span>}>
-            <LinearGraph groups={linearGroups} />
+          <Card title={`Genetic proof history (${evaluations.length})`} actions={writable ? <Link href={`/animals/${a.id}/proofs/new`} className="link text-xs">+ Add proof</Link> : undefined}>
+            {evaluations.length === 0 ? <EmptyState message="No proofs recorded." /> : (
+              <div className="space-y-3">
+                {evaluations.map((e) => (
+                  <details key={e.evaluationId} className="rounded-md border border-slate-200" open={e.evaluationId === preferredEvalId}>
+                    <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                      <span className="font-medium">{e.proofRun ?? fmtDate(e.evaluationDate)}</span>
+                      <span title="Official rounds are April, August and December; all others are interims.">
+                        {proofKind(e.evaluationDate) === "official" ? <Badge tone="blue">Official</Badge> : <Badge>Interim</Badge>}
+                      </span>
+                      <span className="text-slate-400">·</span>
+                      <span>{e.source?.sourceName ?? "—"}</span>
+                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-500">{e.countrySystem ?? ""}</span>
+                      {e.reliabilityOverall != null && <Badge>Rel {(e.reliabilityOverall * 100).toFixed(0)}%</Badge>}
+                      <Badge tone={statusTone(e.approvalStatus)}>{e.approvalStatus}</Badge>
+                      {e.evaluationId === preferredEvalId && <Badge tone="green">preferred</Badge>}
+                    </summary>
+                    <div className="border-t border-slate-100 p-3">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                        {e.traitValues.map((t) => (
+                          <span key={t.traitCode} className="text-slate-600">{t.traitName}: <span className="font-medium text-slate-800">{t.numericValue ?? t.textValue ?? "—"}</span></span>
+                        ))}
+                      </div>
+                      {e.notes && <p className="mt-2 text-xs text-slate-500">{e.notes}</p>}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       )}
 
-      {/* Identifiers + Roles */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={`Identifiers (${a.identifiers.length})`}>
-          {a.identifiers.length === 0 ? <EmptyState message="No identifiers." /> : (
-            <Table head={<><th className="th">Type</th><th className="th">Value</th><th className="th">Source</th><th className="th">Primary</th></>}>
-              {a.identifiers.map((i) => (
-                <tr key={i.identifierId}>
-                  <td className="td">{label(ID_TYPES, i.idType)}</td>
-                  <td className="td font-mono text-xs">{i.idValue}</td>
-                  <td className="td text-xs text-slate-500">{i.source?.sourceName ?? "—"}</td>
-                  <td className="td">{i.isPrimary ? <Badge tone="green">primary</Badge> : ""}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Card>
-
-        <Card title="Sire role — how it was derived">
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <Fact k="Class" v={
-              a.sireType
-                ? `${a.sireType === "proven" ? "Proven" : "Genomic"} — ${a.sireType === "proven" ? "has daughter-based EBVs" : "GPA genomics only, not yet proven"}`
-                : "Not classified (no approved proof)"
-            } />
-            <Fact k="Status" v={
-              a.proofStatus === "active" ? "Active — appears in the most recent round on file"
-                : a.proofStatus === "inactive" ? "Inactive — latest proof predates the most recent round"
-                : "—"
-            } />
-            <Fact k="Latest proof" v={a.latestProofRun ?? (a.latestProofDate ? fmtDate(a.latestProofDate) : "—")} />
-            <Fact k="Lactanet code" v={a.latestActivityCode ? `${a.latestActivityCode} — ${activityLabel(a.latestActivityCode) ?? "unknown"}` : "—"} />
-          </dl>
-          <p className="mt-3 text-[11px] text-slate-400">
-            Both axes are recomputed on every proof import from Lactanet&apos;s published bull-proof file layout
-            (proof activity code, column 24). They are not hand-editable.
-          </p>
-        </Card>
-      </div>
-
-      {/* Genetic proof history */}
-      <div className="mt-4">
-        <Card title={`Genetic proof history (${evaluations.length})`} actions={writable ? <Link href={`/animals/${a.id}/proofs/new`} className="link text-xs">+ Add proof</Link> : undefined}>
-          {evaluations.length === 0 ? <EmptyState message="No proofs recorded." /> : (
-            <div className="space-y-3">
-              {evaluations.map((e) => (
-                <details key={e.evaluationId} className="rounded-md border border-slate-200" open={e.evaluationId === preferredEvalId}>
-                  <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm">
-                    <span className="font-medium">{e.proofRun ?? fmtDate(e.evaluationDate)}</span>
-                    <span className="text-slate-400">·</span>
-                    <span>{e.source?.sourceName ?? "—"}</span>
-                    <span className="text-slate-400">·</span>
-                    <span className="text-slate-500">{e.countrySystem ?? ""}</span>
-                    {e.reliabilityOverall != null && <Badge>Rel {(e.reliabilityOverall * 100).toFixed(0)}%</Badge>}
-                    <Badge tone={statusTone(e.approvalStatus)}>{e.approvalStatus}</Badge>
-                    {e.evaluationId === preferredEvalId && <Badge tone="green">preferred</Badge>}
-                  </summary>
-                  <div className="border-t border-slate-100 p-3">
-                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                      {e.traitValues.map((t) => (
-                        <span key={t.traitCode} className="text-slate-600">
-                          {t.traitName}: <span className="font-medium text-slate-800">{t.numericValue ?? t.textValue ?? "—"}</span>
-                        </span>
-                      ))}
-                    </div>
-                    {e.notes && <p className="mt-2 text-xs text-slate-500">{e.notes}</p>}
-                  </div>
-                </details>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Milk + Classification */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={`Milk record history (${a.milkRecords.length})`} actions={writable ? <Link href={`/animals/${a.id}/milk/new`} className="link text-xs">+ Add milk record</Link> : undefined}>
-          {a.milkRecords.length === 0 ? <EmptyState message="No milk records." /> : (
-            <Table head={<><th className="th">Date</th><th className="th">Lact</th><th className="th">Milk</th><th className="th">Fat</th><th className="th">Prot</th><th className="th">Source</th><th className="th">Pref</th></>}>
-              {a.milkRecords.map((m) => (
-                <tr key={m.milkRecordId}>
-                  <td className="td">{fmtDate(m.recordDate)}</td>
-                  <td className="td">{m.lactationNumber ?? "—"}</td>
-                  <td className="td">{fmtNum(m.milkAmount)}{m.milkUnit}</td>
-                  <td className="td">{fmtNum(m.fatAmount)} ({m.fatPercent ?? "—"}%)</td>
-                  <td className="td">{fmtNum(m.proteinAmount)} ({m.proteinPercent ?? "—"}%)</td>
-                  <td className="td text-xs text-slate-500">{m.source?.sourceName ?? "—"}</td>
-                  <td className="td">{m.isPreferred ? <Badge tone="green">✓</Badge> : ""}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Card>
-
-        <Card title={`Classification history (${a.classifications.length})`} actions={writable ? <Link href={`/animals/${a.id}/classification/new`} className="link text-xs">+ Add classification</Link> : undefined}>
-          {a.classifications.length === 0 ? <EmptyState message="No classification records." /> : (
-            <div className="space-y-2">
-              {a.classifications.map((c) => (
-                <details key={c.classificationId} className="rounded-md border border-slate-200" open={c.classificationId === preferredClassId}>
-                  <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm">
-                    <span className="font-medium">{c.classificationCode ?? "—"} {c.finalScore ?? ""}</span>
-                    <span className="text-slate-400">·</span>
-                    <span>{fmtDate(c.classificationDate)}</span>
-                    <span className="text-slate-400">·</span>
-                    <span className="text-slate-500">{c.source?.sourceName ?? "—"}</span>
-                    {c.classificationId === preferredClassId && <Badge tone="green">preferred</Badge>}
-                  </summary>
-                  <div className="border-t border-slate-100 p-3 text-sm">
-                    <div className="flex flex-wrap gap-x-6 gap-y-1">
-                      {c.traitValues.map((t) => (
-                        <span key={t.classificationTraitValueId} className="text-slate-600">{t.traitName}: <span className="font-medium text-slate-800">{t.traitValue}</span></span>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Source history + Pedigree */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Source history (uploads & captures)">
-          {a.captures.length === 0 ? <EmptyState message="No source captures linked." /> : (
-            <Table head={<><th className="th">When</th><th className="th">Type</th><th className="th">File / URL</th><th className="th">Source</th><th className="th">Extraction</th></>}>
-              {a.captures.map((c) => (
-                <tr key={c.captureId}>
-                  <td className="td">{fmtDate(c.capturedAt)}</td>
-                  <td className="td">{c.captureType}</td>
-                  <td className="td text-xs">{c.originalFileName ?? c.sourceUrl ?? "—"}</td>
-                  <td className="td text-xs text-slate-500">{c.source?.sourceName ?? "—"}</td>
-                  <td className="td"><Badge>{c.extractionStatus}</Badge></td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Card>
-
-        <Card title="Pedigree">
-          {a.pedigreeRefs.length === 0 ? (
-            <EmptyState message="No pedigree reference yet. Phase 1 links pedigree from official sources." />
+      {/* ================= CONFORMATION ================= */}
+      {tab === "conformation" && (
+        <div className="space-y-4">
+          {linearGroups.length > 0 ? (
+            <Card title="Linear conformation profile" actions={<span className="text-xs text-slate-400">{pref?.proofRun ?? ""} · {pref?.source?.sourceName ?? ""}</span>}>
+              <LinearGraph groups={linearGroups} />
+            </Card>
           ) : (
-            <ul className="space-y-2 text-sm">
-              {a.pedigreeRefs.map((p) => (
-                <li key={p.pedigreeReferenceId} className="rounded-md border border-slate-200 p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{p.source?.sourceName ?? "Source"}</span>
-                    <Badge tone={p.displayStatus === "linked" ? "green" : "amber"}>{p.displayStatus}</Badge>
-                  </div>
-                  {p.sourceUrl && <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="link break-all text-xs">{p.sourceUrl}</a>}
-                  <div className="text-xs text-slate-400">Last checked: {fmtDate(p.lastCheckedAt)}</div>
-                  {p.notes && <div className="text-xs text-slate-500">{p.notes}</div>}
-                </li>
-              ))}
-            </ul>
+            <Card title="Linear conformation profile"><EmptyState message="No linear conformation values on the preferred proof." /></Card>
           )}
-          <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-500">
-            <span className="font-semibold">Future pedigree index (placeholder):</span>{" "}
-            {a.pedigreeIndex.length && a.pedigreeIndex[0].indexValue != null
-              ? `${a.pedigreeIndex[0].indexValue} (v${a.pedigreeIndex[0].algorithmVersion})`
-              : "Not calculated in Phase 1. Hook is in place for a future pedigree-index engine."}
-          </div>
-        </Card>
-      </div>
 
-      {/* Notes */}
-      <div className="mt-4">
-        <Card title="Notes">
-          {writable && (
-            <form action={addNote} className="mb-3 flex gap-2">
-              <input type="hidden" name="animalId" value={a.id} />
-              <select name="noteType" className="input max-w-[160px]">
-                <option value="general">General</option>
-                <option value="data_quality">Data quality</option>
-              </select>
-              <input name="body" placeholder="Add an internal note…" className="input flex-1" />
-              <button type="submit" className="btn-primary">Add</button>
-            </form>
-          )}
-          {a.animalNotes.length === 0 ? <EmptyState message="No notes." /> : (
-            <ul className="space-y-2">
-              {a.animalNotes.map((n) => (
-                <li key={n.id} className="rounded-md border border-slate-200 p-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Badge tone={n.noteType === "data_quality" ? "amber" : "slate"}>{n.noteType}</Badge>
-                    <span className="text-xs text-slate-400">{fmtDate(n.createdAt)}</span>
+          <Card title={`Classification history (${a.classifications.length})`} actions={writable ? <Link href={`/animals/${a.id}/classification/new`} className="link text-xs">+ Add classification</Link> : undefined}>
+            {a.classifications.length === 0 ? <EmptyState message={isFemale ? "No classification records." : "Bulls are not classified."} /> : (
+              <div className="space-y-2">
+                {a.classifications.map((c) => (
+                  <details key={c.classificationId} className="rounded-md border border-slate-200" open={c.classificationId === preferredClassId}>
+                    <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                      <span className="font-medium">{c.classificationCode ?? "—"} {c.finalScore ?? ""}</span>
+                      <span className="text-slate-400">·</span>
+                      <span>{fmtDate(c.classificationDate)}</span>
+                      {c.lactationNumber ? <><span className="text-slate-400">·</span><span className="text-slate-500">Lact {c.lactationNumber}</span></> : null}
+                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-500">{c.source?.sourceName ?? "—"}</span>
+                      {c.classificationId === preferredClassId && <Badge tone="green">preferred</Badge>}
+                    </summary>
+                    <div className="border-t border-slate-100 p-3 text-sm">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1">
+                        {c.traitValues.length === 0 ? <span className="text-slate-400">No section scores recorded.</span> : c.traitValues.map((t) => (
+                          <span key={t.classificationTraitValueId} className="text-slate-600">{t.traitName}: <span className="font-medium text-slate-800">{t.traitValue}</span></span>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ================= LACTATIONS (females) ================= */}
+      {tab === "lactations" && isFemale && (
+        <div className="space-y-4">
+          {profile && profile.lactations.length > 0
+            ? <HolsteinLactationsCard profile={profile} />
+            : <Card title="Lactation records"><EmptyState message="No lactation records captured yet. Use ↻ Holstein.ca to pull them." /></Card>}
+
+          <Card title={`Milk record history (${a.milkRecords.length})`} actions={writable ? <Link href={`/animals/${a.id}/milk/new`} className="link text-xs">+ Add milk record</Link> : undefined}>
+            {a.milkRecords.length === 0 ? <EmptyState message="No milk records." /> : (
+              <Table head={<><th className="th">Date</th><th className="th">Lact</th><th className="th">DIM</th><th className="th">Milk</th><th className="th">Fat</th><th className="th">Prot</th><th className="th">Source</th><th className="th">Pref</th></>}>
+                {a.milkRecords.map((m) => (
+                  <tr key={m.milkRecordId}>
+                    <td className="td">{fmtDate(m.recordDate)}</td>
+                    <td className="td">{m.lactationNumber ?? "—"}</td>
+                    <td className="td">{m.daysInMilk ?? "—"}</td>
+                    <td className="td">{fmtNum(m.milkAmount)}{m.milkUnit}</td>
+                    <td className="td">{fmtNum(m.fatAmount)} ({m.fatPercent ?? "—"}%)</td>
+                    <td className="td">{fmtNum(m.proteinAmount)} ({m.proteinPercent ?? "—"}%)</td>
+                    <td className="td text-xs text-slate-500">{m.source?.sourceName ?? "—"}</td>
+                    <td className="td">{m.isPreferred ? <Badge tone="green">✓</Badge> : ""}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ================= FAMILY TREE ================= */}
+      {tab === "familytree" && (
+        <div className="space-y-4">
+          {pedIndex && pedIndex.confidence > 0 && (
+            <Card title="Pedigree Index">
+              <div>
+                <div className="mb-4 flex flex-wrap items-center gap-6">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-16 w-20 flex-col items-center justify-center rounded-lg bg-brand-600 text-white">
+                      <span className="text-2xl font-bold leading-none">{pedIndex.lpi ?? "—"}</span>
+                      <span className="text-[9px] uppercase tracking-wide">PI · LPI</span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Estimated LPI from pedigree</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="h-2 w-28 rounded-full bg-slate-100">
+                          <div className={`h-2 rounded-full ${pedIndex.confidence >= 0.85 ? "bg-brand-500" : pedIndex.confidence >= 0.5 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${Math.round(pedIndex.confidence * 100)}%` }} />
+                        </div>
+                        <span className="text-xs text-slate-500">{Math.round(pedIndex.confidence * 100)}% confidence</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-1 text-slate-700">{n.body}</div>
-                </li>
-              ))}
-            </ul>
+                  <div className="text-xs text-slate-500">
+                    <div className="font-semibold text-slate-600">Built from:</div>
+                    {pedIndex.contributors.map((c) => (
+                      <div key={c.relation}>{c.relation.toUpperCase()} <span className="text-slate-400">×{c.weight === 0.5 ? "½" : c.weight === 0.25 ? "¼" : "⅛"}</span> — {c.name ?? "—"}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50"><tr><th className="th">Trait</th><th className="th">Pedigree index</th><th className="th" title="Share of the ½+¼+⅛ obtainable ancestor weight behind this trait">Weight used</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pedIndex.traits.filter((t) => t.value != null).map((t) => (
+                        <tr key={t.code}><td className="td font-medium">{t.label}</td><td className="td font-semibold tabular-nums">{t.value}</td><td className="td text-xs text-slate-500">{Math.round((t.weight / OBTAINABLE_WEIGHT) * 100)}%</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-[11px] text-slate-400">
+                  Parent-average estimate: ½·Sire + ¼·MGS + ⅛·GMGS, renormalised over the male-line ancestors we hold. It is an estimate from ancestors, not this animal&apos;s own proof.
+                </p>
+              </div>
+            </Card>
           )}
-        </Card>
-      </div>
+
+          <Card title="Family tree — our records" actions={<span className="text-xs text-slate-400">{pedAncestors.length} ancestors · from proof pedigree</span>}>
+            <PedigreeTree
+              self={{ name: a.primaryName, reg: primary?.idValue ?? null, lpi: pref?.lpi ?? null, sireType: a.sireType, proofStatus: a.proofStatus }}
+              ancestors={pedAncestors}
+            />
+            {pedAncestors.some((x) => x.animalId) && (
+              <p className="mt-3 text-[11px] text-slate-400">Ancestors shown in white with a link are in this database — click to open their profile. Dashed cards are recorded on the proof but not held here.</p>
+            )}
+          </Card>
+
+          {profile && <HolsteinFamilyTreeCard profile={profile} />}
+
+          <Card title="Pedigree references">
+            {a.pedigreeRefs.length === 0 ? (
+              <EmptyState message="No pedigree reference on file." />
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {a.pedigreeRefs.map((p) => (
+                  <li key={p.pedigreeReferenceId} className="rounded-md border border-slate-200 p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{p.source?.sourceName ?? "Source"}</span>
+                      <Badge tone={p.displayStatus === "linked" ? "green" : "amber"}>{p.displayStatus}</Badge>
+                    </div>
+                    {p.sourceUrl && <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="link break-all text-xs">{p.sourceUrl}</a>}
+                    <div className="text-xs text-slate-400">Last checked: {fmtDate(p.lastCheckedAt)}</div>
+                    {p.notes && <div className="mt-1 text-xs text-slate-500">{p.notes}</div>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ================= OWNER HISTORY ================= */}
+      {tab === "owners" && profile && (
+        <div className="space-y-4"><HolsteinOwnersCard profile={profile} /></div>
+      )}
+
+      {/* ================= PROGENY ================= */}
+      {tab === "progeny" && profile && (
+        <div className="space-y-4"><HolsteinProgenyCard profile={profile} /></div>
+      )}
     </div>
   );
 }

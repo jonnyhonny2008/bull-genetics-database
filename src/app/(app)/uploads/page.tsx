@@ -21,7 +21,7 @@ export default async function UploadsPage() {
   const [sources, animals, captures] = await Promise.all([
     prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
     prisma.animal.findMany({ where: { archived: false }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
-    prisma.sourceCapture.findMany({ orderBy: { capturedAt: "desc" }, take: 25, include: { source: true, animal: true, reviewItems: true } }),
+    prisma.sourceCapture.findMany({ where: { OR: [{ animalId: null }, { animal: { archived: false } }] }, orderBy: { capturedAt: "desc" }, take: 25, include: { source: true, animal: true, reviewItems: true } }),
   ]);
 
   return (

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function BreedsPage() {
   const user = currentUser();
   if (!can(user?.role, "config:write")) redirect("/dashboard");
-  const breeds = await prisma.breed.findMany({ orderBy: { breedName: "asc" }, include: { _count: { select: { animals: true, traitDefinitions: true } } } });
+  const breeds = await prisma.breed.findMany({ orderBy: { breedName: "asc" }, include: { _count: { select: { animals: { where: { archived: false } }, traitDefinitions: true } } } });
 
   return (
     <div>

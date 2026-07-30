@@ -13,7 +13,7 @@ export default async function EditAnimalPage({ params }: { params: { id: string 
   if (!can(user?.role, "animal:write")) redirect(`/animals/${params.id}`);
 
   const [animal, breeds, sources] = await Promise.all([
-    prisma.animal.findUnique({ where: { id: params.id }, include: { identifiers: true } }),
+    prisma.animal.findFirst({ where: { id: params.id, archived: false }, include: { identifiers: true } }),
     prisma.breed.findMany({ where: { active: true }, orderBy: { breedName: "asc" } }),
     prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
   ]);

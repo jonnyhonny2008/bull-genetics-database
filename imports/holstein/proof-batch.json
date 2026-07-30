@@ -1,0 +1,1279 @@
+[
+  {
+    "reg": "HOCANM120781841",
+    "animalId": "15128888",
+    "name": "BLONDIN DETECTIVE",
+    "mainText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n BLONDIN DETECTIVE\n HOCANM120781841\n Registration Status: Registered\n Purity:\n PB\n    Herd #: 1841\n National Id: 124000120781841\nBorn: 27 Jun 2021\nB&W *A2A2*MWF*CDF*CVF*BYF*BLF*DPF*CNF ET GTSM10.57 %INB 21 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"15128888\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANM120781841\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANM120781841\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HO840M3128769279\n STANTONS ALLIGATOR-ET\n PB\nVG-85-4YR-CAN\n Dam:\n HO840F3210276404\n MS BLONDIN CRSHBLL DEENA-ET\n PB\nVG-86-2YR-CAN\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n $(function () {\n var xActiveTab = \"tab-main\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n $(function () {\n });\n Current Owner(s)\n Prefix\n Name\n Address\n BLONDIN SIRES\n BLONDIN SIRES\n SAINT-PLACIDE QC CANADA\n $(function () {\n });\n Breeder(s)\n Prefix\n Name\n Address\n BLONDIN\n FERME BLONDIN - MASTER BREEDER\n SAINT-PLACIDE QC CANADA\n $(function () {\n });\n Genetic Production\n (KG)\n CAN-GEBV\n %RK\n %Dev\n %RK\n %RK\n Apr*26\n Milk\n 1025\n 81%\n GLPI\n 3367\n 95%\n Pro$\n 640\n Reliability 96%\n Fat\n 2\n 12%\n -0.31\n Production\n 503\n 51%\n Reproduction\n 474\n 37%\n Protein\n 25\n 38%\n -0.08\n Longevity & Type\n 782\n 99%\n Milkability\n 484\n 44%\n MR\n 99\n 57%\n Health & Welfare\n 425\n 21%\n Environmental Impact\n 435\n 26%\n $(function () {\n });\n Genetic Conformation\n CAN-GEBV\n %RK\n Apr*26\n Conformation\n 15\n 99%\n Reliability 94%\n Rump\n 5\n Dairy Strength\n 10\n Mammary System\n 10\n Feet & Legs\n 15\n $(function () {\n $(\"#AisProductionAwardDetails\").hide();\n $(\"#AisOtherAwardDetails\").hide();\n $(\"#AisAwardDetails\").hide();\n $(\"#AisShowWinnings\").hide();\n $(\"#AisShowTitles\").hide();\n });\n Production Awards\n Other Awards\n Title Winnings\n Show Winnings\n $(function () {\n $(\"#AisProduction\").hide();\n });\n Production: Records quoted are in KGS\n Convert to LBS\n    Convert to Mature Equivalents\n BCA\n Deviations\n Yr-Mth\n DIM\n Milk\n Fat\n %F\n Prot\n %P\n Comp.Source\n SCS\n Milk\n Fat\n Prot\n Comp\n Milk\n Fat\n Prot\n Comp\n $(function () {\n });\n Progeny Summary\n 352 DAUS\n 92% GP+\n 0 EX\n 126 VG\n 199 GP\n 27 G\n 0 F\n 254 DAUS ME AVG:\n M13943\n F565\n 4.1%\n P454\n 3.3%\n BCAS:\n M263\n F289\n P274\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n BLONDIN DETECTIVE\n HOCANM120781841\n Registration Status: Registered\n Purity:\n PB\n    Herd #: 1841\n National Id: 124000120781841\nBorn: 27 Jun 2021\nB&W *A2A2*MWF*CDF*CVF*BYF*BLF*DPF*CNF ET GTSM10.57 %INB 21 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"15128888\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANM120781841\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANM120781841\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HO840M3128769279\n STANTONS ALLIGATOR-ET\n PB\nVG-85-4YR-CAN\n Dam:\n HO840F3210276404\n MS BLONDIN CRSHBLL DEENA-ET\n PB\nVG-86-2YR-CAN\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n $(function () {\n var xActiveTab = \"tab-genetics\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n PRODUCTION\n No. Herds 143\n No. Daus. 254\n Panel Density: MD\n Apr*26\n CAN-GEBV\n 96% Reliability\n Pro$ 640\n GLPI 3367\n 92% Rel\n First Lactation\n Second Lactation\n Third Lactation\n Rating\n %Dev\n Rank\n Milk (kg)\n 1417\n 912\n 763\n 1025\n 81%\n Fat (kg)\n 19\n -5\n -12\n 2\n -0.31\n 12%\n Protein (kg)\n 39\n 21\n 15\n 25\n -0.08\n 38%\n Somatic Cell Score\n 105\n 101\n 102\n 102\n 67%\n Total Test Day Records\n 735\n 0\n 0\n FUNCTIONAL TRAITS\n Traits\n Rating\n Reliability\n Herd Life\n GEBV\n 97\n 91%\n Lactation Persistency\n GEBV\n 94\n 90%\n Daughter Fertility\n GEBV\n 99\n 86%\n Milking Speed\n GEBV\n 94\n 92%\n Milking Temperament\n GEBV\n 96\n 89%\n Calving Ability\n GEBV\n 95\n 94%\n Daughter Calving Ability\n GEBV\n 96\n 87%\n Body Condition Score\n GEBV\n 92\n 95%\n Mastitis Resistance\n GEBV\n 99\n 77%\n Metabolic Disease Resistance\n GEBV\n 89\n 77%\n Hoof Health\n GPA\n 91\n 79%\n Feed Efficiency\n GPA\n 101\n 56%\n Methane Efficiency\n GEBV\n 97\n 97%\n Body Maintenance Requirements\n GPA\n 98\n 86%\n Calf Health\n GPA\n 104\n 83%\n CONFORMATION\n Apr*26\n CAN-GEBV\n 94% Reliability\n No. Herds 88\n No. Daus. 158\n Rating\n Rank\n Conformation\n 15\n 99%\n Rating\n Rank\n Rating\n Rank\n Rump\n 5\n 83\n Dairy Strength\n 10\n 97\n Rump Angle\n 3H\n Stature\n 8T\n Pin Width\n 1\n Height at Front End\n 10\n Loin Strength\n 14\n Chest Width\n -1\n Thurl Placement\n 0\n Body Depth\n 9\n Rib Structure\n 11\n Rating\n Rank\n Rating\n Rank\n Mammary System\n 10\n 97\n Feet & Legs\n 15\n 99\n Udder Floor\n 2R\n Foot Angle\n 17\n Udder Depth\n 1S\n Heel Depth\n 9\n Udder Texture\n 9\n Bone Quality\n 14\n Median Suspensory\n 10\n Rear Legs Side View\n 7C\n Fore Attachment\n 5\n Rear Legs Rear View\n 14\n Front Teat Placement\n 3C\n Front Legs View\n 3S\n Rear Attachment Height\n 9\n Locomotion\n 7\n Rear Attachment Width\n 11\n Rear Teat Placement\n 9C\n Teat Length\n 5L\n DEFECTS\n Rump\n Dairy Strength\n Advanced Anus\n 2\n Undesirable Head\n Advanced Tailhead\n 3\n Shallow Fore Rib\n 1\n Recessed Tailhead\n 1\n Weak Crops\n 3\n High Tailhead\n 2\n Weak Back\n 1\n Not Well Sprung\n 1\n Lacks Balance\n 1\n Mammary System\n Feet & Legs\n Short Fore\n 1\n Abnormal Claw\n -1*\n Short Rear\n 2\n Weak Pasterns\n 1\n Lacks Udder Shape\n 1\n Boggy Hocks\n 2\n Unbalanced Quarter\n 3\n Lacks Bone\n Blind Quarter\n 1\n Crampy\n Webbed Teat\n Rear Legs Back\n -1\n Front Teats Back\n Toes Out Front\n 4\n Rear Teats Back\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genTables": [
+      {
+        "head": "",
+        "rows": [
+          [
+            "PRODUCTION",
+            "",
+            "No. Herds 143",
+            "No. Daus. 254",
+            "",
+            "Panel Density: MD"
+          ],
+          [
+            "Apr*26",
+            "CAN-GEBV",
+            "96% Reliability",
+            "Pro$ 640",
+            "GLPI 3367",
+            "92% Rel",
+            ""
+          ],
+          [
+            "First Lactation",
+            "Second Lactation",
+            "Third Lactation",
+            "Rating",
+            "%Dev",
+            "Rank"
+          ],
+          [
+            "Milk (kg)",
+            "1417",
+            "912",
+            "763",
+            "1025",
+            "",
+            "81%"
+          ],
+          [
+            "Fat (kg)",
+            "19",
+            "-5",
+            "-12",
+            "2",
+            "-0.31",
+            "12%"
+          ],
+          [
+            "Protein (kg)",
+            "39",
+            "21",
+            "15",
+            "25",
+            "-0.08",
+            "38%"
+          ],
+          [
+            "Somatic Cell Score",
+            "105",
+            "101",
+            "102",
+            "102",
+            "",
+            "67%"
+          ],
+          [
+            "Total Test Day Records",
+            "735",
+            "0",
+            "0",
+            "",
+            "",
+            ""
+          ]
+        ]
+      },
+      {
+        "head": "FUNCTIONAL TRAITS",
+        "rows": [
+          [
+            "FUNCTIONAL TRAITS"
+          ],
+          [
+            "Traits",
+            "",
+            "Rating",
+            "Reliability"
+          ],
+          [
+            "Herd Life",
+            "GEBV",
+            "97",
+            "91%"
+          ],
+          [
+            "Lactation Persistency",
+            "GEBV",
+            "94",
+            "90%"
+          ],
+          [
+            "Daughter Fertility",
+            "GEBV",
+            "99",
+            "86%"
+          ],
+          [
+            "Milking Speed",
+            "GEBV",
+            "94",
+            "92%"
+          ],
+          [
+            "Milking Temperament",
+            "GEBV",
+            "96",
+            "89%"
+          ],
+          [
+            "Calving Ability",
+            "GEBV",
+            "95",
+            "94%"
+          ],
+          [
+            "Daughter Calving Ability",
+            "GEBV",
+            "96",
+            "87%"
+          ],
+          [
+            "Body Condition Score",
+            "GEBV",
+            "92",
+            "95%"
+          ],
+          [
+            "Mastitis Resistance",
+            "GEBV",
+            "99",
+            "77%"
+          ],
+          [
+            "Metabolic Disease Resistance",
+            "GEBV",
+            "89",
+            "77%"
+          ],
+          [
+            "Hoof Health",
+            "GPA",
+            "91",
+            "79%"
+          ],
+          [
+            "Feed Efficiency",
+            "GPA",
+            "101",
+            "56%"
+          ],
+          [
+            "Methane Efficiency",
+            "GEBV",
+            "97",
+            "97%"
+          ],
+          [
+            "Body Maintenance Requirements",
+            "GPA",
+            "98",
+            "86%"
+          ],
+          [
+            "Calf Health",
+            "GPA",
+            "104",
+            "83%"
+          ]
+        ]
+      },
+      {
+        "head": "CONFORMATION",
+        "rows": [
+          [
+            "CONFORMATION"
+          ],
+          [
+            "Apr*26",
+            "CAN-GEBV",
+            "",
+            "94% Reliability",
+            "No. Herds 88",
+            "No. Daus. 158"
+          ],
+          [
+            "",
+            "Rating",
+            "",
+            "Rank",
+            ""
+          ],
+          [
+            "Conformation",
+            "15",
+            "",
+            "99%",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Rump",
+            "5",
+            "83",
+            "",
+            "Dairy Strength",
+            "10",
+            "97"
+          ],
+          [
+            "Rump Angle",
+            "3H",
+            "",
+            "",
+            "Stature",
+            "8T",
+            ""
+          ],
+          [
+            "Pin Width",
+            "1",
+            "",
+            "",
+            "Height at Front End",
+            "10",
+            ""
+          ],
+          [
+            "Loin Strength",
+            "14",
+            "",
+            "",
+            "Chest Width",
+            "-1",
+            ""
+          ],
+          [
+            "Thurl Placement",
+            "0",
+            "",
+            "",
+            "Body Depth",
+            "9",
+            ""
+          ],
+          [
+            "",
+            "",
+            "",
+            "",
+            "Rib Structure",
+            "11",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Mammary System",
+            "10",
+            "97",
+            "",
+            "Feet & Legs",
+            "15",
+            "99"
+          ],
+          [
+            "Udder Floor",
+            "2R",
+            "",
+            "",
+            "Foot Angle",
+            "17",
+            ""
+          ],
+          [
+            "Udder Depth",
+            "1S",
+            "",
+            "",
+            "Heel Depth",
+            "9",
+            ""
+          ],
+          [
+            "Udder Texture",
+            "9",
+            "",
+            "",
+            "Bone Quality",
+            "14",
+            ""
+          ],
+          [
+            "Median Suspensory",
+            "10",
+            "",
+            "",
+            "Rear Legs Side View",
+            "7C",
+            ""
+          ],
+          [
+            "Fore Attachment",
+            "5",
+            "",
+            "",
+            "Rear Legs Rear View",
+            "14",
+            ""
+          ],
+          [
+            "Front Teat Placement",
+            "3C",
+            "",
+            "",
+            "Front Legs View",
+            "3S",
+            ""
+          ],
+          [
+            "Rear Attachment Height",
+            "9",
+            "",
+            "",
+            "Locomotion",
+            "7",
+            ""
+          ],
+          [
+            "Rear Attachment Width",
+            "11",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Rear Teat Placement",
+            "9C",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Teat Length",
+            "5L",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      },
+      {
+        "head": "DEFECTS",
+        "rows": [
+          [
+            "DEFECTS"
+          ],
+          [
+            "Rump",
+            "",
+            "Dairy Strength"
+          ],
+          [
+            "Advanced Anus",
+            "2",
+            "",
+            "Undesirable Head",
+            ""
+          ],
+          [
+            "Advanced Tailhead",
+            "3",
+            "",
+            "Shallow Fore Rib",
+            "1"
+          ],
+          [
+            "Recessed Tailhead",
+            "1",
+            "",
+            "Weak Crops",
+            "3"
+          ],
+          [
+            "High Tailhead",
+            "2",
+            "",
+            "Weak Back",
+            "1"
+          ],
+          [
+            "",
+            "",
+            "",
+            "Not Well Sprung",
+            "1"
+          ],
+          [
+            "",
+            "",
+            "",
+            "Lacks Balance",
+            "1"
+          ],
+          [
+            "Mammary System",
+            "",
+            "Feet & Legs"
+          ],
+          [
+            "Short Fore",
+            "1",
+            "",
+            "Abnormal Claw",
+            "-1*"
+          ],
+          [
+            "Short Rear",
+            "2",
+            "",
+            "Weak Pasterns",
+            "1"
+          ],
+          [
+            "Lacks Udder Shape",
+            "1",
+            "",
+            "Boggy Hocks",
+            "2"
+          ],
+          [
+            "Unbalanced Quarter",
+            "3",
+            "",
+            "Lacks Bone",
+            ""
+          ],
+          [
+            "Blind Quarter",
+            "1",
+            "",
+            "Crampy",
+            ""
+          ],
+          [
+            "Webbed Teat",
+            "",
+            "",
+            "Rear Legs Back",
+            "-1"
+          ],
+          [
+            "Front Teats Back",
+            "",
+            "",
+            "Toes Out Front",
+            "4"
+          ],
+          [
+            "Rear Teats Back",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      }
+    ],
+    "error": null,
+    "scrapedAt": "2026-07-29T17:55:07.961Z"
+  },
+  {
+    "reg": "HOCANF121517751",
+    "animalId": "15884225",
+    "name": "REJO GIGOTTE IPSOS P",
+    "mainText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n REJO GIGOTTE IPSOS P\n HOCANF121517751\n Registration Status: Registered\n Purity:\n PB\n    Herd #: 7751\n National Id: 124000121517751\nBorn: 01 Dec 2023\nR&W *POR*VRR*BKC11.11 %INB 18 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"15884225\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANF121517751\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANF121517751\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HOCANM14003831\n WESTCOAST IPSOS P\n PB\n Dam:\n HOCANF120523946\n REJO GIGA REDEYE RED\n PB\nVG-85-3YR-CAN\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n Lactations\n Show & Awards\n $(function () {\n var xActiveTab = \"tab-main\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n $(function () {\n });\n Current Owner(s)\n Prefix\n Name\n Address\n REJO\n FERME REJO S.E.N.C\n WOTTON QC CANADA\n $(function () {\n });\n Breeder(s)\n Prefix\n Name\n Address\n REJO\n FERME REJO S.E.N.C\n WOTTON QC CANADA\n $(function () {\n });\n Genetic Production\n (KG)\n CAN-PA\n %RK\n %Dev\n %RK\n %RK\n Jul*26\n Milk\n -17\n 38%\n PA LPI\n 2894\n 46%\n Pro$\n 280\n Reliability 30%\n Fat\n 11\n 40%\n 0.11\n Production\n 454\n 33%\n Reproduction\n 487\n 55%\n Protein\n 0\n 30%\n 0.01\n Longevity & Type\n 572\n 63%\n Milkability\n 554\n 75%\n MR\n 101\n Health & Welfare\n 529\n 80%\n Environmental Impact\n 417\n 13%\n $(function () {\n });\n Genetic Conformation\n CAN-PA\n %RK\n Jul*26\n Conformation\n 4\n 59%\n Reliability 29%\n Rump\n 2\n Dairy Strength\n 4\n Mammary System\n 2\n Feet & Legs\n 3\n $(function () {\n $(\"#AisProductionAwardDetails\").hide();\n $(\"#AisOtherAwardDetails\").hide();\n $(\"#AisAwardDetails\").hide();\n $(\"#AisShowTitles\").hide();\n });\n Production Awards\n Other Awards\n Title Winnings\n Show Winnings\n 3RD Winter Heifer QUEBEC SPRING R&W 20242ND Winter Heifer RICHMOND 20243RD Winter Yearling QUEBEC SPRING R&W 20252ND Winter Yearling RICHMOND 2025\n $(function () {\n $(\"#AisProduction\").hide();\n });\n Production: Records quoted are in KGS\n Convert to LBS\n    Convert to Mature Equivalents\n BCA\n Deviations\n Yr-Mth\n DIM\n Milk\n Fat\n %F\n Prot\n %P\n Comp.Source\n SCS\n Milk\n Fat\n Prot\n Comp\n Milk\n Fat\n Prot\n Comp\n $(function () {\n $(\"#AisProgenySummary\").hide();\n });\n Progeny Summary\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n REJO GIGOTTE IPSOS P\n HOCANF121517751\n Registration Status: Registered\n Purity:\n PB\n    Herd #: 7751\n National Id: 124000121517751\nBorn: 01 Dec 2023\nR&W *POR*VRR*BKC11.11 %INB 18 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"15884225\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANF121517751\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANF121517751\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HOCANM14003831\n WESTCOAST IPSOS P\n PB\n Dam:\n HOCANF120523946\n REJO GIGA REDEYE RED\n PB\nVG-85-3YR-CAN\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n Lactations\n Show & Awards\n $(function () {\n var xActiveTab = \"tab-genetics\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n PRODUCTION\n Panel Density:\n Jul*26\n CAN-PA\n 30% Reliability\n Pro$ 280\n PA LPI 2894\n 29% Rel\n First Lactation\n Second Lactation\n Third Lactation\n Rating\n %Dev\n Rank\n Milk (kg)\n -17\n 38%\n Fat (kg)\n 11\n 0.11\n 40%\n Protein (kg)\n 0\n 0.01\n 30%\n Somatic Cell Score\n 99\n 44%\n Total Test Day Records\n FUNCTIONAL TRAITS\n Traits\n Rating\n Reliability\n Herd Life\n PA\n 101\n 30%\n Lactation Persistency\n PA\n 99\n 29%\n Daughter Fertility\n PA\n 99\n 28%\n Milking Speed\n PA\n 103\n 29%\n Milking Temperament\n PA\n 98\n 28%\n Calving Ability\n PA\n 96\n 31%\n Daughter Calving Ability\n PA\n 102\n 27%\n Body Condition Score\n PA\n 98\n 30%\n Mastitis Resistance\n PA\n 101\n 25%\n Metabolic Disease Resistance\n PA\n 98\n 25%\n Hoof Health\n PA\n 101\n 24%\n Feed Efficiency\n Methane Efficiency\n Body Maintenance Requirements\n PA\n 95\n 27%\n Calf Health\n PA\n 102\n 27%\n CONFORMATION\n Jul*26\n CAN-PA\n 29% Reliability\n Rating\n Rank\n Conformation\n 4\n 59%\n Rating\n Rank\n Rating\n Rank\n Rump\n 2\n 43\n Dairy Strength\n 4\n 67\n Rump Angle\n 1H\n Stature\n 7T\n Pin Width\n 4\n Height at Front End\n 5\n Loin Strength\n 5\n Chest Width\n 1\n Thurl Placement\n 4B\n Body Depth\n 4\n Rib Structure\n 3\n Rating\n Rank\n Rating\n Rank\n Mammary System\n 2\n 53\n Feet & Legs\n 3\n 55\n Udder Floor\n 5R\n Foot Angle\n 5\n Udder Depth\n 3S\n Heel Depth\n 5\n Udder Texture\n 5\n Bone Quality\n 3\n Median Suspensory\n 1\n Rear Legs Side View\n 0\n Fore Attachment\n 4\n Rear Legs Rear View\n 3\n Front Teat Placement\n 1C\n Front Legs View\n 1S\n Rear Attachment Height\n -3\n Locomotion\n 2\n Rear Attachment Width\n -3\n Rear Teat Placement\n 0\n Teat Length\n 2L\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genTables": [
+      {
+        "head": "",
+        "rows": [
+          [
+            "PRODUCTION",
+            "Panel Density:"
+          ],
+          [
+            "Jul*26",
+            "CAN-PA",
+            "30% Reliability",
+            "Pro$ 280",
+            "PA LPI 2894",
+            "29% Rel",
+            ""
+          ],
+          [
+            "First Lactation",
+            "Second Lactation",
+            "Third Lactation",
+            "Rating",
+            "%Dev",
+            "Rank"
+          ],
+          [
+            "Milk (kg)",
+            "",
+            "",
+            "",
+            "-17",
+            "",
+            "38%"
+          ],
+          [
+            "Fat (kg)",
+            "",
+            "",
+            "",
+            "11",
+            "0.11",
+            "40%"
+          ],
+          [
+            "Protein (kg)",
+            "",
+            "",
+            "",
+            "0",
+            "0.01",
+            "30%"
+          ],
+          [
+            "Somatic Cell Score",
+            "",
+            "",
+            "",
+            "99",
+            "",
+            "44%"
+          ],
+          [
+            "Total Test Day Records",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      },
+      {
+        "head": "FUNCTIONAL TRAITS",
+        "rows": [
+          [
+            "FUNCTIONAL TRAITS"
+          ],
+          [
+            "Traits",
+            "",
+            "Rating",
+            "Reliability"
+          ],
+          [
+            "Herd Life",
+            "PA",
+            "101",
+            "30%"
+          ],
+          [
+            "Lactation Persistency",
+            "PA",
+            "99",
+            "29%"
+          ],
+          [
+            "Daughter Fertility",
+            "PA",
+            "99",
+            "28%"
+          ],
+          [
+            "Milking Speed",
+            "PA",
+            "103",
+            "29%"
+          ],
+          [
+            "Milking Temperament",
+            "PA",
+            "98",
+            "28%"
+          ],
+          [
+            "Calving Ability",
+            "PA",
+            "96",
+            "31%"
+          ],
+          [
+            "Daughter Calving Ability",
+            "PA",
+            "102",
+            "27%"
+          ],
+          [
+            "Body Condition Score",
+            "PA",
+            "98",
+            "30%"
+          ],
+          [
+            "Mastitis Resistance",
+            "PA",
+            "101",
+            "25%"
+          ],
+          [
+            "Metabolic Disease Resistance",
+            "PA",
+            "98",
+            "25%"
+          ],
+          [
+            "Hoof Health",
+            "PA",
+            "101",
+            "24%"
+          ],
+          [
+            "Feed Efficiency",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Methane Efficiency",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Body Maintenance Requirements",
+            "PA",
+            "95",
+            "27%"
+          ],
+          [
+            "Calf Health",
+            "PA",
+            "102",
+            "27%"
+          ]
+        ]
+      },
+      {
+        "head": "CONFORMATION",
+        "rows": [
+          [
+            "CONFORMATION"
+          ],
+          [
+            "Jul*26",
+            "CAN-PA",
+            "",
+            "29% Reliability"
+          ],
+          [
+            "",
+            "Rating",
+            "",
+            "Rank",
+            ""
+          ],
+          [
+            "Conformation",
+            "4",
+            "",
+            "59%",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Rump",
+            "2",
+            "43",
+            "",
+            "Dairy Strength",
+            "4",
+            "67"
+          ],
+          [
+            "Rump Angle",
+            "1H",
+            "",
+            "",
+            "Stature",
+            "7T",
+            ""
+          ],
+          [
+            "Pin Width",
+            "4",
+            "",
+            "",
+            "Height at Front End",
+            "5",
+            ""
+          ],
+          [
+            "Loin Strength",
+            "5",
+            "",
+            "",
+            "Chest Width",
+            "1",
+            ""
+          ],
+          [
+            "Thurl Placement",
+            "4B",
+            "",
+            "",
+            "Body Depth",
+            "4",
+            ""
+          ],
+          [
+            "",
+            "",
+            "",
+            "",
+            "Rib Structure",
+            "3",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Mammary System",
+            "2",
+            "53",
+            "",
+            "Feet & Legs",
+            "3",
+            "55"
+          ],
+          [
+            "Udder Floor",
+            "5R",
+            "",
+            "",
+            "Foot Angle",
+            "5",
+            ""
+          ],
+          [
+            "Udder Depth",
+            "3S",
+            "",
+            "",
+            "Heel Depth",
+            "5",
+            ""
+          ],
+          [
+            "Udder Texture",
+            "5",
+            "",
+            "",
+            "Bone Quality",
+            "3",
+            ""
+          ],
+          [
+            "Median Suspensory",
+            "1",
+            "",
+            "",
+            "Rear Legs Side View",
+            "0",
+            ""
+          ],
+          [
+            "Fore Attachment",
+            "4",
+            "",
+            "",
+            "Rear Legs Rear View",
+            "3",
+            ""
+          ],
+          [
+            "Front Teat Placement",
+            "1C",
+            "",
+            "",
+            "Front Legs View",
+            "1S",
+            ""
+          ],
+          [
+            "Rear Attachment Height",
+            "-3",
+            "",
+            "",
+            "Locomotion",
+            "2",
+            ""
+          ],
+          [
+            "Rear Attachment Width",
+            "-3",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Rear Teat Placement",
+            "0",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Teat Length",
+            "2L",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      }
+    ],
+    "error": null,
+    "scrapedAt": "2026-07-29T17:55:09.465Z"
+  },
+  {
+    "reg": "HOCANF111576042",
+    "animalId": "14528269",
+    "name": "JACOBS LAUTRUST SHADOW",
+    "mainText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n JACOBS LAUTRUST SHADOW\n HOCANF111576042\n Registration Status: Registered\nEX-94-5YR-CAN\n Purity:\n PB\n    Herd #: 6042\nMS:95 (FA:9 RAH:6 RAW:9) F&L:92 DS:96 RP:91\n National Id: 124000111576042\nBorn: 28 Sep 2019\nB&W *RDC ET GTSM5.33 %INB 13 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"14528269\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANF111576042\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANF111576042\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HOCANM107359260\n COMESTAR LAUTRUST\n PB\nVG-87-6YR-CAN\nEXTRA'17\n Dam:\n HO840F3126918505\n ERBACRES SNAPPLE SHAKIRA-ET\n PB\nEX-97-4E-CAN VG-89-2YR-USA\n10*(0/51)\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n Lactations\n Show & Awards\n $(function () {\n var xActiveTab = \"tab-main\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n $(function () {\n });\n Current Owner(s)\n Prefix\n Name\n Address\n PROVETAZ\n FERME JATON & GREMION ENRG - MASTER BREEDER\n COMPTON QC CANADA\n $(function () {\n });\n Breeder(s)\n Prefix\n Name\n Address\n ANTELIMARCK\n FERME ANTELIMARCK 2001 INC\n NICOLET QC CANADA\n JACOBS\n FERME JACOBS INC - MASTER BREEDER\n CAP SANTE QC CANADA\n TY-D\n TY-D HOLSTEINS\n CAP SANTE QC CANADA\n HC14573961\n KILIAN THERAULAZ\n CAP-SANTÉ QC CANADA\n HC14574001\n ATTABOY HOLSTEIN\n FOSSAMBAULT-SUR-LE-LAC QC CANADA\n $(function () {\n });\n Genetic Production\n (KG)\n CAN-GEBV\n %RK\n %Dev\n %RK\n %RK\n Jul*26\n Milk\n -131\n 32%\n GLPI\n 3074\n 82%\n Pro$\n 315\n Reliability 83%\n Fat\n 24\n 54%\n 0.23\n Production\n 538\n 70%\n Reproduction\n 409\n 7%\n Protein\n 30\n 76%\n 0.28\n Longevity & Type\n 577\n 66%\n Milkability\n 458\n 25%\n MR\n 101\n Health & Welfare\n 535\n 83%\n Environmental Impact\n 523\n 62%\n $(function () {\n });\n Genetic Conformation\n CAN-GEBV\n %RK\n Jul*26\n Conformation\n 4\n 59%\n Reliability 81%\n Rump\n 6\n Dairy Strength\n 4\n Mammary System\n 1\n Feet & Legs\n 4\n $(function () {\n $(\"#AisOtherAwardDetails\").hide();\n $(\"#AisShowTitles\").hide();\n });\n Production Awards\n 3 Superior Lactations\n 1 Super 3\n Other Awards\n Title Winnings\n Show Winnings\n RES. GRAND AYER'S CLIFF 20231ST Senior 3 Year AYER'S CLIFF 2023\n $(function () {\n });\n Production: Records quoted are in KGS\n Convert to LBS\n    Convert to Mature Equivalents\n BCA\n Deviations\n Yr-Mth\n DIM\n Milk\n Fat\n %F\n Prot\n %P\n Comp.Source\n SCS\n Milk\n Fat\n Prot\n Comp\n Milk\n Fat\n Prot\n Comp\n 02-00\n 2X\n 305\n 11398\n 515\n 4.5\n 426\n 3.7\n L\n 284\n 343\n 330\n 957\n +37\n +69\n +64\n +170\n 365\n 13286\n 598\n 4.5\n 500\n 3.8\n 392\n 13944\n 630\n 4.5\n 529\n 3.8\n 03-03\n 2X\n 305\n 15023\n 690\n 4.6\n 537\n 3.6\n L\n 319\n 399\n 358\n 1076\n +64\n +123\n +85\n +272\n 365\n 16926\n 786\n 4.6\n 611\n 3.6\n 413\n 18177\n 858\n 4.7\n 664\n 3.7\n 05-03\n 2X\n 305\n 16927\n 875\n 5.2\n 603\n 3.6\n L\n 317\n 446\n 363\n 1126\n +56\n +143\n +83\n +282\n 365\n 19606\n 992\n 5.1\n 711\n 3.6\n 549\n 27415\n 1320\n 4.8\n 1028\n 3.8\n 3 Lactation(s):\n 59536\n 2808\n 4.7\n 2221\n 3.7\n 307\n 396\n 350\n +52\n +112\n +77\n $(function () {\n });\n Progeny Summary\n 1 DAUS\n 100% GP+\n 0 EX\n 1 VG\n 0 GP\n 0 G\n 0 F\n 1 DAUS ME AVG:\n M13126\n F595\n 4.5%\n P487\n 3.7%\n BCAS:\n M248\n F305\n P295\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genText": "$(function () {\n $(\"#AISSearch\")\n .on(\"keypress\",\n function (e) {\n return e.keyCode === 13 ? aisSearchNav() : null;\n });\n });\n function aisSearchNav() {\n var searchString = $(\"#AISSearch\").val();\n var url = '/en/AIS/Search?animalSearchString=' + searchString;\n if (searchString) {\n window.location = url;\n }\n }\n Search For Animal\n Careers\n Contact Us\n  Français\n Create Account\n   Login\n Toggle navigation\n Language\n  FR\n About Us\n About Us\n Governance\n Governance\n Board of Directors\n Past National Board Presidents\n Committees\n Branches\n Employees\n The Canadian Dairy Industry\n The Canadian Dairy Industry\n The Holstein Breed\n Internationally\n Supply Management\n Our Partners\n Careers\n Careers\n Career Opportunities\n Contact Us\n News-Events\n Calendar of Events\n Media Releases\n Current Media Release\n 2024 Media Releases\n 2025 Media Releases\n 2026 Media Releases\n Info Holstein\n 2026\n 2025\n 2024\n 2023\n 2022\n 2021\n 2020\n 2019\n 2018\n 2017\n 2016\n 2015\n 2014\n 2013\n 2012\n 2011\n 2010\n 2009\n Annual Report\n National Holstein Convention\n National Holstein Convention\n Registration\n Program\n Farm Tours\n Young Leader Program\n Hotel-Travel\n Committee\n Sponsors\n Schedule-Horaire\n RAWF National Holstein Shows\n RAWF National Holstein Shows\n Show Results\n Past Winners\n Membership-Programs\n Membership Types & Benefits\n Membership Types & Benefits\n Junior Member\n Herd Enrollment Program\n Young Leaders Program\n Young Leaders Program\n Awards & Recognition\n Shows & Judging Program\n Shows & Judging Program\n National Judging Program\n Show Rules & Regulations\n Official Judges\n Show Classes\n Services\n Field Service\n Field Service Contacts\n Registration\n Registration\n How to Submit Registrations\n Registration Eligibilities\n Record-Keeping\n Registration Fees\n Classification\n Classification\n Participation & Procedures\n Classification Schedule\n Breakdown of Traits\n All-Breeds Classification\n True-Type Models\n Herd Inventory Submission\n proAction Animal Care\n Cattle Assessments\n Fees and Scheduling\n Resources\n Genotyping\n Genotyping\n Genetic Traits and Colour Codes\n Genotyping Testing Options\n Freemartin\n ConneXXion App\n ConneXXion App\n Support\n Genetic Information & Services\n Genetic Information & Services\n Genetic Evaluation Release Dates\n Animal Ownership Transfers\n Animal Ownership Transfers\n Group Transfer Rates\n Transfer of Animals Imported from USA\n DairyTrace\n DairyTrace\n Pedigrees\n Accreditation\n Resources\n Terms & Payments\n Payment Policy\n Payment Options\n The Switch\n Awards-Lists\n Master Breeders\n Master Breeders\n Master Breeder Reveal\n Member Awards\n Member Awards\n Veteran Breeders & Members\n Certificate of Superior Accomplishment & Recognition\n Century of Holstein\n Cow of the Year\n Animal Awards\n Animal Awards\n Breed's Best\n Top Classifying Cows\n Top Classifying Herds\n Top Genetic Females\n Top Genetic Sires\n Cow Awards\n Holstein Canada Awards\n Holstein Canada Awards\n Daily Production Champion\n Outstanding Production Champions\n Herd of Distinction Awards\n All-Canadian Contest\n All-Canadian Contest\n Results\n Shop\n Online Store\n DairyTrace Tags\n Holstein Gear\n Create Account\n   Login\n #=data#\n .dropdown-submenu {\n position: relative;\n }\n .dropdown-submenu > .dropdown-menu {\n top: 0;\n left: 100%;\n margin-top: 0px;\n margin-left: -1px;\n -webkit-border-radius: 0 6px 6px 6px;\n -moz-border-radius: 0 6px 6px 6px;\n border-radius: 0 6px 6px 6px;\n padding-top: 0px !important;\n padding-bottom: 0px !important;\n background: #D22329 !important;\n }\n .dropdown-submenu:hover > .dropdown-menu {\n display: block;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li a {\n font-size: 13px !important;\n }\n .dropdown-menu .dropdown-submenu .dropdown-menu li:hover a {\n color: #f0f8ff !important;\n text-decoration: underline;\n }\n .dropdown-submenu > a:after {\n display: block;\n content: \" \";\n float: right;\n width: 0;\n height: 0;\n border-color: transparent;\n border-style: solid;\n border-width: 5px 0 5px 5px;\n border-left-color: #cccccc;\n margin-top: 5px;\n margin-right: -10px;\n }\n .dropdown-submenu:hover > a:after {\n border-left-color: #ffffff;\n }\n .dropdown-submenu.pull-left {\n float: none;\n }\n .dropdown-submenu.pull-left > .dropdown-menu {\n left: -100%;\n margin-left: 10px;\n -webkit-border-radius: 6px 0 6px 6px;\n -moz-border-radius: 6px 0 6px 6px;\n border-radius: 6px 0 6px 6px;\n }\n .circle-nav {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 30px;\n text-align: center;\n width: 30px;\n }\n #navLevel1 .navbar-nav li a {\n font-family: loraregular, serif;\n font-size: 1.0em;\n color: #000000;\n }\n Holstein Canada\n .table {\n margin-bottom: 0;\n }\n @media print {\n .k-grid .table thead {\n border-top: 0px !important;\n border-right: 0px !important;\n border-left: 0px !important;\n }\n .table {\n page-break-inside: avoid;\n }\n .table-responsive.k-widget {\n page-break-inside: avoid;\n }\n }\n JACOBS LAUTRUST SHADOW\n HOCANF111576042\n Registration Status: Registered\nEX-94-5YR-CAN\n Purity:\n PB\n    Herd #: 6042\nMS:95 (FA:9 RAH:6 RAW:9) F&L:92 DS:96 RP:91\n National Id: 124000111576042\nBorn: 28 Sep 2019\nB&W *RDC ET GTSM5.33 %INB 13 %R\n Genomic Testing Application\n Order 4-Gen Pedigree\n Lactanet\n $(function () {\n var fb = \"https://www.facebook.com/sharer/sharer.php?u=\";\n var tw = \"http://www.twitter.com/intent/tweet?url=\";\n var animal = \"14528269\";\n var fbu = fb + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&t=HOCANF111576042\";\n var twu = tw + window.location.protocol + \"//\" + window.location.hostname + \":\" + window.location.port + window.location.pathname + \"?animalId=\" + animal + \"&via=HolsteinCanada&HOCANF111576042\";\n //\n $(\"#share-fb\").click(function (e) {\n e.preventDefault();\n window.open(fbu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n $(\"#share-tw\").click(function (e) {\n e.preventDefault();\n window.open(twu, '', 'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,width=585,height=368');\n });\n });\n Sire:\n HOCANM107359260\n COMESTAR LAUTRUST\n PB\nVG-87-6YR-CAN\nEXTRA'17\n Dam:\n HO840F3126918505\n ERBACRES SNAPPLE SHAKIRA-ET\n PB\nEX-97-4E-CAN VG-89-2YR-USA\n10*(0/51)\n Main\n Family Tree\n Owner History\n Progeny\n Genetics\n Conformation\n Lactations\n Show & Awards\n $(function () {\n var xActiveTab = \"tab-genetics\";\n $(\"#\" + xActiveTab).addClass(\"active\");\n var y = $(\"#\" + xActiveTab).text();\n $(\"#active-tab-name\").text(y);\n });\n PRODUCTION\n Panel Density:\n Jul*26\n CAN-GEBV\n 83% Reliability\n Pro$ 315\n GLPI 3074\n 80% Rel\n First Lactation\n Second Lactation\n Third Lactation\n Rating\n %Dev\n Rank\n Milk (kg)\n -131\n 32%\n Fat (kg)\n 24\n 0.23\n 54%\n Protein (kg)\n 30\n 0.28\n 76%\n Somatic Cell Score\n 99\n 44%\n Total Test Day Records\n FUNCTIONAL TRAITS\n Traits\n Rating\n Reliability\n Herd Life\n GPA\n 101\n 84%\n Lactation Persistency\n GPA\n 101\n 79%\n Daughter Fertility\n GPA\n 96\n 77%\n Milking Speed\n GPA\n 100\n 80%\n Milking Temperament\n GPA\n 96\n 76%\n Calving Ability\n GPA\n 95\n 83%\n Daughter Calving Ability\n GPA\n 92\n 76%\n Body Condition Score\n GPA\n 95\n 83%\n Mastitis Resistance\n GEBV\n 101\n 70%\n Metabolic Disease Resistance\n GEBV\n 103\n 72%\n Hoof Health\n GPA\n 94\n 65%\n Feed Efficiency\n GPA\n 102\n 49%\n Methane Efficiency\n GPA\n 97\n 89%\n Body Maintenance Requirements\n GPA\n 104\n 68%\n Calf Health\n GPA\n 103\n 66%\n CONFORMATION\n Jul*26\n CAN-GEBV\n 81% Reliability\n Rating\n Rank\n Conformation\n 4\n 59%\n Rating\n Rank\n Rating\n Rank\n Rump\n 6\n 79\n Dairy Strength\n 4\n 67\n Rump Angle\n 3L\n Stature\n 2T\n Pin Width\n 0\n Height at Front End\n -3\n Loin Strength\n 11\n Chest Width\n -2\n Thurl Placement\n 2A\n Body Depth\n 1\n Rib Structure\n 5\n Rating\n Rank\n Rating\n Rank\n Mammary System\n 1\n 43\n Feet & Legs\n 4\n 65\n Udder Floor\n 6T\n Foot Angle\n 3\n Udder Depth\n 2D\n Heel Depth\n 0\n Udder Texture\n 3\n Bone Quality\n -1\n Median Suspensory\n 4\n Rear Legs Side View\n 1S\n Fore Attachment\n 0\n Rear Legs Rear View\n 5\n Front Teat Placement\n 1W\n Front Legs View\n 2K\n Rear Attachment Height\n -1\n Locomotion\n 5\n Rear Attachment Width\n 1\n Rear Teat Placement\n 1W\n Teat Length\n 1S\n Box 610 (civic: 20 Corporate Place)\n Brantford ON Canada\n N3T 5R4\n Phone: 1-855-756-8300\n Fax: 519-756-3502\n © 2015 Holstein Canada | All Rights Reserved\n Privacy Policy\n  |\n Accessibility Policy\n Collaborative Partners\n .circle {\n background: #fff;\n border-radius: 50%;\n -moz-border-radius: 50%;\n -webkit-border-radius: 50%;\n display: inline-block;\n height: 40px;\n text-align: center;\n width: 40px;\n margin-left: 10px;\n }\n Working...\n Working...\n ×\n Search Tips\n Name:\n MASHAT MILKSTAR LINGER\n MILKSTAR LINGER\n MASHAT MILKSTAR\n Number:\n HOCANF103854320\n 103854320\n Use a comma to search on multiple criteria:\n PREFIX, NAME\n PREFIX, HERD CODE\n PREFIX, SIRE\n PARTIAL NAME, HERDCODE\n Close\n #search-tips-labels span.label {\n padding:4px 6px;\n font-size:12px;\n line-height:30px;\n position: relative;\n }\n var dateHours = 13;\n if (!(dateHours >= 9 && dateHours <= 17) || false) {\n document.getElementById(\"messagenButton\").style.display = \"none\";\n }\n $(function () {\n $(document).ajaxStart(function () {\n $('#ajax-wait').modal('show'); // show loading indicator\n });\n $(document).ajaxStop(function () {\n $('#ajax-wait').modal('hide'); // hide loading indicator\n });\n });\n function openForm() {\n height = 500;\n width = 400;\n t = window.innerHeight - height\n l = window.innerWidth - width\n window.open('https://www.holstein.ca/ccmwa/en-US/chat?embedded=false&q=26F1A5C3-DD2C-45FF-BE75-2BC7B85012D0&promptafter=20000', \"_blank\", 'height=' + height + ', width=' + width + ', left=' + l + ', top=' + t);\n }\n $('body').on('touchstart.dropdown', '.dropdown-menu', function (e) {\n e.stopPropagation();\n });",
+    "genTables": [
+      {
+        "head": "",
+        "rows": [
+          [
+            "PRODUCTION",
+            "Panel Density:"
+          ],
+          [
+            "Jul*26",
+            "CAN-GEBV",
+            "83% Reliability",
+            "Pro$ 315",
+            "GLPI 3074",
+            "80% Rel",
+            ""
+          ],
+          [
+            "First Lactation",
+            "Second Lactation",
+            "Third Lactation",
+            "Rating",
+            "%Dev",
+            "Rank"
+          ],
+          [
+            "Milk (kg)",
+            "",
+            "",
+            "",
+            "-131",
+            "",
+            "32%"
+          ],
+          [
+            "Fat (kg)",
+            "",
+            "",
+            "",
+            "24",
+            "0.23",
+            "54%"
+          ],
+          [
+            "Protein (kg)",
+            "",
+            "",
+            "",
+            "30",
+            "0.28",
+            "76%"
+          ],
+          [
+            "Somatic Cell Score",
+            "",
+            "",
+            "",
+            "99",
+            "",
+            "44%"
+          ],
+          [
+            "Total Test Day Records",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      },
+      {
+        "head": "FUNCTIONAL TRAITS",
+        "rows": [
+          [
+            "FUNCTIONAL TRAITS"
+          ],
+          [
+            "Traits",
+            "",
+            "Rating",
+            "Reliability"
+          ],
+          [
+            "Herd Life",
+            "GPA",
+            "101",
+            "84%"
+          ],
+          [
+            "Lactation Persistency",
+            "GPA",
+            "101",
+            "79%"
+          ],
+          [
+            "Daughter Fertility",
+            "GPA",
+            "96",
+            "77%"
+          ],
+          [
+            "Milking Speed",
+            "GPA",
+            "100",
+            "80%"
+          ],
+          [
+            "Milking Temperament",
+            "GPA",
+            "96",
+            "76%"
+          ],
+          [
+            "Calving Ability",
+            "GPA",
+            "95",
+            "83%"
+          ],
+          [
+            "Daughter Calving Ability",
+            "GPA",
+            "92",
+            "76%"
+          ],
+          [
+            "Body Condition Score",
+            "GPA",
+            "95",
+            "83%"
+          ],
+          [
+            "Mastitis Resistance",
+            "GEBV",
+            "101",
+            "70%"
+          ],
+          [
+            "Metabolic Disease Resistance",
+            "GEBV",
+            "103",
+            "72%"
+          ],
+          [
+            "Hoof Health",
+            "GPA",
+            "94",
+            "65%"
+          ],
+          [
+            "Feed Efficiency",
+            "GPA",
+            "102",
+            "49%"
+          ],
+          [
+            "Methane Efficiency",
+            "GPA",
+            "97",
+            "89%"
+          ],
+          [
+            "Body Maintenance Requirements",
+            "GPA",
+            "104",
+            "68%"
+          ],
+          [
+            "Calf Health",
+            "GPA",
+            "103",
+            "66%"
+          ]
+        ]
+      },
+      {
+        "head": "CONFORMATION",
+        "rows": [
+          [
+            "CONFORMATION"
+          ],
+          [
+            "Jul*26",
+            "CAN-GEBV",
+            "",
+            "81% Reliability"
+          ],
+          [
+            "",
+            "Rating",
+            "",
+            "Rank",
+            ""
+          ],
+          [
+            "Conformation",
+            "4",
+            "",
+            "59%",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Rump",
+            "6",
+            "79",
+            "",
+            "Dairy Strength",
+            "4",
+            "67"
+          ],
+          [
+            "Rump Angle",
+            "3L",
+            "",
+            "",
+            "Stature",
+            "2T",
+            ""
+          ],
+          [
+            "Pin Width",
+            "0",
+            "",
+            "",
+            "Height at Front End",
+            "-3",
+            ""
+          ],
+          [
+            "Loin Strength",
+            "11",
+            "",
+            "",
+            "Chest Width",
+            "-2",
+            ""
+          ],
+          [
+            "Thurl Placement",
+            "2A",
+            "",
+            "",
+            "Body Depth",
+            "1",
+            ""
+          ],
+          [
+            "",
+            "",
+            "",
+            "",
+            "Rib Structure",
+            "5",
+            ""
+          ],
+          [
+            "",
+            "Rating",
+            "Rank",
+            "",
+            "",
+            "Rating",
+            "Rank"
+          ],
+          [
+            "Mammary System",
+            "1",
+            "43",
+            "",
+            "Feet & Legs",
+            "4",
+            "65"
+          ],
+          [
+            "Udder Floor",
+            "6T",
+            "",
+            "",
+            "Foot Angle",
+            "3",
+            ""
+          ],
+          [
+            "Udder Depth",
+            "2D",
+            "",
+            "",
+            "Heel Depth",
+            "0",
+            ""
+          ],
+          [
+            "Udder Texture",
+            "3",
+            "",
+            "",
+            "Bone Quality",
+            "-1",
+            ""
+          ],
+          [
+            "Median Suspensory",
+            "4",
+            "",
+            "",
+            "Rear Legs Side View",
+            "1S",
+            ""
+          ],
+          [
+            "Fore Attachment",
+            "0",
+            "",
+            "",
+            "Rear Legs Rear View",
+            "5",
+            ""
+          ],
+          [
+            "Front Teat Placement",
+            "1W",
+            "",
+            "",
+            "Front Legs View",
+            "2K",
+            ""
+          ],
+          [
+            "Rear Attachment Height",
+            "-1",
+            "",
+            "",
+            "Locomotion",
+            "5",
+            ""
+          ],
+          [
+            "Rear Attachment Width",
+            "1",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Rear Teat Placement",
+            "1W",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          [
+            "Teat Length",
+            "1S",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        ]
+      }
+    ],
+    "error": null,
+    "scrapedAt": "2026-07-29T17:55:12.465Z"
+  }
+]

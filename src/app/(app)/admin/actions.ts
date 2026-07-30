@@ -15,6 +15,39 @@ function guard() {
 const b = (v: FormDataEntryValue | null) => String(v ?? "") === "on" || String(v ?? "") === "true" || String(v ?? "") === "1";
 const n = (v: FormDataEntryValue | null) => { const s = String(v ?? "").trim(); return s === "" ? null : Number(s); };
 
+// ---- Genetics Intelligence Agent -----------------------------------------
+// Saves the Anthropic API key that turns the assistant live. The key is stored
+// in EnvironmentConfig (server-read only) and never echoed back to the browser.
+export async function saveAgentSettings(fd: FormData) {
+  const user = guard();
+  const key = String(fd.get("anthropicApiKey") ?? "").trim();
+  const model = String(fd.get("model") ?? "").trim();
+
+  if (key && key !== "__unchanged__") {
+    if (key.length < 20) throw new Error("That does not look like a valid Anthropic API key.");
+    await prisma.environmentConfig.upsert({
+      where: { key: "agent.anthropicApiKey" },
+      update: { value: key, notes: "Anthropic API key for the Genetics Intelligence Agent" },
+      create: { key: "agent.anthropicApiKey", value: key, notes: "Anthropic API key for the Genetics Intelligence Agent" },
+    });
+    await audit(user, "config", "update", "agent.anthropicApiKey", { set: true });
+  }
+  if (model) {
+    await prisma.environmentConfig.upsert({
+      where: { key: "agent.model" }, update: { value: model }, create: { key: "agent.model", value: model, notes: "Model id for the Genetics Intelligence Agent" },
+    });
+  }
+  revalidatePath("/admin");
+}
+
+// Clears the stored key — turns the assistant back off.
+export async function clearAgentKey() {
+  const user = guard();
+  await prisma.environmentConfig.deleteMany({ where: { key: "agent.anthropicApiKey" } });
+  await audit(user, "config", "update", "agent.anthropicApiKey", { cleared: true });
+  revalidatePath("/admin");
+}
+
 // ---- Breeds -------------------------------------------------------------
 export async function saveBreed(fd: FormData) {
   const user = guard();
@@ -125,5 +158,23 @@ export async function saveUser(fd: FormData) {
     await prisma.user.create({ data: { email, name, role, active, passwordHash: hashPassword(password) } });
   }
   await audit(user, "user", id ? "update" : "create", id || email, { email, name, role, active });
+  revalidatePath("/admin/users");
+}
+
+// Remove a user account entirely. Guards against deleting your own login, and
+// gives a clear message when the account owns records (FK) — deactivate instead.
+export async function deleteUser(fd: FormData) {
+  const user = guard();
+  const id = String(fd.get("id") ?? "");
+  if (!id) throw new Error("No user selected.");
+  if (user?.uid === id) throw new Error("You can't remove the account you're signed in as.");
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) return;
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch {
+    throw new Error("This user has linked records and can't be deleted. Set them inactive instead.");
+  }
+  await audit(user, "user", "delete", id, { email: target.email, name: target.name });
   revalidatePath("/admin/users");
 }

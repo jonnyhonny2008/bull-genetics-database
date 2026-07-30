@@ -176,6 +176,11 @@ model Animal {
   currentStatus  String    @default("active") // see ConfigValue category=animal_status
   notes          String?
   archived       Boolean   @default(false)
+  // Rich Holstein.ca profile captured by the scraper: owners, breeders, the
+  // multi-generation family tree, progeny list, shows/awards. Stored as JSON for
+  // display; the normalized data (evaluations, classifications, identifiers)
+  // still lives in its own tables. Nullable + additive.
+  holsteinProfileJson String?
 
   // --- Sire classification (derived; recomputed by prisma/classify-sires.ts) ------
   // Kept as real indexed columns so the animal lists can filter/sort on them in SQL
@@ -251,6 +256,10 @@ model AnimalIdentifier {
 
   @@index([animalId])
   @@index([idType, idValue])
+  // resolveAncestors() (src/lib/pedigree.ts) looks registration numbers up by
+  // idValue alone — the pedigree text does not say which registry they belong to.
+  // A composite btree cannot seek on its second column, so this needs its own.
+  @@index([idValue])
 }
 
 model AnimalRole {

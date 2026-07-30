@@ -24,10 +24,26 @@ Add a column→trait map in `src/lib/lactanet.ts` (see `INDEX_MAP`, `PROD_MAP`, 
 
 ## 2. Holstein.ca paste importer  (`/holstein-lookup`)
 
-**Compliant by design:** Holstein.ca's robots.txt disallows automated access to `/AIS/`,
-so the app never fetches it. Instead you — signed into your own Holstein.ca session —
+**Paste path (no automated fetching):** you — signed into your own Holstein.ca session —
 open the animal page, copy it (Ctrl+A, Ctrl+C), and paste it in. Code:
-`src/lib/holstein.ts` (`parseHolsteinAis`).
+`src/lib/holstein.ts` (`parseHolsteinAis`). Nothing is requested from holstein.ca.
+
+> ⚠️ **This statement no longer covers the whole app.** The browser scraper added later
+> (`src/lib/holstein-browser.ts`, used by `/api/holstein/lookup` and `/api/holstein/import`)
+> **does** request `/en/AIS/AIS?animalRegNo=…` automatically, via a real Chrome. That is the
+> same path this section was originally written to say the app never fetches, so treat the
+> "compliant by design" claim as applying to the *paste* importer only.
+>
+> Two things to settle before relying on the scraper in production:
+> 1. **robots.txt** — confirm the current holstein.ca robots.txt position on `/AIS/`, and
+>    whether your account/agreement permits automated retrieval. The paste importer exists
+>    precisely because the original answer was "no".
+> 2. **`--disable-blink-features=AutomationControlled`** (`holstein-browser.ts`) exists only
+>    to hide the automation signal from bot detection. Decide deliberately whether to keep it.
+>
+> The interstitial handling added alongside this note is strictly passive — it waits for a
+> challenge to clear on its own and otherwise fails with a clear error. It does not solve
+> CAPTCHAs or evade bot detection, and should not be extended to.
 
 From the pasted **Main** (AIS) page it extracts and imports:
 - **Identity:** name, registration, national ID, birth date, purity, herd #, colour,

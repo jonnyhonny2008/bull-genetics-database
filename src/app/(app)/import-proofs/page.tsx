@@ -14,7 +14,7 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
   if (!can(user?.role, "record:write")) redirect("/dashboard");
 
   const files = listProofFiles();
-  const totalAnimals = await prisma.animal.count();
+  const totalAnimals = await prisma.animal.count({ where: { archived: false } });
 
   return (
     <div>

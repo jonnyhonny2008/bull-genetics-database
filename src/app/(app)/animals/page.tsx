@@ -17,7 +17,8 @@ const PAGE_SIZE = 50;
 
 const listInclude = {
   breed: true,
-  identifiers: { where: { active: true, isPrimary: true }, take: 1 },
+  // Load the primary registration AND the NAAB code (shown under the name).
+  identifiers: { where: { active: true, OR: [{ isPrimary: true }, { idType: "naab" }] }, select: { idType: true, idValue: true, isPrimary: true } },
   evaluations: { where: { isPreferred: true }, take: 1 },
   _count: { select: { evaluations: true, milkRecords: true, classifications: true } },
 } satisfies Prisma.AnimalInclude;
@@ -151,7 +152,8 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
               <th className="th">Records</th>
             </>}>
               {rows.map((a) => {
-                const primary = a.identifiers[0];
+                const primary = a.identifiers.find((i) => i.isPrimary);
+                const naab = a.identifiers.find((i) => i.idType === "naab")?.idValue ?? null;
                 const preferredEval = a.evaluations[0];
                 const shown = sortCol ? a.__sortVal : (preferredEval?.lpi ?? null);
                 return (
@@ -159,6 +161,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
                     <td className="td">
                       <Link href={`/animals/${a.id}`} className="link font-medium">{a.primaryName}</Link>
                       {a.shortName && <span className="ml-1 text-xs text-slate-400">({a.shortName})</span>}
+                      {naab && <span className="mt-0.5 block font-mono text-[10px] text-slate-400" title="NAAB stud code">NAAB {naab}</span>}
                     </td>
                     <td className="td" title={SEXES[a.sex as keyof typeof SEXES] ?? a.sex}>{a.breed?.breedName ?? <span className="text-amber-600">—</span>}</td>
                     <td className="td">

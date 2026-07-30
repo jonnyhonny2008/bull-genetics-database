@@ -86,7 +86,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
                     <div className="text-slate-600">Extraction: {r.capture.extractionStatus}</div>
                     {r.capture.storedFileUrl && <div className="break-all text-xs text-slate-400">File: {r.capture.storedFileUrl}</div>}
                     {r.capture.notes && <div className="mt-1 text-xs text-slate-500">{r.capture.notes}</div>}
-                    {r.matchedAnimal && <div className="mt-1">Currently linked: <Link className="link" href={`/animals/${r.matchedAnimalId}`}>{r.matchedAnimal.primaryName}</Link></div>}
+                    {r.matchedAnimal && !r.matchedAnimal.archived && <div className="mt-1">Currently linked: <Link className="link" href={`/animals/${r.matchedAnimalId}`}>{r.matchedAnimal.primaryName}</Link></div>}
                   </div>
 
                   <div className="flex flex-wrap gap-2">

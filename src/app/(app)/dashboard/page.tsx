@@ -29,11 +29,11 @@ export default async function DashboardPage() {
     prisma.breed.findMany(),
     prisma.animal.groupBy({ by: ["breedId"], where: { archived: false }, _count: true }),
     prisma.animal.groupBy({ by: ["sireType", "proofStatus"], where: { archived: false }, _count: true }),
-    prisma.geneticEvaluation.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
-    prisma.milkRecord.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
-    prisma.classificationRecord.findMany({ take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
+    prisma.geneticEvaluation.findMany({ where: { animal: { archived: false } }, take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
+    prisma.milkRecord.findMany({ where: { animal: { archived: false } }, take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
+    prisma.classificationRecord.findMany({ where: { animal: { archived: false } }, take: 5, orderBy: { createdAt: "desc" }, include: { animal: true, source: true } }),
     prisma.importReviewQueue.findMany({ where: { status: { in: ["pending", "conflict_review", "needs_more_info"] } }, include: { capture: { include: { source: true } }, matchedAnimal: true } }),
-    prisma.sourceCapture.findMany({ take: 5, orderBy: { capturedAt: "desc" }, include: { source: true, animal: true } }),
+    prisma.sourceCapture.findMany({ where: { OR: [{ animalId: null }, { animal: { archived: false } }] }, take: 5, orderBy: { capturedAt: "desc" }, include: { source: true, animal: true } }),
     prisma.animal.count({ where: { archived: false, identifiers: { none: { isPrimary: true, active: true } } } }),
     prisma.animalIdentifier.groupBy({ by: ["idValue"], where: { idType: { in: ["registration_ca", "registration_us", "registration_int", "naab", "semen_code"] } }, _count: { idValue: true }, having: { idValue: { _count: { gt: 1 } } } }),
     prisma.geneticEvaluation.count({ where: { approvalStatus: "pending" } }),
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Total animals" value={fmtNum(totalAnimals)} href="/animals" tone="good" />
-        <StatCard label="Proof rounds" value={fmtNum(totalRounds)} href="/proofs" />
+        <StatCard label="Proof rounds" value={fmtNum(totalRounds)} href="/analysis" />
         <StatCard label="Pending review" value={pendingReviews.length} href="/review" tone={pendingReviews.length ? "warn" : "default"} />
         <StatCard label="Needs approval" value={needingApproval} tone={needingApproval ? "warn" : "default"} />
         <StatCard label="Missing primary ID" value={fmtNum(missingPrimary)} tone={missingPrimary ? "warn" : "default"} />
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
                 <tr key={r.reviewId}>
                   <td className="td">{r.capture.source?.sourceName ?? "—"}</td>
                   <td className="td">{r.proposedRecordType}</td>
-                  <td className="td">{r.matchedAnimal ? <Link className="link" href={`/animals/${r.matchedAnimalId}`}>{r.matchedAnimal.primaryName}</Link> : <span className="text-slate-400">new animal</span>}</td>
+                  <td className="td">{r.matchedAnimal && !r.matchedAnimal.archived ? <Link className="link" href={`/animals/${r.matchedAnimalId}`}>{r.matchedAnimal.primaryName}</Link> : <span className="text-slate-400">{r.matchedAnimal ? "unmatched" : "new animal"}</span>}</td>
                   <td className="td"><Badge tone={r.status === "conflict_review" ? "red" : "amber"}>{r.status}</Badge></td>
                 </tr>
               ))}

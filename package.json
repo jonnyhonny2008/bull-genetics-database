@@ -12,6 +12,8 @@
     "seed:config:prod": "dotenv -e .env.production -- tsx prisma/seed-config.ts",
     "seed:demo": "dotenv -e .env.demo -- tsx prisma/seed-demo.ts",
     "import:all": "tsx prisma/import-all-bulls.ts",
+    "import:holstein:demo": "dotenv -e .env.demo -- tsx prisma/import-holstein.ts",
+    "import:holstein:prod": "dotenv -e .env.production -- tsx prisma/import-holstein.ts",
     "setup:demo": "npm run db:generate && npm run migrate:demo && npm run seed:config:demo && npm run seed:demo",
     "setup:prod": "npm run db:generate && npm run migrate:prod && npm run seed:config:prod",
     "reset:demo": "dotenv -e .env.demo -- prisma migrate reset --force --skip-generate && npm run seed:config:demo && npm run seed:demo",
@@ -20,14 +22,20 @@
     "build": "prisma generate && next build",
     "start:demo": "dotenv -e .env.demo -- next start -p 3000",
     "start:prod": "dotenv -e .env.production -- next start -p 3100",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:agent": "dotenv -e .env.production -- tsx --test src/lib/agent/agent.test.ts",
+    "test:reports": "dotenv -e .env.production -- tsx --test src/lib/proof-change.test.ts",
+    "test:holstein": "tsx --test src/lib/holstein-parse.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed-config.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@prisma/client": "5.22.0",
-    "next": "14.2.15",
+    "exceljs": "^4.4.0",
+    "next": "14.2.35",
+    "playwright-core": "^1.62.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "zod": "3.23.8"

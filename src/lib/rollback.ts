@@ -87,6 +87,19 @@ export function isRollbackRound(d: Date): boolean {
   return d.getUTCMonth() === 3; // 0-indexed: 3 = April
 }
 
+/**
+ * Official proof rounds are April, August and December (Lactanet's three yearly
+ * evaluation releases); every other month is an interim run. Month alone is
+ * authoritative — evaluationDate is the 1st of the run's month in UTC.
+ */
+export function isOfficialProof(d: Date): boolean {
+  const m = d.getUTCMonth();
+  return m === 3 || m === 7 || m === 11; // April, August, December
+}
+export function proofKind(d: Date): "official" | "interim" {
+  return isOfficialProof(d) ? "official" : "interim";
+}
+
 // Traits we score. The first five drive the headline; the rest feed the
 // "remaining averaged" weight.
 const HEADLINE_WEIGHTS: Record<string, number> = { LPI: 32, CONF: 22, MILK: 16, FAT: 8, PROT: 8 };

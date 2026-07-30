@@ -5,14 +5,24 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { audit } from "@/lib/audit";
 import { recomputePreferredForAnimal } from "@/lib/priority";
-import { parseHolsteinAis, buildAisUrl } from "@/lib/holstein";
-import { packTraits } from "@/lib/eval-traits";
+import { parseHolsteinAis, parseHolsteinExtract, buildAisUrl, type HolsteinRawExtract } from "@/lib/holstein";
+import { importParsedHolstein, type HolsteinImportDeps } from "@/lib/holstein-import";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-// Parse a Holstein.ca AIS page the user pasted from their own signed-in session,
-// then create/update the animal with a genomic evaluation, classification record,
-// and pedigree. No automated fetch of Holstein.ca occurs.
+// Resolve the breed/source ids the upsert needs (shared by both flows).
+async function resolveDeps(userId?: string | null): Promise<Omit<HolsteinImportDeps, "captureId" | "animalIdParam">> {
+  const [holstein, lactanet, holCanada] = await Promise.all([
+    prisma.breed.findUnique({ where: { breedCode: "HO" } }),
+    prisma.source.findUnique({ where: { sourceName: "LactanetGen" } }),
+    prisma.source.findUnique({ where: { sourceName: "Holstein Canada" } }),
+  ]);
+  return { breedId: holstein?.breedId ?? null, lactanetSourceId: lactanet?.sourceId ?? null, holCanadaSourceId: holCanada?.sourceId ?? null, userId };
+}
+
+// -------------------------------------------------------------------------
+// Single animal: user pasted one AIS page from their browser.
+// -------------------------------------------------------------------------
 export async function importHolsteinPaste(fd: FormData) {
   const user = currentUser();
   if (!can(user?.role, "record:write")) throw new Error("Not authorized to import records.");
@@ -26,96 +36,72 @@ export async function importHolsteinPaste(fd: FormData) {
   const regNo = parsed.regNo ?? regInput;
   if (!regNo) throw new Error("Could not find a registration number in the pasted page.");
 
-  const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
-  const lactanet = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
-  const holCanada = await prisma.source.findUnique({ where: { sourceName: "Holstein Canada" } });
-
-  // A capture recording the pasted page.
+  const deps = await resolveDeps(user?.uid);
   const capture = await prisma.sourceCapture.create({
     data: {
-      sourceId: holCanada?.sourceId, captureType: "browser_lookup", sourceUrl: buildAisUrl(regNo, animalIdParam || undefined),
+      sourceId: deps.holCanadaSourceId ?? undefined, captureType: "browser_lookup", sourceUrl: buildAisUrl(regNo, animalIdParam || undefined),
       capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 0.9,
       rawExtractedDataJson: JSON.stringify(parsed), notes: `Holstein.ca AIS paste for ${regNo}`,
     },
   });
 
-  // Match or create the animal.
-  const existing = await prisma.animalIdentifier.findFirst({ where: { idType: "registration_ca", idValue: regNo }, select: { animalId: true } });
-  let animalId = existing?.animalId ?? null;
-  const noteBits = [parsed.purity ? `Purity ${parsed.purity}` : null, parsed.herdNo ? `Herd #${parsed.herdNo}` : null, parsed.inbreeding != null ? `${parsed.inbreeding}%INB` : null, parsed.rValue != null ? `${parsed.rValue}%R` : null].filter(Boolean).join(" · ");
-
-  if (!animalId) {
-    const created = await prisma.animal.create({
-      data: {
-        primaryName: parsed.name ?? regNo, sex: parsed.sex, breedId: holstein?.breedId ?? null,
-        birthDate: parsed.birthDate ? new Date(parsed.birthDate + "T00:00:00Z") : null,
-        countryOfOrigin: "CA", currentStatus: "active", createdById: user?.uid,
-        notes: `Imported from Holstein.ca (${regNo}). ${noteBits}`,
-      },
-    });
-    animalId = created.id;
-    await prisma.animalIdentifier.create({ data: { animalId, idType: "registration_ca", idValue: regNo, issuingCountry: "CA", issuingOrganization: "Holstein Canada", sourceId: holCanada?.sourceId, isPrimary: true } });
-    if (parsed.nationalId) await prisma.animalIdentifier.create({ data: { animalId, idType: "breed_assoc", idValue: parsed.nationalId, issuingOrganization: "Holstein Canada", sourceId: holCanada?.sourceId } });
-    await prisma.animalRole.create({ data: { animalId, roleType: parsed.sex === "M" ? "proven_bull" : "cow", active: true } });
-    if (parsed.sex === "F") await prisma.animalRole.create({ data: { animalId, roleType: "dam", active: true } });
-  }
-  await prisma.sourceCapture.update({ where: { captureId: capture.captureId }, data: { animalId } });
-
-  // --- Genomic evaluation (source = LactanetGen; CAN-GEBV surfaced on Holstein.ca) ---
-  if (parsed.evaluation && parsed.traits.length) {
-    const evExisting = await prisma.geneticEvaluation.findFirst({ where: { animalId, proofRun: parsed.evaluation.runLabel, sourceId: lactanet?.sourceId } });
-    if (evExisting) await prisma.geneticEvaluation.delete({ where: { evaluationId: evExisting.evaluationId } });
-    const extra = [
-      { code: "A2", text: parsed.betaCasein }, { code: "COLOUR", text: parsed.colour },
-    ].filter((x) => x.text).map((x) => ({ traitCode: x.code, numericValue: null, textValue: x.text!, reliability: null, percentileRank: null }));
-    const packed = packTraits([...parsed.traits.map((t) => ({ traitCode: t.code, numericValue: t.numericValue, textValue: t.textValue, reliability: t.reliability, percentileRank: t.percentileRank })), ...extra]);
-    await prisma.geneticEvaluation.create({
-      data: {
-        animalId, sourceId: lactanet?.sourceId, captureId: capture.captureId,
-        evaluationDate: new Date(parsed.evaluation.runDate + "T00:00:00Z"), proofRun: parsed.evaluation.runLabel,
-        countrySystem: "CA", breedContext: "Holstein", reliabilityOverall: parsed.evaluation.reliability,
-        approvalStatus: "approved", approvedById: user?.uid, approvedAt: new Date(), createdById: user?.uid,
-        notes: "Genomic evaluation captured from Holstein.ca.",
-        traitsJson: packed.traitsJson, ...packed.columns,
-      },
-    });
-  }
-
-  // --- Classification (source = Holstein Canada) ---
-  if (parsed.classification) {
-    // Estimate classification date from age code (e.g. "2YR") applied to birth date.
-    let clsDate = new Date();
-    if (parsed.birthDate) {
-      const ageYears = parseInt((parsed.classification.age ?? "").match(/(\d+)/)?.[1] ?? "2") || 2;
-      clsDate = new Date(parsed.birthDate + "T00:00:00Z");
-      clsDate.setUTCFullYear(clsDate.getUTCFullYear() + ageYears);
-    }
-    const exCls = await prisma.classificationRecord.findFirst({ where: { animalId, finalScore: parsed.classification.score, classificationCode: parsed.classification.code, sourceId: holCanada?.sourceId } });
-    if (!exCls) {
-      const cls = await prisma.classificationRecord.create({
-        data: {
-          animalId, sourceId: holCanada?.sourceId, captureId: capture.captureId, classificationDate: clsDate,
-          ageAtClassification: parsed.classification.age, finalScore: parsed.classification.score, classificationCode: parsed.classification.code,
-          approvalStatus: "approved", approvedById: user?.uid, approvedAt: new Date(), createdById: user?.uid,
-          notes: "Classification captured from Holstein.ca.",
-        },
-      });
-      for (const s of parsed.classificationSections) {
-        await prisma.classificationTraitValue.create({ data: { classificationId: cls.classificationId, traitCode: s.code, traitName: s.name, traitValue: s.value, displayOrder: 0 } });
-      }
-    }
-  }
-
-  // --- Pedigree reference ---
-  if (parsed.pedigree.length) {
-    const summary = parsed.pedigree.map((p) => `${p.relation.toUpperCase()}: ${p.name ?? "?"}${p.reg ? ` (${p.reg})` : ""}`).join(" · ");
-    await prisma.pedigreeReference.deleteMany({ where: { animalId, source: { sourceName: "Holstein Canada" } } });
-    await prisma.pedigreeReference.create({ data: { animalId, sourceId: holCanada?.sourceId, sourceUrl: buildAisUrl(regNo, animalIdParam || undefined), displayStatus: "linked", lastCheckedAt: new Date(), notes: `Pedigree (Holstein.ca): ${summary}` } });
-  }
-
-  await recomputePreferredForAnimal(animalId);
-  await audit(user, "animal", "import", animalId, { source: "Holstein.ca", regNo, traits: parsed.traits.length, warnings: parsed.warnings });
+  const res = await importParsedHolstein(prisma, parsed, regNo, { ...deps, captureId: capture.captureId, animalIdParam: animalIdParam || null });
+  await recomputePreferredForAnimal(res.animalId);
+  await audit(user, "animal", "import", res.animalId, { source: "Holstein.ca (paste)", regNo, traits: parsed.traits.length, warnings: parsed.warnings });
 
   revalidatePath("/animals");
-  redirect(`/animals/${animalId}`);
+  redirect(`/animals/${res.animalId}`);
+}
+
+// -------------------------------------------------------------------------
+// Bulk: user uploads the JSON batch produced by scripts/holstein-extract.js.
+// Imports every animal in one pass, then reports a summary.
+// -------------------------------------------------------------------------
+export async function importHolsteinBatch(fd: FormData) {
+  const user = currentUser();
+  if (!can(user?.role, "record:write")) throw new Error("Not authorized to import records.");
+
+  const file = fd.get("batch") as File | null;
+  const pasted = String(fd.get("batchJson") ?? "").trim();
+  let text = pasted;
+  if (!text && file && typeof file.text === "function") text = (await file.text()).trim();
+  if (!text) throw new Error("Upload the scraper's holstein-batch-*.json file (or paste its contents).");
+
+  let records: HolsteinRawExtract[];
+  try {
+    const json = JSON.parse(text);
+    records = Array.isArray(json) ? json : [json];
+  } catch {
+    throw new Error("That file isn't valid JSON — upload the holstein-batch-*.json produced by the scraper.");
+  }
+  if (!records.length) throw new Error("The batch file has no records.");
+
+  const deps = await resolveDeps(user?.uid);
+  const capture = await prisma.sourceCapture.create({
+    data: {
+      sourceId: deps.holCanadaSourceId ?? undefined, captureType: "browser_lookup",
+      originalFileName: (file && file.name) || "holstein-batch.json",
+      capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 0.95,
+      notes: `Holstein.ca batch scrape — ${records.length} animal(s)`,
+    },
+  });
+
+  let total = 0, created = 0, evals = 0, cls = 0, errors = 0, skipped = 0;
+  const animalIds = new Set<string>();
+  for (const rec of records) {
+    if ((!rec.mainText || !rec.mainText.trim()) && rec.error) { skipped++; continue; }
+    try {
+      const parsed = parseHolsteinExtract(rec);
+      const res = await importParsedHolstein(prisma, parsed, rec.reg ?? "", { ...deps, captureId: capture.captureId, animalIdParam: rec.animalId ?? null });
+      total++; if (res.created) created++; if (res.evaluationWritten) evals++; if (res.classificationWritten) cls++;
+      animalIds.add(res.animalId);
+    } catch { errors++; }
+  }
+  for (const id of animalIds) await recomputePreferredForAnimal(id);
+
+  await audit(user, "system", "import", capture.captureId, { source: "Holstein.ca (batch)", total, created, evals, cls, errors, skipped });
+
+  revalidatePath("/animals");
+  const q = new URLSearchParams({ imported: String(total), created: String(created), evals: String(evals), cls: String(cls), errors: String(errors), skipped: String(skipped) });
+  redirect(`/holstein-lookup?${q.toString()}`);
 }

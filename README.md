@@ -52,7 +52,10 @@ Open the URL and log in.
 | Sales | `sales@studgenetics.local` | `Sales#12345` | demo only |
 | Genetic Consultant | `consultant@studgenetics.local` | `Consult#12345` | demo only |
 
-> ⚠️ **Change the admin password before real production use** — see [docs/GO-LIVE.md](docs/GO-LIVE.md).
+> ⚠️ The `@studgenetics.local` accounts above are **demo only**. Production (Supabase) holds
+> only the two Blondin admin accounts, whose passwords are set out-of-band via
+> `prisma/set-blondin-admins.ts` (`--rotate` to generate strong ones) and are **not** stored
+> in the repo. See [docs/GO-LIVE.md](docs/GO-LIVE.md).
 
 ---
 
@@ -79,16 +82,23 @@ Open the URL and log in.
   traits, classification, and production.
 - **Admin**: breeds, trait definitions, sources, source priority rules, users/roles,
   environment info, data-quality & duplicate dashboards, audit log.
+- **AI Genetics Intelligence Agent**: a floating assistant on every page that answers
+  natural-language questions, calls read-only database tools, and cites the exact
+  records behind every answer. Off until an admin saves an Anthropic API key in
+  **Admin Settings → AI Genetics Assistant**. Full details: [docs/AGENT.md](docs/AGENT.md).
 
 ---
 
 ## Stack
 
 - **Next.js 14** (App Router, React 18, TypeScript, Server Actions)
-- **Prisma 5** ORM with **SQLite** (one DB file per environment; Postgres-swappable)
+- **Prisma 5** ORM on **PostgreSQL** — production runs on Supabase (`.env.production`).
+  (The schema began on SQLite; some older docs below still say SQLite.)
 - **Tailwind CSS**
 - Zero-dependency auth: `scrypt` password hashing + HMAC-signed session cookie
 - Full **audit logging** on important writes
+- **AI Genetics Assistant** — Anthropic `@anthropic-ai/sdk`, activated by an admin key
+  (see [docs/AGENT.md](docs/AGENT.md))
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 
@@ -142,5 +152,6 @@ bull-stud-platform/
 - [UPLOAD-REVIEW.md](docs/UPLOAD-REVIEW.md) — the upload → capture → review pipeline
 - [EXTENDING.md](docs/EXTENDING.md) — add traits/breeds; extend to CRM, pedigree index,
   public catalogue, mating, semen sales, analytics
+- [AGENT.md](docs/AGENT.md) — the AI Genetics Intelligence Agent (setup, tools, safety)
 - [GO-LIVE.md](docs/GO-LIVE.md) — move from demo approval to real production use
 - [BACKUP.md](docs/BACKUP.md) — back up & export data

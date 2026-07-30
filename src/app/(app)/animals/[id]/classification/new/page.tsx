@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function NewClassificationPage({ params }: { params: { id: string } }) {
   const user = currentUser();
   if (!can(user?.role, "record:write")) redirect(`/animals/${params.id}`);
-  const animal = await prisma.animal.findUnique({ where: { id: params.id }, include: { breed: true } });
+  const animal = await prisma.animal.findFirst({ where: { id: params.id, archived: false }, include: { breed: true } });
   if (!animal) notFound();
   const [defs, sources] = await Promise.all([
     prisma.traitDefinition.findMany({ where: { domain: "classification", active: true }, orderBy: { displayOrder: "asc" } }),

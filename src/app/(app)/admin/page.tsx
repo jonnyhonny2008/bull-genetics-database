@@ -5,6 +5,9 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { PageHeader, Card, Table, Badge } from "@/components/ui";
 import { fmtDate, relTime } from "@/lib/format";
+import { getAgentConfig, maskKey } from "@/lib/agent/config";
+import { AGENT_TOOL_NAMES } from "@/lib/agent/agent";
+import { saveAgentSettings, clearAgentKey } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +20,9 @@ export default async function AdminPage() {
     prisma.role.findMany({ orderBy: { displayOrder: "asc" } }),
     prisma.configValue.findMany({ orderBy: [{ category: "asc" }, { displayOrder: "asc" }] }),
     prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
-    Promise.all([prisma.animal.count(), prisma.user.count(), prisma.source.count(), prisma.traitDefinition.count()]),
+    Promise.all([prisma.animal.count({ where: { archived: false } }), prisma.user.count(), prisma.source.count(), prisma.traitDefinition.count()]),
   ]);
+  const agentCfg = await getAgentConfig();
   const envMap = new Map(env.map((e) => [e.key, e.value]));
   const byCat = new Map<string, typeof configValues>();
   for (const c of configValues) { const a = byCat.get(c.category) ?? []; a.push(c); byCat.set(c.category, a); }
@@ -26,6 +30,36 @@ export default async function AdminPage() {
   return (
     <div>
       <PageHeader title="Admin Settings" subtitle="Roles, vocabularies, users, and configuration." />
+
+      {/* Genetics Intelligence Agent — paste a key here to turn the assistant live. */}
+      <Card
+        title="AI Genetics Assistant"
+        className="mb-4"
+        actions={<Badge tone={agentCfg.configured ? "green" : "slate"}>{agentCfg.configured ? "Live" : "Not configured"}</Badge>}
+      >
+        <p className="mb-3 text-sm text-slate-600">
+          The assistant is a genetics analyst that answers questions and investigates the database. It goes live the
+          moment you save an Anthropic API key below — nothing is sent to Anthropic until then. The key is stored
+          server-side and never shown again.
+        </p>
+        <form action={saveAgentSettings} className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[280px] flex-1">
+            <label className="label">Anthropic API key {agentCfg.configured && <span className="text-slate-400">(currently {maskKey(agentCfg.apiKey)}{agentCfg.source === "env" ? ", from env" : ""})</span>}</label>
+            <input name="anthropicApiKey" type="password" autoComplete="off" placeholder={agentCfg.configured ? "•••••• (leave blank to keep)" : "sk-ant-…"} className="input font-mono" />
+          </div>
+          <div>
+            <label className="label">Model</label>
+            <input name="model" defaultValue={agentCfg.model} className="input min-w-[160px]" />
+          </div>
+          <button type="submit" className="btn-primary">Save</button>
+        </form>
+        <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-400">
+          <span>Tools: {AGENT_TOOL_NAMES.join(", ")}.</span>
+          {agentCfg.source === "settings" && (
+            <form action={clearAgentKey}><button type="submit" className="link">Remove key (turn off)</button></form>
+          )}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="System">

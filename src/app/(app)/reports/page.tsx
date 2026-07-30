@@ -1,0 +1,41 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/constants";
+import { PageHeader, Card, Badge } from "@/components/ui";
+
+export const dynamic = "force-dynamic";
+
+// One entry per report. Add a report by appending here + its page under /reports.
+const REPORTS = [
+  {
+    href: "/reports/proof-changes",
+    title: "Proof Change Report",
+    tag: "NAAB bulls",
+    blurb: "How each NAAB bull moved between its latest proof and the previous official (April / August / December) proof. Ranks bulls by their biggest changes, flags any trait that moved 10% or more, and exports to Excel.",
+    ready: true,
+  },
+];
+
+export default function ReportsPage() {
+  const user = currentUser();
+  if (!can(user?.role, "compare:read")) redirect("/dashboard");
+
+  return (
+    <div>
+      <PageHeader title="Reports" subtitle="Generate a report at the click of a button." />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {REPORTS.map((r) => (
+          <Card key={r.href} title={r.title} actions={<Badge tone="brand">{r.tag}</Badge>}>
+            <p className="mb-4 text-sm text-slate-600">{r.blurb}</p>
+            {r.ready ? (
+              <Link href={r.href} className="btn-primary">Generate report →</Link>
+            ) : (
+              <span className="btn-secondary cursor-not-allowed opacity-50">Coming soon</span>
+            )}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

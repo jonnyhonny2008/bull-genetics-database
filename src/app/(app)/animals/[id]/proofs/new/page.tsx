@@ -11,7 +11,7 @@ export default async function NewProofPage({ params }: { params: { id: string } 
   const user = currentUser();
   if (!can(user?.role, "record:write")) redirect(`/animals/${params.id}`);
 
-  const animal = await prisma.animal.findUnique({ where: { id: params.id }, include: { breed: true } });
+  const animal = await prisma.animal.findFirst({ where: { id: params.id, archived: false }, include: { breed: true } });
   if (!animal) notFound();
 
   const species = animal.breed?.speciesType ?? "dairy";

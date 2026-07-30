@@ -4,6 +4,7 @@ import { can, ROLES } from "@/lib/constants";
 import { EnvBanner } from "@/components/EnvBanner";
 import { Sidebar, type NavItem } from "@/components/Sidebar";
 import { logoutAction } from "@/app/actions/session";
+import { GeneticsAssistant } from "@/components/GeneticsAssistant";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = currentUser();
@@ -12,11 +13,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const all: (NavItem & { need?: string })[] = [
     { href: "/dashboard", label: "Dashboard", group: "Overview" },
     { href: "/animals", label: "Animals", group: "Records", need: "animal:read" },
-    { href: "/proofs", label: "Genetic Proofs", group: "Records", need: "animal:read" },
-    { href: "/milk", label: "Milk Records", group: "Records", need: "animal:read" },
-    { href: "/classification", label: "Classification", group: "Records", need: "animal:read" },
-    { href: "/comparison", label: "Comparisons", group: "Records", need: "compare:read" },
     { href: "/analysis", label: "Proof Trends", group: "Records", need: "compare:read" },
+    { href: "/reports", label: "Reports", group: "Records", need: "compare:read" },
     { href: "/uploads", label: "Uploads", group: "Data In", need: "upload:write" },
     { href: "/import-proofs", label: "Proof Import", group: "Data In", need: "record:write" },
     { href: "/holstein-lookup", label: "Holstein.ca Lookup", group: "Data In", need: "upload:write" },
@@ -32,7 +30,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <EnvBanner />
       <div className="flex min-h-[calc(100vh-24px)]">
-        <aside className="hidden w-60 shrink-0 flex-col bg-brand-900 md:flex">
+        {/* sticky + self-start + h-screen keeps the nav pinned while the page
+            scrolls (a stretched flex item has no room to stick). */}
+        <aside className="hidden w-60 shrink-0 flex-col bg-brand-900 md:sticky md:top-0 md:flex md:h-screen md:self-start">
           <div className="flex items-center gap-2 px-4 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">BS</div>
             <div className="leading-tight">
@@ -61,9 +61,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </form>
             </div>
           </header>
-          <main className="flex-1 overflow-x-hidden p-5">{children}</main>
+          {/* pb-24 keeps the floating assistant button from covering page content */}
+          <main className="flex-1 overflow-x-hidden p-5 pb-24">{children}</main>
         </div>
       </div>
+      <GeneticsAssistant />
     </div>
   );
 }
