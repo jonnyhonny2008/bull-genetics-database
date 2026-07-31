@@ -32,6 +32,23 @@ test("compares latest against the previous OFFICIAL proof (skips interims)", () 
   assert.equal(raw.lpiDelta, 100);
 });
 
+test("mode 'consecutive' compares against the immediately previous run (interim or official)", () => {
+  const evals = [
+    { proofRun: "July 2026", evaluationDate: d("2026-07-01"), traitsJson: pack({ LPI: 3100, MILK: 500 }) },  // latest interim
+    { proofRun: "June 2026", evaluationDate: d("2026-06-01"), traitsJson: pack({ LPI: 3050, MILK: 480 }) },  // interim — now the compared 'previous'
+    { proofRun: "April 2026", evaluationDate: d("2026-04-01"), traitsJson: pack({ LPI: 3000, MILK: 400 }) }, // previous official
+  ];
+  const raw = computeRawChange(evals, defMap, { mode: "consecutive" });
+  assert.equal(raw.found, true);
+  assert.equal(raw.latestRun, "July 2026");
+  assert.equal(raw.previousRun, "June 2026"); // the interim, not April
+  assert.equal(raw.lpiDelta, 50);
+  // Default (official) mode still skips the interim and compares to April.
+  const off = computeRawChange(evals, defMap);
+  assert.equal(off.previousRun, "April 2026");
+  assert.equal(off.lpiDelta, 100);
+});
+
 test("returns found=false when there is no previous official proof", () => {
   const raw = computeRawChange([
     { proofRun: "July 2026", evaluationDate: d("2026-07-01"), traitsJson: pack({ LPI: 3100 }) },

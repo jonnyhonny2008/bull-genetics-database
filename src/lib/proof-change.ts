@@ -23,6 +23,12 @@ import type { Prisma } from "@prisma/client";
 import { isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap, type TraitDefLite } from "./eval-traits";
 
+// How the "previous" side is auto-selected when neither round is pinned:
+//   "official"    — latest proof vs the previous OFFICIAL (Apr/Aug/Dec) round.
+//   "consecutive" — latest proof vs the immediately previous run of ANY kind
+//                   (interim or official). This is the interim-to-interim view.
+export type ChangeMode = "official" | "consecutive";
+
 /** The nine traits the report always focuses on, in display order. */
 export const KEY_TRAITS: { code: string; label: string }[] = [
   { code: "CONF", label: "Conformation" },
@@ -114,7 +120,7 @@ type EvalLite = { proofRun: string | null; evaluationDate: Date; traitsJson: str
 export function computeRawChange(
   evals: EvalLite[],
   defMap: Map<string, TraitDefLite>,
-  opts: { from?: string; to?: string } = {},
+  opts: { from?: string; to?: string; mode?: ChangeMode } = {},
 ): RawBull {
   const empty: RawBull = { found: false, latestRun: null, previousRun: null, lpiDelta: null, changes: [] };
   const sorted = [...evals].sort((a, b) => b.evaluationDate.getTime() - a.evaluationDate.getTime());
@@ -126,7 +132,11 @@ export function computeRawChange(
 
   const previous = opts.from
     ? sorted.find((e) => periodKey(e.evaluationDate) === opts.from)
-    : sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime() && isOfficialProof(e.evaluationDate));
+    : (opts.mode ?? "official") === "consecutive"
+      // Interim-to-interim: the immediately previous run, whatever kind it is.
+      ? sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime())
+      // Default: the most recent OFFICIAL round strictly before the latest.
+      : sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime() && isOfficialProof(e.evaluationDate));
   // The earlier side must actually be earlier, or there is nothing to compare.
   if (!previous || previous.evaluationDate.getTime() >= latest.evaluationDate.getTime()) return empty;
 
@@ -231,6 +241,8 @@ export interface ProofChangeReport {
   breed: string;
   significantOnly: boolean;
   sdMult: number;
+  /** Auto "previous" selection: previous-official vs immediately-previous-run. */
+  mode: ChangeMode;
   /** Every proof round available across the NAAB bulls, newest first. */
   periods: ProofPeriod[];
   from: string;          // "" = auto (previous official)
@@ -241,8 +253,13 @@ export interface ProofChangeReport {
 
 const SORTABLE = new Set(["lpi", "flags", "name", ...KEY_TRAIT_CODES.map((c) => c.toLowerCase())]);
 
-/** Build the whole report from URL params — shared by the page and the export. */
-export async function getProofChangeReport(sp: Record<string, string | undefined>): Promise<ProofChangeReport> {
+/** Build the whole report from URL params — shared by the page and the export.
+ *  `opts.mode` picks the auto "previous" side (default "official"). */
+export async function getProofChangeReport(
+  sp: Record<string, string | undefined>,
+  opts: { mode?: ChangeMode } = {},
+): Promise<ProofChangeReport> {
+  const mode: ChangeMode = opts.mode ?? "official";
   const sdMult = sdFromParam(sp.sd);
   const defMap = await traitDefMap();
   const bulls = await prisma.animal.findMany({
@@ -276,7 +293,7 @@ export async function getProofChangeReport(sp: Record<string, string | undefined
   const to = valid.has(sp.to ?? "") ? (sp.to as string) : "";
   const from = valid.has(sp.from ?? "") ? (sp.from as string) : "";
 
-  const withRaw = bulls.map((b) => ({ b, raw: computeRawChange(b.evaluations, defMap, { from, to }) }));
+  const withRaw = bulls.map((b) => ({ b, raw: computeRawChange(b.evaluations, defMap, { from, to, mode }) }));
   const comparedRaw = withRaw.filter((x) => x.raw.found);
   const finalized = finalizeCohort(comparedRaw.map((x) => x.raw), sdMult);
 
@@ -324,7 +341,7 @@ export async function getProofChangeReport(sp: Record<string, string | undefined
 
   return {
     rows, totalNaab: withRaw.length, compared: compared.length, significantCount, breeds,
-    sort, dir, q, breed, significantOnly, sdMult,
+    sort, dir, q, breed, significantOnly, sdMult, mode,
     periods, from, to, notComparable: withRaw.length - compared.length,
   };
 }

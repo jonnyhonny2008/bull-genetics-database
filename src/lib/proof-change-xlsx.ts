@@ -27,7 +27,12 @@ function windowLabel(report: ProofChangeReport): string {
   if (report.from && report.to) return `${short(report.from)} to ${short(report.to)}`;
   if (report.to) return `to ${short(report.to)}`;
   if (report.from) return `from ${short(report.from)}`;
-  return "latest vs previous official";
+  return report.mode === "consecutive" ? "latest vs previous run" : "latest vs previous official";
+}
+
+/** Report title — the interim view compares consecutive runs, not official rounds. */
+function reportName(report: ProofChangeReport): string {
+  return report.mode === "consecutive" ? "Interim Proof Change Report" : "Proof Change Report";
 }
 
 /**
@@ -37,7 +42,7 @@ function windowLabel(report: ProofChangeReport): string {
  */
 export function proofChangeFilename(report: ProofChangeReport, now: Date = new Date()): string {
   const generated = now.toISOString().slice(0, 10);
-  const bits = [`Proof Change Report`, windowLabel(report), `generated ${generated}`];
+  const bits = [reportName(report), windowLabel(report), `generated ${generated}`];
   if (report.significantOnly) bits.splice(2, 0, "significant only");
   // Strip anything a filesystem or Content-Disposition header would choke on.
   return `${bits.join(" - ").replace(/[\\/:*?"<>|]/g, "-")}.xlsx`;
@@ -47,7 +52,7 @@ export async function buildProofChangeWorkbook(report: ProofChangeReport): Promi
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bull Stud Genetics";
   wb.created = new Date();
-  wb.title = `Proof Change Report — ${windowLabel(report)}`;
+  wb.title = `${reportName(report)} — ${windowLabel(report)}`;
   wb.subject = "Bull proof changes between evaluation rounds";
   wb.description = `NAAB bulls compared ${windowLabel(report)}. ${report.compared} bulls; ${report.significantCount} with a key trait past ${report.sdMult} SD.`;
 

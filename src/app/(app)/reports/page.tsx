@@ -15,6 +15,13 @@ const REPORTS = [
     blurb: "How each NAAB bull moved between its latest proof and the previous official (April / August / December) proof. Ranks bulls by their biggest changes, flags any trait that moved 10% or more, and exports to Excel.",
     ready: true,
   },
+  {
+    href: "/reports/interim-changes",
+    title: "Interim Proof Change Report",
+    tag: "NAAB bulls",
+    blurb: "The same trait-by-trait movement, but between each bull's latest proof and the run immediately before it — interim to interim, spanning official proofs too. Ranks by the biggest changes, flags unusual movers, and exports to Excel.",
+    ready: true,
+  },
 ];
 
 export default function ReportsPage() {
