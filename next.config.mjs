@@ -33,9 +33,6 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   // The uploaded-file directory and prisma engine are server-only; nothing special needed.
   experimental: {
-    // Playwright (Holstein.ca scraper) must not be bundled — it has dynamic
-    // requires and ships its own binaries. Keep it external to the server build.
-    serverComponentsExternalPackages: ["playwright-core"],
     // Server Actions are stable in Next 14; allow larger uploads.
     serverActions: {
       bodySizeLimit: "15mb",

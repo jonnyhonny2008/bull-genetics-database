@@ -4,13 +4,14 @@ import "server-only";
 // One-stop ingest from Lactanet Genetics: fetch an animal's tabs, parse them,
 // upsert identity + identifiers, store the rich profile, recompute preferred.
 //
-// Mirrors holstein-ingest.ts so the calling code (on-demand lookup, bulk paste
+// Same shape as the lookup/bulk-import API path, so the calling code (on-demand lookup, bulk paste
 // import) is unchanged in shape — but needs no browser, so it runs on Vercel.
 //
-// Scope note: this fills the PROFILE (pedigree, progeny, classification for
-// cows, lactations for cows). Genetic evaluations still come from the official
-// Lactanet bull-proof CSV importer, which is untouched — this deliberately does
-// not write evaluations or traits.
+// Writes: identity + identifiers, a dated genetic evaluation with the full trait
+// set (upserted by proof run), and the rich profile (pedigree, progeny, plus
+// classification & lactations for cows). The official Lactanet bull-proof CSV
+// importer remains the bulk source for evaluations across the whole herd; this
+// path covers on-demand single/bulk lookups by registration number.
 // ---------------------------------------------------------------------------
 
 import { prisma } from "./db";

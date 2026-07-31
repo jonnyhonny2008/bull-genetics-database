@@ -157,7 +157,7 @@ async function buildFullProfile(a: FullAnimal) {
 interface TraitVal { value: number | null; text: string | null; name: string; category: string | null; reliability: number | null; }
 interface ParentSource {
   found: boolean;
-  source: "internal" | "holstein.ca" | null;
+  source: "internal" | "lactanet" | null;
   name: string | null;
   reg: string | null;
   sex: string | null;
@@ -171,8 +171,6 @@ interface ParentSource {
   error?: string;
   // Kept ONLY within this call for an optional explicit save; never cached globally.
   _externalReg?: string;
-  _parsed?: unknown;   // ParsedHolstein — session-only, used only if saveToDatabase
-  _scrape?: unknown;   // raw scrape — session-only, used only if saveToDatabase
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -188,25 +186,15 @@ function parentMeta(p: ParentSource) {
 }
 
 // Explicit, opt-in persistence of an externally-pulled record (saveToDatabase=true).
-// Uses the scrape already held in this session's locals — no re-fetch, no cache.
+// Reuses the same Lactanet ingest the lookup UI uses, so a saved external parent
+// is written identically to any other imported animal (evaluation + rich profile
+// + preferred recompute). It re-fetches, which is fine: saving is a rare, explicit
+// action, and it keeps a single source of truth for how a Lactanet animal is stored.
 async function persistExternal(p: ParentSource): Promise<void> {
-  if (!p._parsed || !p._scrape) throw new Error("no external data to save");
-  const [{ importParsedHolstein, storeHolsteinProfile }, { parseHolsteinProfile }, { recomputePreferredForAnimal }] = await Promise.all([
-    import("@/lib/holstein-import"), import("@/lib/holstein-parse"), import("@/lib/priority"),
-  ]);
-  const [breed, lactanet, holCanada] = await Promise.all([
-    prisma.breed.findUnique({ where: { breedCode: "HO" } }),
-    prisma.source.findUnique({ where: { sourceName: "LactanetGen" } }),
-    prisma.source.findUnique({ where: { sourceName: "Holstein Canada" } }),
-  ]);
-  const scrape = p._scrape as { animalId?: string | null };
-  const capture = await prisma.sourceCapture.create({ data: { sourceId: holCanada?.sourceId, captureType: "browser_lookup", extractionStatus: "extracted", confidenceScore: 0.9, notes: `Saved via calculate_mating_pa for ${p.reg}`, rawExtractedDataJson: JSON.stringify(p._scrape) } });
-  const deps = { breedId: breed?.breedId ?? null, lactanetSourceId: lactanet?.sourceId ?? null, holCanadaSourceId: holCanada?.sourceId ?? null, captureId: capture.captureId, animalIdParam: scrape.animalId ?? null };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = await importParsedHolstein(prisma, p._parsed as any, p.reg ?? "", deps);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await storeHolsteinProfile(prisma, res.animalId, parseHolsteinProfile(p._scrape as any), { holCanadaSourceId: holCanada?.sourceId ?? null });
-  await recomputePreferredForAnimal(res.animalId);
+  if (!p._externalReg) throw new Error("no external registration to save");
+  const { ingestLactanetReg } = await import("@/lib/lactanet-ingest");
+  const out = await ingestLactanetReg(p._externalReg);
+  if (!out.ok) throw new Error(out.error ?? "Lactanet import failed");
 }
 
 function internalParent(a: FullAnimal, defMap: DefMap): ParentSource {
@@ -222,33 +210,35 @@ function internalParent(a: FullAnimal, defMap: DefMap): ParentSource {
   };
 }
 
-// Live holstein.ca lookup — SESSION-ONLY. The scrape result lives only in this
-// function's locals; it is NEVER written to any module-level cache or the DB
-// unless the caller explicitly opts in via saveToDatabase.
+// Live Lactanet lookup — SESSION-ONLY. The fetched pages live only in this
+// function's locals; nothing is written to any module-level cache or the DB
+// unless the caller explicitly opts in via saveToDatabase (persistExternal).
 async function externalParent(reg: string): Promise<ParentSource> {
   const empty = (error: string): ParentSource => ({ found: false, source: null, name: null, reg, sex: null, reliabilityOverall: null, basis: null, genotyped: null, daughters: null, proofRun: null, traits: new Map(), externallySourced: true, error });
-  let scrape;
+  const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
+  const ref = parseReg(reg);
+  if (!ref) return empty(`"${reg}" is not a registration number (expected e.g. HOCANM13486161).`);
+  let fetched;
   try {
-    const { scrapeHolsteinAnimal } = await import("@/lib/holstein-browser");
-    scrape = await scrapeHolsteinAnimal(reg);
+    fetched = await fetchLactanetAnimal(reg);
   } catch (e) {
-    return empty(`holstein.ca lookup failed: ${(e as Error)?.message ?? e}`);
+    return empty(`Lactanet lookup failed: ${(e as Error)?.message ?? e}`);
   }
-  if ((!scrape.mainText || !scrape.mainText.trim()) && scrape.error) return empty(`holstein.ca: ${scrape.error}`);
-  const { parseHolsteinExtract } = await import("@/lib/holstein-parse");
-  const parsed = parseHolsteinExtract(scrape);
-  if (!parsed.regNo && !parsed.traits.length) return empty("holstein.ca returned no usable proof data for that registration number.");
+  if (fetched.error) return empty(`Lactanet: ${fetched.error}`);
+  const { parseLactanetAnimal } = await import("@/lib/lactanet-parse");
+  const parsed = parseLactanetAnimal(reg, ref.sex, fetched.tabs, fetched.fetchedAt);
+  if (!parsed.evaluation.traits.length) return empty("Lactanet returned no usable proof data for that registration number.");
   const traits = new Map<string, TraitVal>();
-  for (const t of parsed.traits) traits.set(t.code, { value: t.numericValue, text: t.textValue, name: t.code, category: null, reliability: t.reliability });
+  for (const t of parsed.evaluation.traits) traits.set(t.code, { value: t.numericValue, text: t.textValue, name: t.code, category: null, reliability: t.reliability });
   return {
-    found: true, source: "holstein.ca", name: parsed.name, reg,
-    sex: parsed.sex, reliabilityOverall: parsed.evaluation?.reliability ?? null, basis: parsed.evaluation?.basis ?? null,
-    genotyped: null, daughters: null, proofRun: parsed.evaluation?.runLabel ?? null,
-    traits, externallySourced: true, _externalReg: reg, _parsed: parsed, _scrape: scrape,
+    found: true, source: "lactanet", name: parsed.identity.name, reg,
+    sex: ref.sex, reliabilityOverall: parsed.evaluation.reliability, basis: parsed.evaluation.basis,
+    genotyped: null, daughters: null, proofRun: parsed.evaluation.runLabel,
+    traits, externallySourced: true, _externalReg: reg,
   };
 }
 
-/** Resolve a parent: internal first; holstein.ca only if missing and a reg is given. */
+/** Resolve a parent: internal first; Lactanet only if missing and a reg is given. */
 async function resolveParent(name: string, reg: string, defMap: DefMap): Promise<ParentSource> {
   const internal = await findAnimalFull(name, reg);
   if (internal) return internalParent(internal, defMap);
@@ -422,7 +412,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "get_animal_full_profile",
     description:
-      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and Holstein.ca owners/awards. Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system.",
+      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and any stored owners/awards where present (breed-association data, not populated from Lactanet). Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system.",
     input_schema: { type: "object", properties: { name: { type: "string", description: "Exact or partial animal name" }, reg: { type: "string", description: "Registration number (exact)" } } },
     run: async (input) => {
       const name = str(input.name), reg = str(input.reg);
@@ -436,15 +426,15 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "calculate_mating_pa",
     description:
-      "Project a MATING between a sire (male) and dam (female) as the Parent Average (PA = simple mean of the two parents) across every trait BOTH animals have. Answers 'what would a mating of X and Y produce', 'PA of X × Y'. For each shared numeric trait it returns the sire value, the dam value, and the computed PA; categorical descriptors (A2/colour/polled) are returned side-by-side without a mean; traits held by only one parent are listed under unavailableForPA and are NEVER guessed or defaulted to zero. Each parent's overall reliability, evaluation basis (proven vs genomic/parent-average), genotyped flag and daughter count are included so you can caveat how trustworthy the projection is. FLOW: internal database first; if a parent is NOT in the database AND a registration number was supplied, it does a LIVE holstein.ca lookup for that reg and clearly labels those values as externally sourced (possibly on a different evaluation basis than internal proofs). Externally-pulled data is SESSION-ONLY and is NOT saved unless saveToDatabase=true — always confirm with the user before setting that. If a parent is missing and cannot be looked up (no reg, or holstein.ca has nothing / the lookup fails), it reports that plainly and does NOT return a partial PA.",
+      "Project a MATING between a sire (male) and dam (female) as the Parent Average (PA = simple mean of the two parents) across every trait BOTH animals have. Answers 'what would a mating of X and Y produce', 'PA of X × Y'. For each shared numeric trait it returns the sire value, the dam value, and the computed PA; categorical descriptors (A2/colour/polled) are returned side-by-side without a mean; traits held by only one parent are listed under unavailableForPA and are NEVER guessed or defaulted to zero. Each parent's overall reliability, evaluation basis (proven vs genomic/parent-average), genotyped flag and daughter count are included so you can caveat how trustworthy the projection is. FLOW: internal database first; if a parent is NOT in the database AND a registration number was supplied, it does a LIVE Lactanet lookup for that reg and clearly labels those values as externally sourced (possibly on a different evaluation basis than internal proofs). Externally-pulled data is SESSION-ONLY and is NOT saved unless saveToDatabase=true — always confirm with the user before setting that. If a parent is missing and cannot be looked up (no reg, or Lactanet has nothing / the lookup fails), it reports that plainly and does NOT return a partial PA.",
     input_schema: {
       type: "object",
       properties: {
         sireName: { type: "string", description: "Sire name (exact or partial)" },
-        sireReg: { type: "string", description: "Sire registration number — also enables holstein.ca fallback if not found internally" },
+        sireReg: { type: "string", description: "Sire registration number — also enables Lactanet fallback if not found internally" },
         damName: { type: "string", description: "Dam name (exact or partial)" },
-        damReg: { type: "string", description: "Dam registration number — also enables holstein.ca fallback if not found internally" },
-        saveToDatabase: { type: "boolean", description: "Default false. Only set true if the user explicitly asked to permanently save any externally-pulled holstein.ca record. When false, external data is used for this calculation only and then discarded." },
+        damReg: { type: "string", description: "Dam registration number — also enables Lactanet fallback if not found internally" },
+        saveToDatabase: { type: "boolean", description: "Default false. Only set true if the user explicitly asked to permanently save any externally-pulled Lactanet record. When false, external data is used for this calculation only and then discarded." },
       },
     },
     run: async (input) => {
@@ -465,12 +455,12 @@ export const AGENT_TOOLS: AgentTool[] = [
       }
 
       // A parent that exists but carries NO trait data (e.g. an old animal with
-      // no proof, or a holstein.ca page without an evaluation) can't contribute
+      // no proof, or a Lactanet page without an evaluation) can't contribute
       // to a PA — say so plainly rather than returning an empty/partial result.
       const noData = [sire, dam].filter((p) => p.traits.size === 0);
       if (noData.length) {
         return {
-          summary: `Cannot compute a parent average: ${noData.map((p) => `${p.name ?? p.reg} has no genetic trait data available${p.externallySourced ? " on holstein.ca" : ""}`).join("; ")}.`,
+          summary: `Cannot compute a parent average: ${noData.map((p) => `${p.name ?? p.reg} has no genetic trait data available${p.externallySourced ? " on Lactanet" : ""}`).join("; ")}.`,
           records: { computed: false, reason: "one or both parents have no trait data", sire: parentMeta(sire), dam: parentMeta(dam) },
         };
       }
@@ -495,14 +485,14 @@ export const AGENT_TOOLS: AgentTool[] = [
       }
 
       const notes: string[] = [];
-      if (sire.externallySourced || dam.externallySourced) notes.push("Some values came from holstein.ca (externally sourced) and may be on a different evaluation basis than internal proof rounds.");
+      if (sire.externallySourced || dam.externallySourced) notes.push("Some values came from Lactanet (externally sourced) and may be on a different evaluation basis than internal proof rounds.");
       for (const p of [sire, dam]) if (p.reliabilityOverall != null && p.reliabilityOverall < 0.7) notes.push(`${p.name} has low overall reliability (${Math.round(p.reliabilityOverall * 100)}%) — treat the projection as indicative.`);
       for (const p of [sire, dam]) if (p.basis && /genomic|pa|gpa/i.test(p.basis)) notes.push(`${p.name} is on a genomic/parent-average basis.`);
       if (sire.sex === "F") notes.push(`The animal supplied as sire (${sire.name}) is recorded as female.`);
       if (dam.sex === "M") notes.push(`The animal supplied as dam (${dam.name}) is recorded as male.`);
 
       // Optional, explicit persistence of externally-pulled records.
-      let saved: unknown = "External data (if any) was used for this calculation only and NOT saved. Set saveToDatabase=true to persist a holstein.ca record permanently.";
+      let saved: unknown = "External data (if any) was used for this calculation only and NOT saved. Set saveToDatabase=true to persist an externally-pulled Lactanet record permanently.";
       if (save) {
         const done: string[] = [];
         for (const p of [sire, dam]) {
@@ -515,7 +505,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       }
 
       return {
-        summary: `Parent average of ${sire.name} × ${dam.name}: ${pa.length} shared traits computed, ${unavailable.length} unavailable${sire.externallySourced || dam.externallySourced ? " (includes holstein.ca-sourced data)" : ""}.`,
+        summary: `Parent average of ${sire.name} × ${dam.name}: ${pa.length} shared traits computed, ${unavailable.length} unavailable${sire.externallySourced || dam.externallySourced ? " (includes Lactanet-sourced data)" : ""}.`,
         records: { computed: true, sire: parentMeta(sire), dam: parentMeta(dam), parentAverage: pa, descriptive, unavailableForPA: unavailable, reliabilityNotes: notes, saved },
       };
     },
