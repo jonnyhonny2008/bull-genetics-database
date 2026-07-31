@@ -77,28 +77,42 @@ export function parentMeta(p: PAParent): PAParentMeta {
  * Resolve one animal by registration number for a PA: internal database first
  * (with its preferred proof unpacked), else a live Lactanet lookup.
  */
-export async function resolveParentForPA(regRaw: string): Promise<PAParent> {
-  const ref = parseReg(regRaw);
-  const R = ref?.reg ?? regRaw.trim().toUpperCase();
+export async function resolveParentForPA(input: string): Promise<PAParent> {
+  const raw = (input ?? "").trim();
+  const ref = parseReg(raw);
+  const R = ref?.reg ?? raw.toUpperCase();
   const empty = (error?: string): PAParent => ({
     found: false, reg: R, name: null, sex: ref?.sex ?? null, source: null,
     inDatabase: false, animalId: null, reliabilityOverall: null, basis: null,
     proofRun: null, traits: new Map(), ancestors: [], error,
   });
-  if (!ref) return empty(`"${regRaw}" is not a registration number (expected e.g. HOCANM13486161).`);
+  if (!raw) return empty("Enter an animal name or registration number.");
 
-  // --- 1) internal database ---
-  const db = await prisma.animal.findFirst({
-    where: { archived: false, identifiers: { some: { idValue: R, active: true } } },
-    select: {
-      id: true, primaryName: true, sex: true, holsteinProfileJson: true,
-      evaluations: {
-        orderBy: [{ isPreferred: "desc" }, { evaluationDate: "desc" }],
-        take: 1,
-        select: { traitsJson: true, reliabilityOverall: true, proofRun: true, sireType: true },
-      },
+  // --- 1) internal database: by registration number if it looks like one,
+  //        otherwise by name (exact, then a starts-with/contains fallback) ---
+  const SELECT = {
+    id: true, primaryName: true, sex: true, holsteinProfileJson: true,
+    identifiers: { where: { active: true }, orderBy: [{ isPrimary: "desc" as const }], take: 1, select: { idValue: true } },
+    evaluations: {
+      orderBy: [{ isPreferred: "desc" as const }, { evaluationDate: "desc" as const }],
+      take: 1,
+      select: { traitsJson: true, reliabilityOverall: true, proofRun: true, sireType: true },
     },
+  };
+  let db = await prisma.animal.findFirst({
+    where: ref
+      ? { archived: false, identifiers: { some: { idValue: R, active: true } } }
+      : { archived: false, primaryName: { equals: raw, mode: "insensitive" } },
+    select: SELECT,
   });
+  if (!db && !ref) {
+    // name search: fall back to a partial (contains) match, best-name-first.
+    db = await prisma.animal.findFirst({
+      where: { archived: false, primaryName: { contains: raw, mode: "insensitive" } },
+      orderBy: { primaryName: "asc" },
+      select: SELECT,
+    });
+  }
   if (db) {
     const defMap = await traitDefMap();
     const ev = db.evaluations[0] ?? null;
@@ -111,14 +125,16 @@ export async function resolveParentForPA(regRaw: string): Promise<PAParent> {
     const prof = parseHolsteinProfileJson(db.holsteinProfileJson);
     const ancestors: PAAncestor[] = (prof?.familyTree ?? []).map((n) => ({ generation: n.generation, side: n.side, reg: n.reg, name: n.name }));
     return {
-      found: true, reg: R, name: db.primaryName, sex: (db.sex as "M" | "F") ?? ref.sex,
+      found: true, reg: db.identifiers[0]?.idValue ?? R, name: db.primaryName, sex: (db.sex as "M" | "F") ?? ref?.sex ?? null,
       source: "internal", inDatabase: true, animalId: db.id,
       reliabilityOverall: ev?.reliabilityOverall ?? null, basis: ev?.sireType ?? null,
       proofRun: ev?.proofRun ?? null, traits, ancestors,
     };
   }
 
-  // --- 2) live Lactanet ---
+  // --- 2) live Lactanet — by registration number only (name search would be
+  //        ambiguous). A name not in the database can't go further. ---
+  if (!ref) return empty(`No animal named "${raw}" in the database. Enter its registration number to look it up on Lactanet.`);
   const fetched = await fetchLactanetAnimal(R);
   if (fetched.error) return empty(fetched.error);
   const parsed = parseLactanetAnimal(R, ref.sex, fetched.tabs, fetched.fetchedAt);

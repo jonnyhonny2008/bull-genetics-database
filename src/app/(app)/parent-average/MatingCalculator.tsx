@@ -66,15 +66,18 @@ export default function MatingCalculator() {
     finally { setBusy(false); }
   }
 
-  // Every looked-up (not-in-database) animal that was found — these are savable.
-  const savable = useMemo(() => {
+  // Every real animal in the run (dam + sires), deduped. Ones already in the
+  // database show as saved; ones looked up live from Lactanet get a save
+  // checkbox (the `savable` subset).
+  const involved = useMemo(() => {
     if (!resp) return [] as ParentMeta[];
     const seen = new Map<string, ParentMeta>();
-    const consider = (p?: ParentMeta | null) => { if (p && p.found && !p.inDatabase && p.source === "lactanet") seen.set(p.reg, p); };
+    const consider = (p?: ParentMeta | null) => { if (p && p.found) seen.set(p.reg, p); };
     if (resp.dam) consider(resp.dam);
     resp.matings.forEach((m) => consider(m.sire));
     return [...seen.values()];
   }, [resp]);
+  const savable = involved.filter((p) => !p.inDatabase && p.source === "lactanet");
 
   async function saveSelected() {
     const regs = savable.filter((p) => saveSel[p.reg]).map((p) => p.reg);
@@ -96,15 +99,15 @@ export default function MatingCalculator() {
       {/* ---- input ---- */}
       <div className="card card-pad space-y-3">
         <div>
-          <label className="label">Dam (female) registration number</label>
-          <input value={damReg} onChange={(e) => setDamReg(e.target.value)} placeholder="HOCANF121135242" className="input font-mono" />
+          <label className="label">Dam (female) — name or registration number</label>
+          <input value={damReg} onChange={(e) => setDamReg(e.target.value)} placeholder="Name (in database) or reg e.g. HOCANF121135242" className="input" />
         </div>
         <div>
-          <label className="label">Sire(s) (male) — up to 5 to compare against this dam</label>
+          <label className="label">Sire(s) (male) — name or reg #, up to 5 to compare against this dam</label>
           <div className="space-y-2">
             {sireRegs.map((s, i) => (
               <div key={i} className="flex items-center gap-2">
-                <input value={s} onChange={(e) => setSire(i, e.target.value)} placeholder="HOCANM13486161" className="input flex-1 font-mono" />
+                <input value={s} onChange={(e) => setSire(i, e.target.value)} placeholder="Name (in database) or reg e.g. HOCANM13486161" className="input flex-1" />
                 {sireRegs.length > 1 && <button type="button" onClick={() => removeSire(i)} className="btn-secondary btn-sm" aria-label="remove">✕</button>}
                 {i === sireRegs.length - 1 && sireRegs.length < 5 && <button type="button" onClick={addSire} className="btn-secondary btn-sm whitespace-nowrap">+ sire</button>}
               </div>
@@ -113,29 +116,44 @@ export default function MatingCalculator() {
         </div>
         <div className="flex items-center gap-3">
           <button type="button" onClick={calculate} disabled={busy} className="btn-primary">{busy ? "Calculating…" : "Calculate parent average"}</button>
-          <span className="text-[11px] text-slate-400">Looks up each animal in the database, else live from Lactanet. Nothing is saved unless you tick it below.</span>
+          <span className="text-[11px] text-slate-400">A name searches the database; a registration number also looks it up live on Lactanet. Nothing is saved unless you tick it below.</span>
         </div>
         {err && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{err}</div>}
       </div>
 
-      {/* ---- save row ---- */}
-      {savable.length > 0 && (
+      {/* ---- save row: one line per real animal in the run ---- */}
+      {involved.length > 0 && (
         <div className="card card-pad">
-          <div className="mb-2 text-sm font-semibold text-slate-700">Save looked-up animals?</div>
-          <p className="mb-2 text-xs text-slate-500">These were pulled live from Lactanet for this calculation only. Leave unticked and they are discarded; tick to import them into the database.</p>
+          <div className="mb-2 text-sm font-semibold text-slate-700">Animals in this calculation</div>
+          <p className="mb-2 text-xs text-slate-500">
+            Animals already in the database stay as they are. Ones looked up live from Lactanet are used for this
+            calculation only — tick a box to import it, or leave it unticked and it&apos;s discarded.
+          </p>
           <div className="flex flex-wrap gap-3">
-            {savable.map((p) => (
-              <label key={p.reg} className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs">
-                <input type="checkbox" checked={!!saveSel[p.reg]} onChange={(e) => setSaveSel((s) => ({ ...s, [p.reg]: e.target.checked }))} />
+            {involved.map((p) => (
+              <label
+                key={p.reg}
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${p.inDatabase ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/40"}`}
+              >
+                {p.inDatabase ? (
+                  <input type="checkbox" checked disabled title="Already in the database" />
+                ) : (
+                  <input type="checkbox" checked={!!saveSel[p.reg]} onChange={(e) => setSaveSel((s) => ({ ...s, [p.reg]: e.target.checked }))} />
+                )}
                 <span className="font-medium">{p.name ?? p.reg}</span>
                 <span className="font-mono text-[10px] text-slate-400">{p.reg}</span>
+                <span className={`rounded px-1 text-[9px] font-semibold uppercase ${p.inDatabase ? "text-emerald-700" : "text-amber-700"}`}>
+                  {p.inDatabase ? "in database" : "save?"}
+                </span>
               </label>
             ))}
           </div>
-          <div className="mt-2 flex items-center gap-3">
-            <button type="button" onClick={saveSelected} disabled={saving} className="btn-primary btn-sm">{saving ? "Importing…" : "Import selected"}</button>
-            {saveMsg && <span className="text-xs text-slate-500">{saveMsg}</span>}
-          </div>
+          {savable.length > 0 && (
+            <div className="mt-2 flex items-center gap-3">
+              <button type="button" onClick={saveSelected} disabled={saving} className="btn-primary btn-sm">{saving ? "Importing…" : "Import selected"}</button>
+              {saveMsg && <span className="text-xs text-slate-500">{saveMsg}</span>}
+            </div>
+          )}
         </div>
       )}
 
