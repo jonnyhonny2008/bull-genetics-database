@@ -26,18 +26,27 @@ const UA =
 const GAP_MS = Number(process.env.LACTANET_GAP_MS ?? 400);
 const TIMEOUT_MS = Number(process.env.LACTANET_TIMEOUT_MS ?? 20000);
 
-/** The tabs we read. `summary` first — if it 404s the animal doesn't exist. */
-export const LACTANET_TABS = [
-  "summary",
-  "pedigree",
-  "progeny",
-  "type",
-  "production",
-  "functional",
-  "health",
-  "calving",
+// Lactanet renders DIFFERENT tabs for bulls vs cows:
+//   • a bull's Type/Production/Functional/Health/Calving pages are his DAUGHTER
+//     proofs (and type.php even PHP-crashes for a female with 0 daughters).
+//   • a cow has her OWN classification.php (EX/VG score + linear scores) and
+//     lactation.php (real 305-day milk records), plus detail-genomics.php.
+// Fetching the wrong set for a cow was why females came back with no
+// classification or lactations. Summary/pedigree/progeny are shared.
+export const LACTANET_TAB_URLS = [
+  "summary", "pedigree", "progeny",
+  "type", "production", "functional", "health", "calving", // male daughter-proofs
+  "classification", "lactation", "detail-genomics",         // female own-records
 ] as const;
-export type LactanetTab = (typeof LACTANET_TABS)[number];
+export type LactanetTab = (typeof LACTANET_TAB_URLS)[number];
+
+const MALE_TABS: readonly LactanetTab[] = ["summary", "pedigree", "progeny", "type", "production", "functional", "health", "calving"];
+const FEMALE_TABS: readonly LactanetTab[] = ["summary", "pedigree", "progeny", "classification", "lactation", "detail-genomics"];
+
+export const tabsForSex = (sex: "M" | "F"): readonly LactanetTab[] => (sex === "F" ? FEMALE_TABS : MALE_TABS);
+
+/** Back-compat alias; defaults to the male tab set. */
+export const LACTANET_TABS = MALE_TABS;
 
 export interface LactanetRef {
   /** Full registration as stored, e.g. HOCANM13486161 */
@@ -120,7 +129,7 @@ async function get(url: string): Promise<string> {
  */
 export async function fetchLactanetAnimal(
   regRaw: string,
-  tabs: readonly LactanetTab[] = LACTANET_TABS,
+  tabsOverride?: readonly LactanetTab[],
 ): Promise<LactanetFetchResult> {
   const ref = parseReg(regRaw);
   const out: LactanetFetchResult = {
@@ -135,6 +144,9 @@ export async function fetchLactanetAnimal(
     out.error = `Could not read "${regRaw}" as a registration number (expected e.g. HOCANM13486161).`;
     return out;
   }
+  // Sex decides which tabs exist — cows have classification/lactation, bulls
+  // have daughter-proof pages. Getting this wrong returned empty female records.
+  const tabs = tabsOverride ?? tabsForSex(ref.sex);
 
   for (let i = 0; i < tabs.length; i++) {
     const tab = tabs[i];

@@ -243,95 +243,132 @@ export function parseProgeny(html: string): ProgenyResult {
   return { rows, total, capped };
 }
 
-// --- classification (type.php) — FEMALES ONLY --------------------------------
+// --- classification (classification.php) — FEMALES ONLY ----------------------
+
+/** Find, within a table's rows, the header row that names a column matching any
+ *  of `names`. classification/lactation pages use a title row + a real header
+ *  row, so the header is not always row 0. Returns {headers, dataRows}. */
+function headerRow(t: HtmlTable, ...names: string[]): { headers: string[]; dataRows: string[][] } | null {
+  const all = [t.headers, ...t.rows];
+  const hi = all.findIndex((r) => col(r, ...names) >= 0);
+  if (hi < 0) return null;
+  return { headers: all[hi], dataRows: all.slice(hi + 1) };
+}
 
 /**
- * A cow's own classification. Returns [] for males by design: a bull's Type page
- * is his daughters' distribution, not a score for him, and recording it as his
- * classification would be simply false.
+ * A cow's OWN classification, from classification.php: one row per classification
+ * event (Date, Final Class, Final Score, composites), newest first, plus the
+ * current linear-trait descriptor grid. Bulls are never classified — their
+ * Type page is a daughter distribution — so males return [].
  */
 export function parseClassifications(html: string, sex: "M" | "F"): HolsteinClassification[] {
   if (sex !== "F") return [];
-  const text = stripTags(html);
+  const tables = extractTables(html);
 
-  // e.g. "VG-86 2Y" / "EX-92" / "GP-83", optionally with a date nearby.
-  const m = /\b(EX|VG|GP|G|F|P)\s*-\s*(\d{2})\b/i.exec(text);
-  if (!m) return [];
-  const score = numOrNull(m[2]);
-  const date = toIsoDate(/(\d{1,2}-[A-Za-z]{3}-\d{2,4})/.exec(text.slice(Math.max(0, m.index - 120), m.index + 120))?.[1] ?? null);
-
-  // Composite section scores, when the page shows them.
-  const sections: { code: string; name: string; value: string }[] = [];
-  for (const [code, label] of [
-    ["MS", "Mammary System"], ["FL", "Feet & Legs"], ["DS", "Dairy Strength"], ["RU", "Rump"], ["CONF", "Conformation"],
-  ] as const) {
-    const re = new RegExp(`${label}\\s*[:\\-]?\\s*(-?\\d+(?:\\.\\d+)?)`, "i");
-    const v = re.exec(text)?.[1];
-    if (v) sections.push({ code, name: label, value: v });
+  // The descriptor grid is a header-less table of name/value pairs (Udder Floor 5,
+  // Foot Angle 6, …). Detect it as the table whose even cells are mostly known
+  // linear-trait names paired with a number, and keep it for the newest class'n.
+  const linearSections: { code: string; name: string; value: string }[] = [];
+  for (const t of tables) {
+    const secs: { code: string; name: string; value: string }[] = [];
+    let pairs = 0;
+    for (const r of [t.headers, ...t.rows]) {
+      for (let i = 0; i + 1 < r.length; i += 2) {
+        pairs++;
+        const code = TRAIT_LABELS[normLabel(r[i])];
+        const v = clean(r[i + 1]);
+        if (code && /^-?\d/.test(v)) secs.push({ code, name: clean(r[i]), value: v });
+      }
+    }
+    if (secs.length >= 6 && secs.length >= pairs * 0.4) { linearSections.push(...secs); break; }
   }
 
-  return [{
-    date,
-    code: m[1].toUpperCase(),
-    score,
-    lactation: numOrNull(/(\d+)\s*(?:Y|yr)\b/i.exec(m[0] + text.slice(m.index, m.index + 40))?.[1] ?? null),
-    daysFresh: null, // not published by Lactanet
-    sections,
-  }];
+  const out: HolsteinClassification[] = [];
+  for (const t of tables) {
+    const h = headerRow(t, "finalscore");
+    if (!h) continue;
+    const cScore = col(h.headers, "finalscore");
+    const cClass = col(h.headers, "finalclass");
+    const cDate = col(h.headers, "date");
+    const cLact = col(h.headers, "lactation");
+    const cDim = col(h.headers, "dim");
+    const comps: [number, string, string][] = [
+      [col(h.headers, "mammary"), "MAMM", "Mammary System"],
+      [col(h.headers, "feetlegs", "feet"), "FL", "Feet & Legs"],
+      [col(h.headers, "dairystrength"), "DS", "Dairy Strength"],
+      [col(h.headers, "rump"), "RUMP", "Rump"],
+    ];
+    for (const r of h.dataRows) {
+      const score = numOrNull(at(r, cScore));
+      const code = at(r, cClass);
+      if (!code && score == null) continue;
+      if (code && !/^(EX|VG|GP|G|F|P)$/i.test(code)) continue; // skip stray rows
+      const sections = comps
+        .filter(([ci]) => ci >= 0)
+        .map(([ci, cd, nm]) => ({ code: cd, name: nm, value: at(r, ci) ?? "" }))
+        .filter((s) => s.value);
+      out.push({
+        date: toIsoDate(at(r, cDate)),
+        code: code ? code.toUpperCase() : null,
+        score,
+        lactation: numOrNull(at(r, cLact)),
+        daysFresh: numOrNull(at(r, cDim)),
+        sections,
+      });
+    }
+  }
+
+  // Attach the linear descriptors to the newest (first) classification.
+  if (linearSections.length && out.length) out[0] = { ...out[0], sections: [...out[0].sections, ...linearSections] };
+  return out;
 }
 
-// --- lactations (production.php) --------------------------------------------
+// --- lactations (lactation.php) — FEMALES ONLY -------------------------------
 
 /**
- * A cow's lactation records. Bulls have none of their own (their Production page
- * carries daughter averages), so males return [].
+ * A cow's lactation records from lactation.php. Each calving row (a real date in
+ * col 0) is a lactation to 305 DIM; the blank-date rows beneath it are its longer
+ * projections (365-day, natural). Parsed positionally — the header carries long
+ * tooltip text that makes name-matching unreliable — against the observed layout:
+ *   Date | Age | flag | freq | DIM | Milk | Fat | %F | Prot | %P | CompSrc |
+ *   EndReason | SCC | BCA(Milk Fat Prot Comp) | BCA-Deviations(…)
+ * Bulls have no lactations of their own, so males return [].
  */
 export function parseLactations(html: string, sex: "M" | "F"): Lactation[] {
   if (sex !== "F") return [];
-  const tables = extractTables(html);
-  const t = tables.find((x) => col(x.headers, "lact") >= 0 && (col(x.headers, "milk") >= 0 || col(x.headers, "kgmilk") >= 0));
+  const DATE = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$/;
+  // The lactation table is the one that has a real calving-date row.
+  const t = extractTables(html).find((x) => [x.headers, ...x.rows].some((r) => DATE.test(clean(r[0]))));
   if (!t) return [];
 
-  const cLact = col(t.headers, "lact");
-  const cAge = col(t.headers, "age");
-  const cFreq = col(t.headers, "freq", "milking");
-  const cCalv = col(t.headers, "calving", "calved", "date");
-  const cDim = col(t.headers, "dim", "days");
-  const cMilk = col(t.headers, "milk");
-  const cFat = col(t.headers, "fat");
-  const cFatP = col(t.headers, "fat%", "%fat");
-  const cProt = col(t.headers, "prot");
-  const cProtP = col(t.headers, "prot%", "%prot");
-  const cScs = col(t.headers, "scs", "somatic");
-  const cBcaM = col(t.headers, "bcamilk");
-  const cBcaF = col(t.headers, "bcafat");
-  const cBcaP = col(t.headers, "bcaprot");
-
   const out: Lactation[] = [];
-  for (const r of t.rows) {
-    const n = numOrNull(at(r, cLact));
-    if (n == null) continue;
-    out.push({
-      lactationNumber: n,
-      ageAtCalving: at(r, cAge),
-      milkingFreq: at(r, cFreq),
-      calvingDateIso: toIsoDate(at(r, cCalv)),
-      dim: numOrNull(at(r, cDim)),
-      milk: numOrNull(at(r, cMilk)),
-      fat: numOrNull(at(r, cFat)),
-      fatPct: numOrNull(at(r, cFatP)),
-      prot: numOrNull(at(r, cProt)),
-      protPct: numOrNull(at(r, cProtP)),
-      scs: numOrNull(at(r, cScs)),
-      compSource: "LactanetGen",
-      bca: {
-        milk: numOrNull(at(r, cBcaM)),
-        fat: numOrNull(at(r, cBcaF)),
-        prot: numOrNull(at(r, cBcaP)),
-        comp: null,
-      },
-      projections: [], // Lactanet does not publish the 365-day projections
-    });
+  let cur: Lactation | null = null;
+  for (const r of [t.headers, ...t.rows]) {
+    const c0 = clean(r[0]);
+    if (/lactation\(s\)/i.test(c0)) { cur = null; continue; } // per-lactation summary line
+    const dim = numOrNull(at(r, 4));
+    if (DATE.test(c0)) {
+      cur = {
+        lactationNumber: out.length + 1,
+        ageAtCalving: clean(r[1]) || null,
+        milkingFreq: clean(r[3]) || null,
+        calvingDateIso: toIsoDate(c0),
+        dim,
+        milk: numOrNull(at(r, 5)),
+        fat: numOrNull(at(r, 6)),
+        fatPct: numOrNull(at(r, 7)),
+        prot: numOrNull(at(r, 8)),
+        protPct: numOrNull(at(r, 9)),
+        scs: numOrNull(at(r, 12)),
+        compSource: clean(r[10]) || null,
+        bca: { milk: numOrNull(at(r, 13)), fat: numOrNull(at(r, 14)), prot: numOrNull(at(r, 15)), comp: numOrNull(at(r, 16)) },
+        projections: [],
+      };
+      out.push(cur);
+    } else if (cur && !c0 && dim != null) {
+      // A continuation row (blank calving date) is a longer projection of `cur`.
+      cur.projections.push({ dim, milk: numOrNull(at(r, 5)), fat: numOrNull(at(r, 6)), prot: numOrNull(at(r, 8)) });
+    }
   }
   return out;
 }
@@ -542,10 +579,12 @@ export function parseLactanetAnimal(
     warnings.push(`progeny list truncated by Lactanet: showing ${prog.rows.length} of ${prog.total}`);
   }
 
-  const classifications = tabs.type ? parseClassifications(tabs.type, sex) : [];
-  const lactations = tabs.production ? parseLactations(tabs.production, sex) : [];
+  // Females carry their own classification.php + lactation.php; bulls don't.
+  const classifications = tabs.classification ? parseClassifications(tabs.classification, sex) : [];
+  const lactations = tabs.lactation ? parseLactations(tabs.lactation, sex) : [];
 
-  const evaluation = parseTraits(tabs.summary, tabs.type);
+  // Extra linear traits live on type.php for bulls, detail-genomics.php for cows.
+  const evaluation = parseTraits(tabs.summary, sex === "F" ? tabs["detail-genomics"] : tabs.type);
   if (!evaluation.traits.length) warnings.push("no genetic traits found on the summary/type pages");
   else if (!evaluation.runDate) warnings.push("traits found but the proof run could not be read — evaluation not dated");
 
