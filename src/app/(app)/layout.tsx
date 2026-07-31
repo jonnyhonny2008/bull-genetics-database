@@ -15,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/dashboard", label: "Dashboard", group: "Overview" },
     { href: "/animals", label: "Animals", group: "Records", need: "animal:read" },
     { href: "/analysis", label: "Proof Trends", group: "Records", need: "compare:read" },
+    { href: "/parent-average", label: "Parent Average", group: "Records", need: "compare:read" },
     { href: "/reports", label: "Reports", group: "Records", need: "compare:read" },
     { href: "/uploads", label: "Uploads", group: "Data In", need: "upload:write" },
     { href: "/import-proofs", label: "Proof Import", group: "Data In", need: "record:write" },
