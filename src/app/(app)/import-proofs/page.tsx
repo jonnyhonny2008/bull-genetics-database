@@ -20,14 +20,19 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
     <div>
       <PageHeader
         title="Bull Proof Import"
-        subtitle="Import genomics, indexes, production, functional traits, linear conformation, and pedigree from the official Lactanet bull-proof CSV."
+        subtitle="Import genomics, indexes, production, functional traits, linear conformation, and pedigree from the official Lactanet bull-proof CSV. Every import is sent to the review queue for an admin to approve before it becomes an animal's official proof."
       />
 
       {searchParams.uploaded && (
         <div className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Uploaded <span className="font-mono">{searchParams.uploaded}</span> to the imports folder. Choose it below and import.</div>
       )}
-      {searchParams.started && (
-        <div className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">Mass import started in the background. It processes ~99,000 bulls in ~8–10 minutes — refresh this page (or the Animals list) to watch the count grow. Already-imported bulls are skipped.</div>
+      {searchParams.queued && (
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {searchParams.queued === "all"
+            ? <>Mass import request sent for approval. Nothing is imported until an admin approves it in the </>
+            : <><span className="font-semibold">{searchParams.queued}</span> bull(s) imported as <span className="font-semibold">pending</span> and sent for approval — they stay pending until an admin approves them in the </>}
+          <a href="/review" className="font-medium underline">review queue</a>.
+        </div>
       )}
 
       {/* Upload from your computer */}
@@ -59,9 +64,9 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
                   {files.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.sizeMB} MB)</option>)}
                 </select>
               </div>
-              <button type="submit" className="btn-primary">Import ALL bulls (background)</button>
+              <button type="submit" className="btn-primary">Send ALL bulls for approval</button>
             </form>
-            <p className="mt-2 text-[11px] text-slate-400">Imports every bull in the file (~99,000) with full genomics + linear conformation. Runs in the background; the app stays usable. Safe to re-run — already-imported bulls are skipped.</p>
+            <p className="mt-2 text-[11px] text-slate-400">Queues a request to import every bull in the file (~99,000) with full genomics + linear conformation. An admin approves it in the review queue, which starts the background import; the app stays usable. Safe to re-run — already-imported bulls are skipped.</p>
           </Card>
 
           <Card title="Import one bull by Reg # or NAAB code">
@@ -76,8 +81,8 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
                 <label className="label">Registration number or NAAB code</label>
                 <input name="query" className="input" placeholder="e.g. HO840M3125993715 or 551HO03379" required />
               </div>
-              <button type="submit" className="btn-primary">Look up & import</button>
-              <p className="text-[11px] text-slate-400">Creates/updates one animal with a full genomic evaluation + identifiers + pedigree. Source: LactanetGen.</p>
+              <button type="submit" className="btn-primary">Look up & send for approval</button>
+              <p className="text-[11px] text-slate-400">Imports one animal (full genomic evaluation + identifiers + pedigree) as <span className="font-medium">pending</span>, then sends it to the review queue. Source: LactanetGen.</p>
             </form>
           </Card>
 
@@ -104,8 +109,8 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
                   <input name="limit" type="number" min="1" max="200" defaultValue={10} className="input" />
                 </div>
               </div>
-              <button type="submit" className="btn-secondary">Import top N</button>
-              <p className="text-[11px] text-slate-400">Handy for a small working set. For the whole file, use “Import ALL bulls” above.</p>
+              <button type="submit" className="btn-secondary">Send top N for approval</button>
+              <p className="text-[11px] text-slate-400">Handy for a small working set. Imported as pending and sent to the review queue. For the whole file, use “Send ALL bulls” above.</p>
             </form>
           </Card>
 

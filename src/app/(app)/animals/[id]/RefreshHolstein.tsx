@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-// Convenience: re-scrape this animal from holstein.ca (live, all tabs) and
-// refresh the profile in place. Requires the app running locally with Chrome.
+// Convenience: re-fetch this animal live from Lactanet Genetics (all sections)
+// and refresh the profile in place. Runs the same everywhere — no browser needed.
 export default function RefreshHolstein({ reg }: { reg: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -25,8 +25,8 @@ export default function RefreshHolstein({ reg }: { reg: string }) {
   return (
     <div className="flex items-center gap-2">
       {msg && <span className={`text-xs ${msg.startsWith("Fail") ? "text-red-600" : "text-emerald-600"}`}>{msg}</span>}
-      <button type="button" onClick={refresh} disabled={busy} className="btn-secondary" title="Re-scrape this animal from Holstein.ca">
-        {busy ? "Refreshing…" : "↻ Holstein.ca"}
+      <button type="button" onClick={refresh} disabled={busy} className="btn-secondary" title="Re-fetch this animal's full record from Lactanet Genetics">
+        {busy ? "Updating…" : "↻ Update from Lactanet"}
       </button>
     </div>
   );

@@ -123,6 +123,26 @@ export const RECORD_TYPES = [
   { code: "identifier", label: "Identifier" },
 ];
 
+// Batch-import review rows (Proof Import / large Animal Import). These are NOT
+// user-selectable record types: they are created ONLY by the import tools (via
+// createImportReview) and are approved/denied ONLY through the admin import
+// controls. They are deliberately kept OUT of RECORD_TYPES so they can never be
+// chosen in the uploads "proposed record type" dropdown, and are refused by the
+// generic review actions and by uploadCapture — a forged batch row would let a
+// non-admin drive an admin's "Deny" into deleting arbitrary animals.
+export const BATCH_IMPORT_TYPES = ["proof_import", "animal_import"] as const;
+export function isBatchImportType(t: string | null | undefined): boolean {
+  return t === "proof_import" || t === "animal_import";
+}
+
+// An Animal Import (Lactanet paste/CSV) of MORE than this many registration
+// numbers is a "large" import: it is written to the database as PENDING and
+// routed to the admin review queue, where an admin approves it (records become
+// authoritative) or denies it (the imported records are deleted). Smaller
+// pastes and single look-ups import directly as before. Proof imports always
+// go through the queue regardless of size.
+export const LARGE_ANIMAL_IMPORT = 10;
+
 export const SPECIES_TYPES = [
   { code: "dairy", label: "Dairy" },
   { code: "beef", label: "Beef" },

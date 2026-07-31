@@ -109,6 +109,19 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
     prisma.traitDefinition.findMany({ where: { domain: "genetic", active: true, traitCode: { in: Object.keys(TRAIT_COLUMNS) } }, orderBy: [{ category: "asc" }, { displayOrder: "asc" }], select: { traitCode: true, traitName: true, category: true } }),
   ]);
 
+  // Which of the animals on this page have an import awaiting admin approval
+  // (a pending evaluation)? Used to show a "Pending" badge. One query per page.
+  const pendingIds = new Set(
+    rows.length
+      ? (
+          await prisma.geneticEvaluation.findMany({
+            where: { animalId: { in: rows.map((r) => r.id) }, approvalStatus: "pending" },
+            select: { animalId: true }, distinct: ["animalId"],
+          })
+        ).map((e) => e.animalId)
+      : [],
+  );
+
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const qs = (p: number) => {
     const params = new URLSearchParams();
@@ -161,6 +174,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
                     <td className="td">
                       <Link href={`/animals/${a.id}`} className="link font-medium">{a.primaryName}</Link>
                       {a.shortName && <span className="ml-1 text-xs text-slate-400">({a.shortName})</span>}
+                      {pendingIds.has(a.id) && <span className="ml-1" title="Imported record awaiting admin approval"><Badge tone="amber">Pending</Badge></span>}
                       {naab && <span className="mt-0.5 block font-mono text-[10px] text-slate-400" title="NAAB stud code">NAAB {naab}</span>}
                     </td>
                     <td className="td" title={SEXES[a.sex as keyof typeof SEXES] ?? a.sex}>{a.breed?.breedName ?? <span className="text-amber-600">—</span>}</td>

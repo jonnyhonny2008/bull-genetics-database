@@ -1,6 +1,7 @@
 import { getSessionUser } from "@/lib/auth";
-import { can } from "@/lib/constants";
+import { can, LARGE_ANIMAL_IMPORT } from "@/lib/constants";
 import { ingestLactanetReg } from "@/lib/lactanet-ingest";
+import { createImportReview, type ImportAnimalRef } from "@/lib/import-staging";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // split very large lists into batches
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
   }
 
   let regs: string[] = [];
+  let review = false;
   try {
     const body = await request.json();
+    review = body?.review === true;
     const raw: string = Array.isArray(body?.regs) ? body.regs.join("\n") : String(body?.regs ?? body?.text ?? "");
     // Full registrations only — breed(2) + country(3) + sex(1) + digits.
     const found: string[] = raw.toUpperCase().match(/\b[A-Z]{2}[A-Z0-9]{3}[MF]\d{4,}\b/g) ?? [];
@@ -38,6 +41,10 @@ export async function POST(request: Request) {
     );
   }
 
+  // Large imports ALWAYS go through the review queue, even if the client didn't
+  // request it — this is the real gate, so no direct caller can bypass approval.
+  const doReview = review || regs.length > LARGE_ANIMAL_IMPORT;
+
   const encoder = new TextEncoder();
   const uid = user?.uid;
   const stream = new ReadableStream({
@@ -52,15 +59,39 @@ export async function POST(request: Request) {
       };
 
       let ok = 0, fail = 0, created = 0;
-      send({ type: "start", total: regs.length });
+      const manifest: ImportAnimalRef[] = [];
+      send({ type: "start", total: regs.length, review: doReview });
       for (let i = 0; i < regs.length && !cancelled; i++) {
         let outcome: Awaited<ReturnType<typeof ingestLactanetReg>>;
-        try { outcome = await ingestLactanetReg(regs[i], uid); }
+        try { outcome = await ingestLactanetReg(regs[i], uid, { pending: doReview }); }
         catch (e) { outcome = { reg: regs[i], ok: false, error: String((e as Error)?.message ?? e) }; }
-        if (outcome.ok) { ok++; if (outcome.created) created++; } else { fail++; }
+        if (outcome.ok) {
+          ok++;
+          if (outcome.created) created++;
+          if (doReview && outcome.animalId) {
+            manifest.push({ reg: outcome.reg, animalId: outcome.animalId, created: !!outcome.created, evaluationId: outcome.evaluationId ?? null, name: outcome.name ?? null });
+          }
+        } else { fail++; }
         send({ type: "progress", index: i + 1, total: regs.length, outcome });
       }
-      send({ type: "done", total: regs.length, ok, fail, created });
+
+      // Stage the batch for admin approval (records were written as pending).
+      let reviewId: string | null = null;
+      let reviewError: string | null = null;
+      if (doReview && manifest.length && !cancelled) {
+        try {
+          reviewId = await createImportReview({
+            userId: uid, kind: "animal", captureType: "lactanet_query", sourceName: "LactanetGen",
+            manifest: { kind: "animal", mode: "paste", label: `Animal import: ${manifest.length} animal(s) from Lactanet`, count: manifest.length, animals: manifest },
+          });
+        } catch (e) {
+          // Records stay pending even if the queue row fails; surface it so the
+          // client doesn't claim "sent to review queue" when there's nothing there.
+          reviewError = String((e as Error)?.message ?? e);
+          console.error("createImportReview failed for animal_import batch:", e);
+        }
+      }
+      send({ type: "done", total: regs.length, ok, fail, created, review: doReview, reviewId, reviewError });
       try { controller.close(); } catch { /* already cancelled */ }
     },
   });

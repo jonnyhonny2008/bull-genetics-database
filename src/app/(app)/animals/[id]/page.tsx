@@ -57,6 +57,9 @@ export default async function AnimalProfile({
   if (!a) notFound();
 
   const isFemale = a.sex === "F";
+  // An imported evaluation still marked pending means this animal is part of an
+  // import awaiting an admin's approval in the review queue.
+  const hasPending = a.evaluations.some((e) => e.approvalStatus === "pending");
   const profile = parseHolsteinProfileJson(a.holsteinProfileJson);
   // Owners/breeders and show awards are breed-association registry data. The
   // Lactanet source doesn't publish them, so those two tabs are gone rather
@@ -165,6 +168,13 @@ export default async function AnimalProfile({
               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                 {primary && <span className="font-mono text-slate-500" title="Primary registration number">{primary.idValue}</span>}
                 {naab && <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono font-medium text-brand-700" title="NAAB stud code (secondary identifier)">NAAB {naab}</span>}
+              </span>
+            )}
+            {hasPending && (
+              <span className="mt-1 flex">
+                <Link href="/review" className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200" title="This animal was imported and is awaiting an admin's approval in the review queue">
+                  ⏳ Pending admin approval — open review queue
+                </Link>
               </span>
             )}
           </span>

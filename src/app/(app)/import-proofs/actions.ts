@@ -9,34 +9,31 @@ import { findBull, topBulls, resolveProofFile, safeProofFileName, type ParsedBul
 import { packTraits } from "@/lib/eval-traits";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { spawn } from "child_process";
+import { createImportReview, type ImportAnimalRef } from "@/lib/import-staging";
 
-// Launch the full bulk import of every bull in a file as a detached background
-// process (importing ~99k rows would far exceed a request's lifetime). The
-// script skips animals already imported, so it is safe to re-run / resume.
+// Mass import of every bull in a file (~99k rows). Far too large to write-then-
+// maybe-delete, so it is HELD as a request in the review queue: nothing is
+// written until an admin approves it, which spawns the background importer
+// (see approveImportReview in src/lib/import-staging.ts). Denying just discards.
 export async function startBulkImport(fd: FormData) {
   const user = currentUser();
   if (!can(user?.role, "record:write")) throw new Error("Not authorized");
-  // Only ever run against a file that actually exists in the imports dir and whose
-  // name is a bare CSV basename — this prevents any shell metacharacter or path
-  // component from reaching the spawned command (no command injection / traversal).
+  // Validate to a bare CSV basename now so the queued request is runnable later
+  // (prevents any shell metacharacter / path component reaching the spawn).
   const safeName = resolveProofFile(String(fd.get("fileName") ?? "")) ? safeProofFileName(String(fd.get("fileName") ?? "")) : null;
   if (!safeName) throw new Error("Choose a valid proof file from the list.");
 
-  // Uses npm on the server's PATH; inherits DATABASE_URL/APP_ENV from this process.
-  // safeName is validated to /^[A-Za-z0-9._-]+\.csv$/, so cmd.exe cannot re-parse it.
-  const child = spawn("cmd", ["/c", "npm", "run", "import:all", "--", safeName], {
-    cwd: process.cwd(),
-    env: process.env,
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
+  const reviewId = await createImportReview({
+    userId: user?.uid,
+    kind: "proof",
+    captureType: "csv",
+    sourceName: "LactanetGen",
+    notes: `Mass proof import request: ALL bulls in ${safeName}`,
+    manifest: { kind: "proof", mode: "all", label: `Mass import — ALL bulls in ${safeName} (~99,000)`, fileName: safeName, animals: [] },
   });
-  child.unref();
-
-  await audit(user, "source_capture", "import", undefined, { bulkAll: safeName, startedBy: user?.name });
+  await audit(user, "import_batch", "stage", reviewId, { mass: safeName, requestedBy: user?.name });
   revalidatePath("/import-proofs");
-  redirect("/import-proofs?started=1");
+  redirect("/import-proofs?queued=all");
 }
 
 function proofRunLabel(gerun: string | null): { label: string; date: Date } {
@@ -53,8 +50,13 @@ function proofRunLabel(gerun: string | null): { label: string; date: Date } {
 
 // Persist one parsed bull: upsert animal + identifiers + roles + a dated genetic
 // evaluation with all trait values + a pedigree reference. Returns the animal id.
-export async function persistBull(bull: ParsedBull, ctx: { sourceId: string | null; captureId: string | null; userId?: string; fileName: string }): Promise<string> {
+export async function persistBull(
+  bull: ParsedBull,
+  ctx: { sourceId: string | null; captureId: string | null; userId?: string; fileName: string; approvalStatus?: "approved" | "pending" },
+): Promise<{ animalId: string; created: boolean; evaluationId: string }> {
   const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
+  const approvalStatus = ctx.approvalStatus ?? "approved";
+  const isApproved = approvalStatus === "approved";
 
   // Match existing by registration or NAAB identifier.
   const idMatches = await prisma.animalIdentifier.findMany({
@@ -62,10 +64,12 @@ export async function persistBull(bull: ParsedBull, ctx: { sourceId: string | nu
     select: { animalId: true },
   });
   let animalId = idMatches[0]?.animalId ?? null;
+  let wasCreated = false;
 
   const { label: runLabel, date: runDate } = proofRunLabel(bull.proofRun);
 
   if (!animalId) {
+    wasCreated = true;
     const created = await prisma.animal.create({
       data: {
         primaryName: bull.registeredName,
@@ -98,9 +102,14 @@ export async function persistBull(bull: ParsedBull, ctx: { sourceId: string | nu
 
   // Trait definition lookup for names/categories/units.
 
-  // Avoid duplicate evaluations for the same run + source.
+  // Avoid duplicate evaluations for the same run + source — but NEVER disturb an
+  // existing APPROVED evaluation when staging a pending import. A pending write
+  // must be a brand-new row so that denying it (which deletes only pending rows)
+  // can't destroy a pre-existing approved proof. Approved writes replace the
+  // prior row for the run as before; the superseded approved row is instead
+  // removed at approval time (see approveImportReview's dedupe).
   const existingEval = await prisma.geneticEvaluation.findFirst({
-    where: { animalId, proofRun: runLabel, sourceId: ctx.sourceId },
+    where: { animalId, proofRun: runLabel, sourceId: ctx.sourceId, ...(isApproved ? {} : { approvalStatus: "pending" }) },
   });
   if (existingEval) {
     await prisma.geneticEvaluation.delete({ where: { evaluationId: existingEval.evaluationId } });
@@ -116,7 +125,10 @@ export async function persistBull(bull: ParsedBull, ctx: { sourceId: string | nu
       animalId, sourceId: ctx.sourceId, captureId: ctx.captureId, evaluationDate: runDate,
       proofRun: runLabel, countrySystem: "CA", breedContext: "Holstein",
       reliabilityOverall: lpiRel != null ? lpiRel / 100 : null,
-      isPreferred: false, approvalStatus: "approved", approvedById: ctx.userId, approvedAt: new Date(),
+      isPreferred: false,
+      approvalStatus,
+      approvedById: isApproved ? ctx.userId : undefined,
+      approvedAt: isApproved ? new Date() : undefined,
       createdById: ctx.userId, notes: `Imported from ${ctx.fileName}.`,
       traitsJson: packed.traitsJson, ...packed.columns,
     },
@@ -135,7 +147,7 @@ export async function persistBull(bull: ParsedBull, ctx: { sourceId: string | nu
   }
 
   await recomputePreferredForAnimal(animalId);
-  return animalId;
+  return { animalId, created: wasCreated, evaluationId: evalRec.evaluationId };
 }
 
 export async function importByReg(fd: FormData) {
@@ -148,16 +160,21 @@ export async function importByReg(fd: FormData) {
   const bull = await findBull(fileName, query);
   if (!bull) throw new Error(`No bull found for "${query}" in ${fileName}.`);
 
-  const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
+  const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" }, select: { sourceId: true } });
   const capture = await prisma.sourceCapture.create({
-    data: { sourceId: source?.sourceId, captureType: "report", originalFileName: fileName, capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Lactanet proof import: ${bull.registrationNumber}` },
+    data: { sourceId: source?.sourceId, captureType: "csv", originalFileName: fileName, capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Proof import (pending review): ${bull.registrationNumber} from ${fileName}` },
   });
-  const animalId = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: user?.uid, fileName });
+  // Write NOW as pending; an admin approves (keep) or denies (delete) in /review.
+  const { animalId, created, evaluationId } = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: user?.uid, fileName, approvalStatus: "pending" });
   await prisma.sourceCapture.update({ where: { captureId: capture.captureId }, data: { animalId } });
-  await audit(user, "genetic_evaluation", "import", animalId, { reg: bull.registrationNumber, traits: bull.traits.length });
+  const reviewId = await createImportReview({
+    userId: user?.uid, kind: "proof", captureType: "csv", captureId: capture.captureId,
+    manifest: { kind: "proof", mode: "reg", label: `Proof import: ${bull.registeredName} (${bull.registrationNumber}) from ${fileName}`, fileName, count: 1, animals: [{ reg: bull.registrationNumber, animalId, created, evaluationId, name: bull.registeredName }] },
+  });
+  await audit(user, "import_batch", "stage", reviewId, { kind: "proof", reg: bull.registrationNumber, traits: bull.traits.length });
 
   revalidatePath("/animals");
-  redirect(`/animals/${animalId}`);
+  redirect(`/import-proofs?queued=1`);
 }
 
 export async function importBulk(fd: FormData) {
@@ -169,16 +186,21 @@ export async function importBulk(fd: FormData) {
   if (!fileName) throw new Error("Choose a valid proof file from the list.");
 
   const bulls = await topBulls(fileName, sortCol, limit);
-  const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
+  const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" }, select: { sourceId: true } });
   const capture = await prisma.sourceCapture.create({
-    data: { sourceId: source?.sourceId, captureType: "report", originalFileName: fileName, capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Lactanet bulk import: top ${limit} by ${sortCol}` },
+    data: { sourceId: source?.sourceId, captureType: "csv", originalFileName: fileName, capturedById: user?.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Proof import (pending review): top ${limit} by ${sortCol} from ${fileName}` },
   });
-  let count = 0;
+  // Write each NOW as pending; an admin approves/denies the batch in /review.
+  const animals: ImportAnimalRef[] = [];
   for (const bull of bulls) {
-    await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: user?.uid, fileName });
-    count++;
+    const { animalId, created, evaluationId } = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: user?.uid, fileName, approvalStatus: "pending" });
+    animals.push({ reg: bull.registrationNumber, animalId, created, evaluationId, name: bull.registeredName });
   }
-  await audit(user, "genetic_evaluation", "import", capture.captureId, { bulk: count, sortCol });
+  const reviewId = await createImportReview({
+    userId: user?.uid, kind: "proof", captureType: "csv", captureId: capture.captureId,
+    manifest: { kind: "proof", mode: "topN", label: `Proof import: top ${animals.length} by ${sortCol} from ${fileName}`, fileName, count: animals.length, animals },
+  });
+  await audit(user, "import_batch", "stage", reviewId, { bulk: animals.length, sortCol });
   revalidatePath("/animals");
-  redirect(`/animals?q=`);
+  redirect(`/import-proofs?queued=${animals.length}`);
 }

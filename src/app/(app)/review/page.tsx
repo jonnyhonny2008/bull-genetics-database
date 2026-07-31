@@ -5,7 +5,9 @@ import { currentUser } from "@/lib/auth";
 import { can, REVIEW_STATUSES, RECORD_TYPES, label } from "@/lib/constants";
 import { PageHeader, Card, Badge, EmptyState, statusTone } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { approveReview, setReviewStatus, updateReview } from "./actions";
+import { isBatchImportType } from "@/lib/constants";
+import { approveReview, setReviewStatus, updateReview, approveImport, denyImport } from "./actions";
+import { parseManifest, type ImportManifest } from "@/lib/import-staging";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ const ACTIVE = ["pending", "conflict_review", "needs_more_info"];
 export default async function ReviewPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const user = currentUser();
   if (!can(user?.role, "review:write")) redirect("/dashboard");
+  const canApprove = can(user?.role, "record:approve"); // admin — may approve/deny imports
 
   const filter = searchParams.status;
   const where = filter ? { status: filter } : { status: { in: ACTIVE } };
@@ -43,7 +46,15 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
         <EmptyState message="No review items in this view." />
       ) : (
         <div className="space-y-3">
-          {items.map((r) => (
+          {items.map((r) => {
+            // Batch imports (Proof Import / large Animal Import) carry a manifest
+            // and get an approve/deny card instead of the per-record editor. Gate on
+            // the AUTHORITATIVE proposedRecordType (only createImportReview sets it),
+            // never on parseManifest alone — a forged upload could otherwise put a
+            // manifest in a non-batch row and get admin Approve/Deny controls.
+            const manifest = isBatchImportType(r.proposedRecordType) ? parseManifest(r.extractedDataJson) : null;
+            if (manifest) return <ImportBatchCard key={r.reviewId} r={r} manifest={manifest} canApprove={canApprove} />;
+            return (
             <Card key={r.reviewId}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Badge tone={statusTone(r.status)}>{r.status}</Badge>
@@ -104,10 +115,83 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
                 </div>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function ImportBatchCard({
+  r,
+  manifest,
+  canApprove,
+}: {
+  r: { reviewId: string; status: string; createdAt: Date };
+  manifest: ImportManifest;
+  canApprove: boolean;
+}) {
+  const isMass = manifest.mode === "all";
+  const createdCount = manifest.animals.filter((a) => a.created).length;
+  const shown = manifest.animals.slice(0, 12);
+  const rest = manifest.animals.length - shown.length;
+  const pending = r.status === "pending";
+
+  return (
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+        <Badge tone="brand">{manifest.kind === "proof" ? "Proof import" : "Animal import"}</Badge>
+        <span className="text-sm text-slate-700">{manifest.label}</span>
+        <span className="ml-auto text-xs text-slate-400">{fmtDate(r.createdAt)}</span>
+      </div>
+
+      {isMass ? (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Nothing has been imported yet. Approving starts the background import of every bull in the file; denying discards the request.
+        </p>
+      ) : (
+        <p className="mb-3 text-sm text-slate-600">
+          <span className="font-semibold">{manifest.animals.length}</span> animal{manifest.animals.length === 1 ? "" : "s"} written as{" "}
+          <span className="font-semibold text-amber-700">pending</span>
+          {createdCount > 0 && <> · <span className="font-semibold">{createdCount}</span> newly created</>}.{" "}
+          Approving makes them authoritative; denying deletes the new animals and the pending evaluations.
+        </p>
+      )}
+
+      {!isMass && manifest.animals.length > 0 && (
+        <ul className="mb-3 max-h-56 space-y-1 overflow-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          {shown.map((a) => (
+            <li key={a.animalId} className="flex items-center justify-between gap-2">
+              <span className="truncate">
+                <Link className="link font-medium" href={`/animals/${a.animalId}`}>{a.name ?? a.reg}</Link>{" "}
+                <span className="font-mono text-slate-400">{a.reg}</span>
+              </span>
+              <Badge tone={a.created ? "green" : "amber"}>{a.created ? "new" : "updated"}</Badge>
+            </li>
+          ))}
+          {rest > 0 && <li className="text-slate-400">+{rest} more…</li>}
+        </ul>
+      )}
+
+      {!pending ? (
+        <p className="text-xs text-slate-500">This import was already {r.status}.</p>
+      ) : canApprove ? (
+        <div className="flex flex-wrap gap-2">
+          <form action={approveImport}>
+            <input type="hidden" name="reviewId" value={r.reviewId} />
+            <button className="btn-primary btn-sm" type="submit">{isMass ? "Approve & start import" : "Approve import"}</button>
+          </form>
+          <form action={denyImport}>
+            <input type="hidden" name="reviewId" value={r.reviewId} />
+            <button className="btn-danger btn-sm" type="submit">{isMass ? "Deny request" : "Deny & delete"}</button>
+          </form>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">Awaiting an admin’s approval — you don’t have permission to approve imports.</p>
+      )}
+    </Card>
   );
 }
 

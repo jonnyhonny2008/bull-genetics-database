@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { can } from "@/lib/constants";
+import { can, isBatchImportType } from "@/lib/constants";
 import { audit } from "@/lib/audit";
 import { matchExistingAnimals } from "@/lib/quality";
 import { writeFile, mkdir } from "fs/promises";
@@ -22,6 +22,10 @@ export async function uploadCapture(fd: FormData) {
   const sourceUrl = String(fd.get("sourceUrl") ?? "").trim() || null;
   const linkedAnimalId = String(fd.get("animalId") ?? "") || null;
   const proposedRecordType = String(fd.get("proposedRecordType") ?? "genetic_evaluation");
+  // Batch-import rows are created ONLY by the Proof Import / Animal Import tools
+  // (which write a trusted manifest). Forbid forging one here: a crafted manifest
+  // could otherwise drive an admin's "Deny" into cascade-deleting arbitrary animals.
+  if (isBatchImportType(proposedRecordType)) throw new Error("Import batches are created by the Proof Import / Animal Import tools, not from an upload.");
   const extractedRaw = String(fd.get("extractedDataJson") ?? "").trim();
 
   // Persist the uploaded file (if any) to durable storage.
@@ -48,7 +52,16 @@ export async function uploadCapture(fd: FormData) {
   // Validate / default the extracted JSON.
   let extractedDataJson = extractedRaw;
   if (extractedRaw) {
-    try { JSON.parse(extractedRaw); } catch { throw new Error("Extracted data must be valid JSON (or leave it blank)."); }
+    let parsedJson: unknown;
+    try { parsedJson = JSON.parse(extractedRaw); } catch { throw new Error("Extracted data must be valid JSON (or leave it blank)."); }
+    // Defence in depth: reject anything shaped like an import-batch manifest. Batch
+    // review rows are created only by the import tools (which build a trusted
+    // manifest); a forged manifest here could trick an admin's "Deny" into
+    // cascade-deleting the animals it names.
+    const j = parsedJson as { kind?: unknown; animals?: unknown };
+    if (j && (j.kind === "proof" || j.kind === "animal") && Array.isArray(j.animals)) {
+      throw new Error("This looks like an import-batch manifest — imports are created by the Proof Import / Animal Import tools, not from an upload.");
+    }
   } else {
     extractedDataJson = JSON.stringify({ note: "Placeholder — no extraction yet. Map fields manually in review." });
   }

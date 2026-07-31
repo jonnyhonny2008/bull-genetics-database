@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { LARGE_ANIMAL_IMPORT } from "@/lib/constants";
 
 interface Outcome {
   reg: string; ok: boolean; animalId?: string; name?: string | null;
@@ -46,11 +47,15 @@ export default function LiveScrape() {
   const [rows, setRows] = useState<Outcome[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Full registrations: breed(2) + country(3, may be numeric like 840) + sex + digits.
   const regs = useMemo(() => [...new Set((raw.toUpperCase().match(/\b[A-Z]{2}[A-Z0-9]{3}[MF]\d{4,}\b/g) ?? []))], [raw]);
+  // A "large" import is routed to the review queue: written as pending, then
+  // approved or denied by an admin. Smaller pastes import directly.
+  const large = regs.length > LARGE_ANIMAL_IMPORT;
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -61,9 +66,9 @@ export default function LiveScrape() {
 
   async function importAll() {
     if (!regs.length || bulkBusy) return;
-    setBulkBusy(true); setRows([]); setSummary(null); setProgress({ done: 0, total: regs.length });
+    setBulkBusy(true); setRows([]); setSummary(null); setQueued(false); setProgress({ done: 0, total: regs.length });
     try {
-      const resp = await fetch("/api/lactanet/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ regs }) });
+      const resp = await fetch("/api/lactanet/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ regs, review: large }) });
       if (!resp.body) throw new Error("no stream");
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
@@ -78,7 +83,20 @@ export default function LiveScrape() {
           if (!line.trim()) continue;
           const msg = JSON.parse(line);
           if (msg.type === "progress") { setRows((prev) => [...prev, msg.outcome]); setProgress({ done: msg.index, total: msg.total }); }
-          else if (msg.type === "done") { setSummary(`${msg.ok} imported (${msg.created} new), ${msg.fail} failed of ${msg.total}.`); }
+          else if (msg.type === "done") {
+            if (msg.review && msg.reviewId) {
+              // A review row was actually created — safe to point the user at it.
+              setQueued(true);
+              setSummary(`${msg.ok} animal(s) imported as pending (${msg.created} new)${msg.fail ? `, ${msg.fail} failed` : ""} — sent to the review queue for an admin to approve or deny.`);
+            } else if (msg.review && msg.ok > 0) {
+              // Records were written pending but the queue row couldn't be created.
+              setQueued(false);
+              setSummary(`${msg.ok} animal(s) were written as pending, but the review item could not be created${msg.reviewError ? ` (${msg.reviewError})` : ""}. They show a Pending badge — ask an admin to review.`);
+            } else {
+              setQueued(false);
+              setSummary(`${msg.ok} imported (${msg.created} new), ${msg.fail} failed of ${msg.total}.`);
+            }
+          }
         }
       }
     } catch (err) {
@@ -113,15 +131,29 @@ export default function LiveScrape() {
           <span className="text-[11px] text-slate-400">Detected <strong>{regs.length}</strong> reg #{regs.length === 1 ? "" : "s"}</span>
         </div>
         <button type="button" onClick={importAll} disabled={bulkBusy || !regs.length} className="btn-primary">
-          {bulkBusy ? `Importing… ${progress?.done ?? 0}/${progress?.total ?? 0}` : `Look up & import ${regs.length || ""} animal${regs.length === 1 ? "" : "s"}`}
+          {bulkBusy
+            ? `Importing… ${progress?.done ?? 0}/${progress?.total ?? 0}`
+            : large
+              ? `Import ${regs.length} & send for approval`
+              : `Look up & import ${regs.length || ""} animal${regs.length === 1 ? "" : "s"}`}
         </button>
+        {large && !bulkBusy && (
+          <p className="text-[11px] text-amber-700">
+            Large import (over {LARGE_ANIMAL_IMPORT}) — these will be imported as <strong>pending</strong> and sent to the{" "}
+            <a href="/review" className="underline">review queue</a> for an admin to approve or deny.
+          </p>
+        )}
 
         {progress && (
           <div className="h-1.5 w-full overflow-hidden rounded bg-slate-100">
             <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
           </div>
         )}
-        {summary && <div className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-900">{summary} <a href="/animals" className="underline">View animals →</a></div>}
+        {summary && (
+          <div className={`rounded-md border p-2 text-xs ${queued ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-900"}`}>
+            {summary} <a href={queued ? "/review" : "/animals"} className="underline">{queued ? "Open review queue →" : "View animals →"}</a>
+          </div>
+        )}
         {rows.length > 0 && <ul className="max-h-72 overflow-auto rounded-md border border-slate-200 bg-white px-3">{rows.map((o, i) => <Row key={i} o={o} />)}</ul>}
       </div>
     </div>

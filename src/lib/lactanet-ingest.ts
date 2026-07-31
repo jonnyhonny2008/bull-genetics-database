@@ -43,6 +43,7 @@ export interface LactanetIngestOutcome {
   reg: string;
   ok: boolean;
   animalId?: string;
+  evaluationId?: string | null; // the evaluation written this run (for staged/pending imports)
   name?: string | null;
   created?: boolean;
   traitCount?: number;
@@ -59,7 +60,11 @@ export interface LactanetIngestOutcome {
 export async function ingestLactanetReg(
   regRaw: string,
   userId?: string | null,
+  opts?: { pending?: boolean },
 ): Promise<LactanetIngestOutcome> {
+  // When staged for admin approval, the evaluation is written as "pending" (so it
+  // is not yet the animal's authoritative/preferred proof) until an admin approves.
+  const pending = opts?.pending ?? false;
   const ref = parseReg(regRaw);
   const R = ref?.reg ?? regRaw.trim().toUpperCase();
   if (!ref) {
@@ -158,6 +163,7 @@ export async function ingestLactanetReg(
     // instead of stacking duplicate rows, which would corrupt proof-round counts
     // and the Proof Change Report's "previous official proof" pick.
     let traitCount = 0;
+    let evaluationId: string | null = null;
     const ev = parsed.evaluation;
     if (ev.traits.length && ev.runDate) {
       const packed = packTraits(
@@ -167,8 +173,13 @@ export async function ingestLactanetReg(
         })),
       );
       const evaluationDate = new Date(`${ev.runDate}T00:00:00Z`);
+      // When staging a pending import, only ever match a prior PENDING row — never
+      // an APPROVED one. Overwriting an approved eval in place would demote it (and
+      // deny, which deletes pending rows, would then destroy a pre-existing approved
+      // proof). A pending write is therefore a fresh row alongside any approved one;
+      // the approved duplicate is removed at approval time (see approveImportReview).
       const existingEval = await prisma.geneticEvaluation.findFirst({
-        where: { animalId, evaluationDate, sourceId: deps.lactanetSourceId ?? undefined },
+        where: { animalId, evaluationDate, sourceId: deps.lactanetSourceId ?? undefined, ...(pending ? { approvalStatus: "pending" } : {}) },
         select: { evaluationId: true },
       });
       const data = {
@@ -177,22 +188,25 @@ export async function ingestLactanetReg(
         countrySystem: "CA",
         breedContext: "Holstein",
         reliabilityOverall: ev.reliability,
-        approvalStatus: "approved",
+        approvalStatus: pending ? "pending" : "approved",
         traitsJson: packed.traitsJson,
         ...packed.columns,
         notes: `Lactanet Genetics query${ev.basis ? ` (${ev.basis})` : ""}.`,
       };
       if (existingEval) {
         await prisma.geneticEvaluation.update({ where: { evaluationId: existingEval.evaluationId }, data });
+        evaluationId = existingEval.evaluationId;
       } else {
-        await prisma.geneticEvaluation.create({
+        const createdEval = await prisma.geneticEvaluation.create({
           data: {
             ...data, animalId,
             sourceId: deps.lactanetSourceId ?? undefined,
             captureId: capture.captureId,
             createdById: userId ?? undefined,
           },
+          select: { evaluationId: true },
         });
+        evaluationId = createdEval.evaluationId;
       }
       traitCount = ev.traits.length;
     }
@@ -205,7 +219,7 @@ export async function ingestLactanetReg(
     await recomputePreferredForAnimal(animalId);
 
     return {
-      reg: R, ok: true, animalId, name, created,
+      reg: R, ok: true, animalId, evaluationId, name, created,
       traitCount,
       proofRun: ev.runLabel,
       ancestors: parsed.profile.familyTree.length,
