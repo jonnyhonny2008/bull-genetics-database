@@ -67,7 +67,7 @@ export default async function DataQualityPage() {
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="card card-pad">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500 break-words">{label}</div>
       <div className={`mt-1 text-2xl font-bold ${value ? "text-amber-600" : "text-slate-800"}`}>{value}</div>
     </div>
   );

@@ -66,7 +66,10 @@ export function StatCard({
   };
   const inner = (
     <div className="card card-pad h-full">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      {/* text-[11px] + leading-tight + break-words keeps long labels (e.g.
+          "Possible duplicates") tidy inside the narrow 6-across dashboard tiles
+          instead of overflowing the card. */}
+      <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500 break-words">{label}</div>
       <div className={`mt-1 text-3xl font-bold ${tones[tone]}`}>{value}</div>
       {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
     </div>
