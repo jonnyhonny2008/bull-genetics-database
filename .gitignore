@@ -47,3 +47,6 @@ tsconfig.tsbuildinfo
 
 # Lactanet HTML fixtures (large; regenerate with the saved URLs)
 /imports/**/*.html
+
+# Contains a live DB password — never commit
+VERCEL_DATABASE_URL.txt

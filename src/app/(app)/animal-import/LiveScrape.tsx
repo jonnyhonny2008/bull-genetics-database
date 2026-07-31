@@ -94,10 +94,10 @@ export default function LiveScrape() {
         <div className="flex gap-2">
           <input value={reg} onChange={(e) => setReg(e.target.value)} className="input flex-1" placeholder="HOCANF121517751" />
           <button type="submit" disabled={singleBusy || !reg.trim()} className="btn-primary whitespace-nowrap">
-            {singleBusy ? "Scraping…" : "Scrape & import"}
+            {singleBusy ? "Looking up…" : "Look up & import"}
           </button>
         </div>
-        {singleBusy && <p className="text-xs text-slate-400">Driving the browser through holstein.ca (all tabs)… ~10s.</p>}
+        {singleBusy && <p className="text-xs text-slate-400">Fetching every section from Lactanet… a few seconds.</p>}
         {single && <ul className="rounded-md border border-slate-200 bg-slate-50 px-3"><Row o={single} /></ul>}
       </form>
 
@@ -113,7 +113,7 @@ export default function LiveScrape() {
           <span className="text-[11px] text-slate-400">Detected <strong>{regs.length}</strong> reg #{regs.length === 1 ? "" : "s"}</span>
         </div>
         <button type="button" onClick={importAll} disabled={bulkBusy || !regs.length} className="btn-primary">
-          {bulkBusy ? `Importing… ${progress?.done ?? 0}/${progress?.total ?? 0}` : `Scrape & import ${regs.length || ""} animal${regs.length === 1 ? "" : "s"}`}
+          {bulkBusy ? `Importing… ${progress?.done ?? 0}/${progress?.total ?? 0}` : `Look up & import ${regs.length || ""} animal${regs.length === 1 ? "" : "s"}`}
         </button>
 
         {progress && (

@@ -18,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/reports", label: "Reports", group: "Records", need: "compare:read" },
     { href: "/uploads", label: "Uploads", group: "Data In", need: "upload:write" },
     { href: "/import-proofs", label: "Proof Import", group: "Data In", need: "record:write" },
-    { href: "/holstein-lookup", label: "Holstein.ca Lookup", group: "Data In", need: "upload:write" },
+    { href: "/animal-import", label: "Animal Import", group: "Data In", need: "upload:write" },
     { href: "/review", label: "Review Queue", group: "Data In", need: "review:write" },
     { href: "/sources", label: "Sources", group: "Configuration", need: "config:write" },
     { href: "/traits", label: "Traits", group: "Configuration", need: "config:write" },
