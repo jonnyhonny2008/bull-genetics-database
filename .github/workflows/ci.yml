@@ -1,0 +1,34 @@
+name: CI
+
+# Deploy gate: runs on every push/PR to main so a broken commit can't reach
+# Vercel unnoticed. Typecheck + the pure unit tests are BLOCKING; lint is
+# informational for now (no ESLint config committed yet).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy URL so the Prisma client constructs during unit tests; the pure
+      # tests never open a connection, so it is never actually used.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npx tsx --test src/lib/holstein-parse.test.ts src/lib/proof-change.test.ts
+      - name: Lint (informational)
+        run: npx next lint
+        continue-on-error: true
