@@ -151,7 +151,17 @@ export async function fetchLactanetAnimal(
   for (let i = 0; i < tabs.length; i++) {
     const tab = tabs[i];
     try {
-      out.tabs[tab] = await get(tabUrl(ref, tab));
+      const html = await get(tabUrl(ref, tab));
+      // A data page that can't be resolved 302-redirects to the search form
+      // (query-individual.php), which `redirect:"follow"` turns into a 200 of
+      // the FORM. Detect that so we report "not found" instead of importing a
+      // phantom animal (name = reg, 0 traits) — the symptom for a non-genotyped
+      // heifer Lactanet doesn't individually publish.
+      if (tab === "summary" && isSearchForm(html)) {
+        out.error = `Lactanet has no individual record for ${ref.reg}. It may be a young, non-genotyped animal that isn't individually published yet — compute its Parent Average from its sire and dam instead.`;
+        return out;
+      }
+      out.tabs[tab] = html;
     } catch (e) {
       const msg = String((e as Error)?.message ?? e).split("\n")[0];
       out.errors[tab] = msg;
@@ -164,6 +174,13 @@ export async function fetchLactanetAnimal(
     if (i < tabs.length - 1) await sleep(GAP_MS);
   }
   return out;
+}
+
+/** True when the HTML is the query-individual search form (the redirect target
+ *  Lactanet serves for an animal it can't resolve), not a data page. The search
+ *  form uniquely carries the semen-code + registration query inputs. */
+function isSearchForm(html: string): boolean {
+  return /name=["']q_sirecode["']/i.test(html) && /name=["']q_reg["']/i.test(html);
 }
 
 /** Fetch many animals sequentially, reporting progress. Politeness by design. */
