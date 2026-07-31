@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { PageHeader, Card } from "@/components/ui";
@@ -14,7 +15,7 @@ export default async function NewClassificationPage({ params }: { params: { id: 
   if (!animal) notFound();
   const [defs, sources] = await Promise.all([
     prisma.traitDefinition.findMany({ where: { domain: "classification", active: true }, orderBy: { displayOrder: "asc" } }),
-    prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
+    getAllSources(),
   ]);
 
   return (

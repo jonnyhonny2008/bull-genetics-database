@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { PageHeader, Card } from "@/components/ui";
@@ -12,7 +13,7 @@ export default async function NewMilkPage({ params }: { params: { id: string } }
   if (!can(user?.role, "record:write")) redirect(`/animals/${params.id}`);
   const animal = await prisma.animal.findFirst({ where: { id: params.id, archived: false }, include: { breed: true } });
   if (!animal) notFound();
-  const sources = await prisma.source.findMany({ orderBy: { sourceName: "asc" } });
+  const sources = await getAllSources();
 
   return (
     <div className="mx-auto max-w-3xl">

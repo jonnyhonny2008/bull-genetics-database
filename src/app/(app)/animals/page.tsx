@@ -10,6 +10,7 @@ import { currentUser } from "@/lib/auth";
 import { TRAIT_COLUMNS } from "@/lib/eval-traits";
 import { sireRoleWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
+import { getActiveBreeds, getAllSources, getGeneticTraitDefsForFilters } from "@/lib/reference";
 
 export const dynamic = "force-dynamic";
 
@@ -104,9 +105,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   const roleCounts = await sireRoleCounts(roleBase);
 
   const [breeds, sources, traitDefs] = await Promise.all([
-    prisma.breed.findMany({ where: { active: true }, orderBy: { breedName: "asc" } }),
-    prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
-    prisma.traitDefinition.findMany({ where: { domain: "genetic", active: true, traitCode: { in: Object.keys(TRAIT_COLUMNS) } }, orderBy: [{ category: "asc" }, { displayOrder: "asc" }], select: { traitCode: true, traitName: true, category: true } }),
+    getActiveBreeds(), getAllSources(), getGeneticTraitDefsForFilters(),
   ]);
 
   // Which of the animals on this page have an import awaiting admin approval

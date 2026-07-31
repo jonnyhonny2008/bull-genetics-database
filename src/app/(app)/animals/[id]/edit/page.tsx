@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getActiveBreeds, getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { PageHeader } from "@/components/ui";
@@ -14,8 +15,8 @@ export default async function EditAnimalPage({ params }: { params: { id: string 
 
   const [animal, breeds, sources] = await Promise.all([
     prisma.animal.findFirst({ where: { id: params.id, archived: false }, include: { identifiers: true } }),
-    prisma.breed.findMany({ where: { active: true }, orderBy: { breedName: "asc" } }),
-    prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
+    getActiveBreeds(),
+    getAllSources(),
   ]);
   if (!animal) notFound();
 

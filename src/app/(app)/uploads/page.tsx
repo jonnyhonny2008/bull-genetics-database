@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can, CAPTURE_TYPES, RECORD_TYPES } from "@/lib/constants";
 import { PageHeader, Card, Table, Badge, EmptyState } from "@/components/ui";
@@ -19,7 +20,7 @@ export default async function UploadsPage() {
   if (!can(user?.role, "upload:write")) redirect("/dashboard");
 
   const [sources, animals, captures] = await Promise.all([
-    prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
+    getAllSources(),
     prisma.animal.findMany({ where: { archived: false }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
     prisma.sourceCapture.findMany({ where: { OR: [{ animalId: null }, { animal: { archived: false } }] }, orderBy: { capturedAt: "desc" }, take: 25, include: { source: true, animal: true, reviewItems: true } }),
   ]);

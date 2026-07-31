@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can, COUNTRIES } from "@/lib/constants";
 import { PageHeader, Card } from "@/components/ui";
@@ -20,7 +21,7 @@ export default async function NewProofPage({ params }: { params: { id: string } 
       where: { domain: "genetic", active: true, OR: [{ speciesType: species }, { speciesType: "both" }] },
       orderBy: { displayOrder: "asc" },
     }),
-    prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
+    getAllSources(),
   ]);
 
   const byCat = new Map<string, typeof defs>();
