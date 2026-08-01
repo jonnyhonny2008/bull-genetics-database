@@ -13,7 +13,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
         {error?.digest && <p style={{ marginTop: "0.25rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#94a3b8" }}>ref: {error.digest}</p>}
         <button
           onClick={() => reset()}
-          style={{ marginTop: "1.5rem", padding: "0.5rem 1rem", borderRadius: "0.375rem", background: "#2f6551", color: "#fff", border: 0, cursor: "pointer", fontSize: "0.875rem" }}
+          style={{ marginTop: "1.5rem", padding: "0.5rem 1rem", borderRadius: "0.375rem", background: "#337ab7", color: "#fff", border: 0, cursor: "pointer", fontSize: "0.875rem" }}
         >
           Try again
         </button>
