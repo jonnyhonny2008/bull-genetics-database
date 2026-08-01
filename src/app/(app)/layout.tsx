@@ -25,6 +25,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/traits", label: "Traits", group: "Configuration", need: "config:write" },
     { href: "/breeds", label: "Breeds", group: "Configuration", need: "config:write" },
     { href: "/admin", label: "Admin Settings", group: "Configuration", need: "config:write" },
+    { href: "/admin/errors", label: "Error Log", group: "Configuration", need: "config:write" },
   ];
   const items = all.filter((i) => !i.need || can(user.role, i.need));
 

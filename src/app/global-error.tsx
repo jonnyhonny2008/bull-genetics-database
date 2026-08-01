@@ -1,9 +1,26 @@
 "use client";
 
+import { useEffect } from "react";
+
 // Root error boundary — catches errors thrown by the root layout itself (which
 // (app)/error.tsx cannot). Must render its own <html>/<body>. Kept dependency-free
-// and inline-styled so it works even if the app's CSS failed to load.
+// and inline-styled so it works even if the app's CSS failed to load. Also reports
+// to the self-hosted error log.
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    fetch("/api/log-error", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "global-error-boundary",
+        message: error?.message,
+        stack: error?.stack,
+        digest: error?.digest,
+        url: typeof window !== "undefined" ? window.location.href : "",
+      }),
+    }).catch(() => {});
+  }, [error]);
+
   return (
     <html lang="en">
       <body style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", padding: "4rem 1.5rem", textAlign: "center", color: "#0f172a" }}>

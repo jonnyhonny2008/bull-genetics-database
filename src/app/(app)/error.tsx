@@ -1,9 +1,26 @@
 "use client";
 
+import { useEffect } from "react";
+
 // Error boundary for every /(app) page. Without this, an unhandled server/render
 // error shows Next's raw crash screen. This catches it and offers a retry, so the
-// sidebar/header stay and the user isn't dumped to a broken page.
+// sidebar/header stay and the user isn't dumped to a broken page. It also reports
+// the error to the self-hosted error log (/api/log-error).
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    fetch("/api/log-error", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "app-error-boundary",
+        message: error?.message,
+        stack: error?.stack,
+        digest: error?.digest,
+        url: typeof window !== "undefined" ? window.location.href : "",
+      }),
+    }).catch(() => {});
+  }, [error]);
+
   return (
     <div className="mx-auto max-w-lg py-16 text-center">
       <div className="text-4xl" aria-hidden="true">⚠️</div>
