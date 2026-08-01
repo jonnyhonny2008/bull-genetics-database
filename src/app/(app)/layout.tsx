@@ -39,15 +39,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AppSidebar items={items} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
+          <header className="flex items-center justify-between border-b border-navy-800 bg-navy-700 px-4 py-2">
             <div className="flex items-center gap-2">
               <NavToggle />
-              <div className="text-sm text-slate-500 md:hidden">Bull Stud Genetics</div>
+              <div className="text-sm text-slate-300 md:hidden">Blondin Sires</div>
             </div>
             <div className="ml-auto flex items-center gap-3">
               <div className="text-right leading-tight">
-                <div className="text-sm font-medium text-slate-800">{user.name}</div>
-                <div className="text-[11px] text-slate-500">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div>
+                <div className="text-sm font-medium text-white">{user.name}</div>
+                <div className="text-[11px] text-slate-300">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div>
               </div>
               <form action={logoutAction}>
                 <button className="btn-secondary btn-sm" type="submit">Sign out</button>

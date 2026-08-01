@@ -38,7 +38,7 @@ export function Sidebar({ items }: { items: NavItem[] }) {
               // Navigation is still instant enough; correctness wins here.
               prefetch={false}
               className={`block rounded-md px-3 py-2 text-sm font-medium transition ${
-                active ? "bg-brand-600 text-white" : "text-slate-200 hover:bg-brand-800 hover:text-white"
+                active ? "bg-brand-600 text-white" : "text-slate-200 hover:bg-navy-600 hover:text-white"
               }`}
             >
               {item.label}

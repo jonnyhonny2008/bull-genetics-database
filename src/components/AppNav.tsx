@@ -15,6 +15,7 @@
 // other without turning the whole (server-rendered) layout into a client tree.
 // ---------------------------------------------------------------------------
 
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Sidebar, type NavItem } from "@/components/Sidebar";
@@ -104,7 +105,7 @@ export function NavToggle() {
         aria-label={mobileOpen ? "Close menu" : "Open menu"}
         aria-expanded={mobileOpen}
         aria-controls="app-nav-drawer"
-        className="-ml-1 inline-flex items-center justify-center rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+        className="-ml-1 inline-flex items-center justify-center rounded-md p-2 text-slate-200 hover:bg-white/10 hover:text-white md:hidden"
       >
         <BurgerIcon open={mobileOpen} />
       </button>
@@ -115,7 +116,7 @@ export function NavToggle() {
         aria-label={collapsed ? "Show navigation" : "Hide navigation"}
         aria-expanded={!collapsed}
         title={collapsed ? "Show navigation" : "Hide navigation for more room"}
-        className="-ml-1 hidden items-center justify-center rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 md:inline-flex"
+        className="-ml-1 hidden items-center justify-center rounded-md p-2 text-slate-200 hover:bg-white/10 hover:text-white md:inline-flex"
       >
         <BurgerIcon open={false} />
       </button>
@@ -125,11 +126,10 @@ export function NavToggle() {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-2 px-4 py-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">BS</div>
-      <div className="leading-tight">
-        <div className="text-sm font-bold text-white">Bull Stud Genetics</div>
-        <div className="text-[10px] uppercase tracking-widest text-brand-300">Genetics Intelligence</div>
+    <div className="p-3">
+      {/* Blondin Sires logo on a white panel — matches the Haystack sidebar. */}
+      <div className="flex items-center justify-center rounded-md bg-white px-3 py-3 shadow-sm">
+        <Image src="/BlondinSires.png" alt="Blondin Sires" width={140} height={88} priority className="h-auto w-full max-w-[150px]" />
       </div>
     </div>
   );
@@ -143,7 +143,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
     <>
       {/* ---- desktop ---- */}
       <aside
-        className={`hidden w-60 shrink-0 flex-col bg-brand-900 md:sticky md:top-0 md:h-screen md:self-start ${
+        className={`hidden w-60 shrink-0 flex-col bg-navy-700 md:sticky md:top-0 md:h-screen md:self-start ${
           collapsed ? "md:hidden" : "md:flex"
         }`}
       >
@@ -151,7 +151,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
         <div className="flex-1 overflow-y-auto">
           <Sidebar items={items} />
         </div>
-        <div className="border-t border-brand-800 p-3 text-[11px] text-brand-300">
+        <div className="border-t border-navy-600 p-3 text-[11px] text-slate-400">
           Phase 1 · Historical Proof DB
         </div>
       </aside>
@@ -172,7 +172,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
           role="dialog"
           aria-modal="true"
           aria-label="Navigation"
-          className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-brand-900 shadow-xl transition-transform duration-200 ease-out ${
+          className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-navy-700 shadow-xl transition-transform duration-200 ease-out ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -182,7 +182,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
-              className="m-3 rounded-md p-2 text-brand-200 hover:bg-brand-800 hover:text-white"
+              className="m-3 rounded-md p-2 text-slate-300 hover:bg-navy-600 hover:text-white"
             >
               <BurgerIcon open />
             </button>
@@ -190,7 +190,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
           <div className="flex-1 overflow-y-auto">
             <Sidebar items={items} />
           </div>
-          <div className="border-t border-brand-800 p-3 text-[11px] text-brand-300">
+          <div className="border-t border-navy-600 p-3 text-[11px] text-slate-400">
             Phase 1 · Historical Proof DB
           </div>
         </div>
