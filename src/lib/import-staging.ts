@@ -25,7 +25,10 @@ import { spawn } from "child_process";
 import { prisma } from "./db";
 import { recomputePreferredForAnimal } from "./priority";
 import { resolveProofFile, safeProofFileName } from "./lactanet";
-import { isBatchImportType } from "./constants";
+import { isBatchImportType, BATCH_IMPORT_TYPES } from "./constants";
+
+// Denied imports are soft-held for this long, then hard-deleted by the purge cron.
+export const DENY_RETENTION_DAYS = 30;
 import type { SessionUser } from "./auth";
 import { audit } from "./audit";
 
@@ -209,51 +212,139 @@ export async function denyImportReview(reviewId: string, user: SessionUser | nul
   });
   if (claim.count !== 1) return { ok: false, message: "This import is no longer pending." };
 
-  let deletedAnimals = 0;
-  let deletedEvals = 0;
+  // SOFT delete: deny no longer destroys anything. It archives the created
+  // animals (hidden from every list) and rejects the batch's own evaluations
+  // (excluded from the preferred proof). Both are recoverable via restore for
+  // DENY_RETENTION_DAYS; the purge cron then hard-deletes them. See
+  // purgeDeniedImports + restoreImportReview.
+  let archivedAnimals = 0;
+  let rejectedEvals = 0;
   if (manifest.mode !== "all") {
     const createdIds = [...new Set(manifest.animals.filter((a) => a.created).map((a) => a.animalId))];
     const allEvalIds = manifest.animals.map((a) => a.evaluationId).filter((x): x is string => !!x);
 
-    // 1) Delete only THIS batch's own PENDING evaluations (for created AND
-    //    pre-existing animals). The approvalStatus:"pending" filter guarantees we
-    //    never delete an approved eval — even one a later batch promoted onto a
-    //    shared row.
+    // 1) Reject only THIS batch's own PENDING evaluations. The pending filter
+    //    guarantees we never touch an approved eval — even one a later batch
+    //    promoted onto a shared row.
     if (allEvalIds.length) {
-      const res = await prisma.geneticEvaluation.deleteMany({ where: { evaluationId: { in: allEvalIds }, approvalStatus: "pending" } });
-      deletedEvals = res.count;
-    }
-    // 2) Delete a batch-CREATED animal only if it now carries NO approved
-    //    evaluation. A later, independently-approved batch can attach an
-    //    authoritative proof to the same animal; deleting the animal would
-    //    cascade-destroy that approved proof — so keep those animals. The
-    //    `evaluations: { none: approved }` filter is evaluated INSIDE the DELETE
-    //    statement, which closes the wide SELECT-then-DELETE race a separate
-    //    lookup would leave open. (A tiny residual remains: under READ COMMITTED a
-    //    concurrent approve committing DURING this DELETE could still slip an
-    //    approved eval past the snapshot; fully closing that needs SERIALIZABLE or
-    //    a row lock. Low risk — it needs two admins acting on the same animal in
-    //    the same instant, and every sequential/single-admin path is safe.)
-    if (createdIds.length) {
-      const res = await prisma.animal.deleteMany({
-        where: { id: { in: createdIds }, evaluations: { none: { approvalStatus: "approved" } } },
+      const res = await prisma.geneticEvaluation.updateMany({
+        where: { evaluationId: { in: allEvalIds }, approvalStatus: "pending" },
+        data: { approvalStatus: "rejected" },
       });
-      deletedAnimals = res.count;
-      // Any created animal that SURVIVED (it now carries approved data) needs a
-      // recompute, since we removed its pending eval in step 1.
-      const kept = await prisma.animal.findMany({ where: { id: { in: createdIds } }, select: { id: true } });
-      for (const a of kept) await recomputePreferredForAnimal(a.id);
+      rejectedEvals = res.count;
     }
-    // 3) Recompute pre-existing animals whose pending eval we removed.
-    const survivors = [...new Set(manifest.animals.filter((a) => !a.created && a.evaluationId).map((a) => a.animalId))];
-    for (const id of survivors) await recomputePreferredForAnimal(id);
+    // 2) Archive batch-CREATED animals that carry NO approved evaluation. A later,
+    //    independently-approved batch can attach an authoritative proof to the same
+    //    animal; that one stays active. The `evaluations: { none: approved }` filter
+    //    runs inside the UPDATE, and since archive is non-destructive there is no
+    //    irreversible race here — a mistaken archive is just un-archived.
+    if (createdIds.length) {
+      const res = await prisma.animal.updateMany({
+        where: { id: { in: createdIds }, archived: false, evaluations: { none: { approvalStatus: "approved" } } },
+        data: { archived: true },
+      });
+      archivedAnimals = res.count;
+    }
+    // 3) Recompute preferred only for animals that REMAIN visible (pre-existing
+    //    animals whose eval was rejected, and any created animal we kept active).
+    const toRecompute = new Set<string>(manifest.animals.filter((a) => !a.created && a.evaluationId).map((a) => a.animalId));
+    if (createdIds.length) {
+      const stillActive = await prisma.animal.findMany({ where: { id: { in: createdIds }, archived: false }, select: { id: true } });
+      for (const a of stillActive) toRecompute.add(a.id);
+    }
+    for (const id of toRecompute) await recomputePreferredForAnimal(id);
   }
 
   // status was already set to "rejected" by the atomic claim above.
-  await audit(user, "import_batch", "deny", reviewId, { kind: manifest.kind, mode: manifest.mode, deletedAnimals, deletedEvals });
+  await audit(user, "import_batch", "deny", reviewId, { kind: manifest.kind, mode: manifest.mode, archivedAnimals, rejectedEvals });
   const message =
     manifest.mode === "all"
       ? "Mass import request discarded (nothing was written)."
-      : `Denied — deleted ${deletedAnimals} new animal${deletedAnimals === 1 ? "" : "s"} and ${deletedEvals} pending evaluation${deletedEvals === 1 ? "" : "s"}.`;
+      : `Denied — ${archivedAnimals} new animal${archivedAnimals === 1 ? "" : "s"} archived and ${rejectedEvals} evaluation${rejectedEvals === 1 ? "" : "s"} rejected. Restorable for ${DENY_RETENTION_DAYS} days, then permanently deleted.`;
   return { ok: true, message, animalsAffected: manifest.animals.length };
+}
+
+/** Undo a deny: un-archive the animals + un-reject the evals, and put the batch
+ *  back to pending so it can be decided again. Only a still-denied batch qualifies. */
+export async function restoreImportReview(reviewId: string, user: SessionUser | null): Promise<ImportDecisionResult> {
+  const review = await prisma.importReviewQueue.findUnique({ where: { reviewId } });
+  if (!review) return { ok: false, message: "Review item not found." };
+  if (!isBatchImportType(review.proposedRecordType)) return { ok: false, message: "This item is not a batch import." };
+  const manifest = parseManifest(review.extractedDataJson);
+  if (!manifest) return { ok: false, message: "This item is not a batch import." };
+
+  // Atomically claim (rejected -> pending). Blocks double-restore / restore-vs-purge.
+  const claim = await prisma.importReviewQueue.updateMany({
+    where: { reviewId, status: "rejected" },
+    data: { status: "pending", reviewedById: user?.uid, reviewedAt: null },
+  });
+  if (claim.count !== 1) return { ok: false, message: "This import is not in a restorable (denied) state." };
+
+  let restoredAnimals = 0;
+  let restoredEvals = 0;
+  if (manifest.mode !== "all") {
+    const createdIds = [...new Set(manifest.animals.filter((a) => a.created).map((a) => a.animalId))];
+    const allEvalIds = manifest.animals.map((a) => a.evaluationId).filter((x): x is string => !!x);
+    if (createdIds.length) {
+      const res = await prisma.animal.updateMany({ where: { id: { in: createdIds }, archived: true }, data: { archived: false } });
+      restoredAnimals = res.count;
+    }
+    if (allEvalIds.length) {
+      const res = await prisma.geneticEvaluation.updateMany({ where: { evaluationId: { in: allEvalIds }, approvalStatus: "rejected" }, data: { approvalStatus: "pending" } });
+      restoredEvals = res.count;
+    }
+    const animalIds = [...new Set(manifest.animals.map((a) => a.animalId))];
+    for (const id of animalIds) await recomputePreferredForAnimal(id);
+  }
+
+  await audit(user, "import_batch", "restore", reviewId, { kind: manifest.kind, mode: manifest.mode, restoredAnimals, restoredEvals });
+  return {
+    ok: true,
+    message: `Restored — ${restoredAnimals} animal${restoredAnimals === 1 ? "" : "s"} and ${restoredEvals} evaluation${restoredEvals === 1 ? "" : "s"} are back; the import is pending again.`,
+    animalsAffected: manifest.animals.length,
+  };
+}
+
+/** Daily purge: hard-delete denied imports past the retention window. Idempotent —
+ *  it only removes still-archived / still-rejected rows a batch created, so a
+ *  restored batch (un-archived) is left alone. */
+export async function purgeDeniedImports(now: Date): Promise<{ reviews: number; animals: number; evals: number }> {
+  const cutoff = new Date(now.getTime() - DENY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const denied = await prisma.importReviewQueue.findMany({
+    where: { status: "rejected", reviewedAt: { lt: cutoff }, proposedRecordType: { in: [...BATCH_IMPORT_TYPES] } },
+    select: { reviewId: true, extractedDataJson: true },
+  });
+  let reviews = 0, animals = 0, evals = 0;
+  for (const r of denied) {
+    const manifest = parseManifest(r.extractedDataJson);
+    if (!manifest || manifest.mode === "all") continue;
+    // Atomically CLAIM this review (rejected -> purged) before deleting anything,
+    // so a concurrent restore (which flips rejected -> pending) can't un-archive
+    // the animals in the window between our snapshot and our delete. Exactly one of
+    // restore/purge wins the row; if we lose the claim (count 0), skip it.
+    const claim = await prisma.importReviewQueue.updateMany({
+      where: { reviewId: r.reviewId, status: "rejected", reviewedAt: { lt: cutoff } },
+      data: { status: "purged" },
+    });
+    if (claim.count !== 1) continue;
+    const createdIds = [...new Set(manifest.animals.filter((a) => a.created).map((a) => a.animalId))];
+    const allEvalIds = manifest.animals.map((a) => a.evaluationId).filter((x): x is string => !!x);
+    if (createdIds.length) {
+      // Delete a created animal ONLY when EVERY evaluation on it is rejected — i.e.
+      // it has no pending/approved eval, including one a DIFFERENT live batch may
+      // have attached to the same reg (persistBull matches by identifier without an
+      // archived filter). This stops the cascade from destroying another batch's
+      // live evaluation.
+      const res = await prisma.animal.deleteMany({
+        where: { id: { in: createdIds }, archived: true, evaluations: { none: { approvalStatus: { not: "rejected" } } } },
+      });
+      animals += res.count;
+    }
+    if (allEvalIds.length) {
+      const res = await prisma.geneticEvaluation.deleteMany({ where: { evaluationId: { in: allEvalIds }, approvalStatus: "rejected" } });
+      evals += res.count;
+    }
+    reviews++;
+  }
+  return { reviews, animals, evals };
 }

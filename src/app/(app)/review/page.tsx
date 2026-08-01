@@ -6,8 +6,8 @@ import { can, REVIEW_STATUSES, RECORD_TYPES, label } from "@/lib/constants";
 import { PageHeader, Card, Badge, EmptyState, statusTone } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 import { isBatchImportType } from "@/lib/constants";
-import { approveReview, setReviewStatus, updateReview, approveImport, denyImport } from "./actions";
-import { parseManifest, type ImportManifest } from "@/lib/import-staging";
+import { approveReview, setReviewStatus, updateReview, approveImport, denyImport, restoreImport } from "./actions";
+import { parseManifest, DENY_RETENTION_DAYS, type ImportManifest } from "@/lib/import-staging";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +128,7 @@ function ImportBatchCard({
   manifest,
   canApprove,
 }: {
-  r: { reviewId: string; status: string; createdAt: Date };
+  r: { reviewId: string; status: string; createdAt: Date; reviewedAt: Date | null };
   manifest: ImportManifest;
   canApprove: boolean;
 }) {
@@ -137,6 +137,9 @@ function ImportBatchCard({
   const shown = manifest.animals.slice(0, 12);
   const rest = manifest.animals.length - shown.length;
   const pending = r.status === "pending";
+  const rejected = r.status === "rejected";
+  const purgeAt = rejected && r.reviewedAt ? new Date(r.reviewedAt.getTime() + DENY_RETENTION_DAYS * 86_400_000) : null;
+  const withinWindow = purgeAt ? purgeAt.getTime() > Date.now() : false;
 
   return (
     <Card>
@@ -156,7 +159,7 @@ function ImportBatchCard({
           <span className="font-semibold">{manifest.animals.length}</span> animal{manifest.animals.length === 1 ? "" : "s"} written as{" "}
           <span className="font-semibold text-amber-700">pending</span>
           {createdCount > 0 && <> · <span className="font-semibold">{createdCount}</span> newly created</>}.{" "}
-          Approving makes them authoritative; denying deletes the new animals and the pending evaluations.
+          Approving makes them authoritative; denying archives the new animals and rejects the evaluations — restorable for {DENY_RETENTION_DAYS} days, then permanently deleted.
         </p>
       )}
 
@@ -175,21 +178,40 @@ function ImportBatchCard({
         </ul>
       )}
 
-      {!pending ? (
-        <p className="text-xs text-slate-500">This import was already {r.status}.</p>
-      ) : canApprove ? (
-        <div className="flex flex-wrap gap-2">
-          <form action={approveImport}>
-            <input type="hidden" name="reviewId" value={r.reviewId} />
-            <button className="btn-primary btn-sm" type="submit">{isMass ? "Approve & start import" : "Approve import"}</button>
-          </form>
-          <form action={denyImport}>
-            <input type="hidden" name="reviewId" value={r.reviewId} />
-            <button className="btn-danger btn-sm" type="submit">{isMass ? "Deny request" : "Deny & delete"}</button>
-          </form>
+      {pending ? (
+        canApprove ? (
+          <div className="flex flex-wrap gap-2">
+            <form action={approveImport}>
+              <input type="hidden" name="reviewId" value={r.reviewId} />
+              <button className="btn-primary btn-sm" type="submit">{isMass ? "Approve & start import" : "Approve import"}</button>
+            </form>
+            <form action={denyImport}>
+              <input type="hidden" name="reviewId" value={r.reviewId} />
+              <button className="btn-danger btn-sm" type="submit">{isMass ? "Deny request" : "Deny"}</button>
+            </form>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">Awaiting an admin’s approval — you don’t have permission to approve imports.</p>
+        )
+      ) : rejected ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">
+            Denied{r.reviewedAt ? ` ${fmtDate(r.reviewedAt)}` : ""}.
+            {isMass
+              ? " Nothing was imported."
+              : withinWindow && purgeAt
+                ? ` Archived — permanently deleted on ${fmtDate(purgeAt)}.`
+                : " Past the restore window."}
+          </span>
+          {!isMass && canApprove && withinWindow && (
+            <form action={restoreImport}>
+              <input type="hidden" name="reviewId" value={r.reviewId} />
+              <button className="btn-secondary btn-sm" type="submit">↩ Restore</button>
+            </form>
+          )}
         </div>
       ) : (
-        <p className="text-xs text-slate-500">Awaiting an admin’s approval — you don’t have permission to approve imports.</p>
+        <p className="text-xs text-slate-500">This import was already {r.status}.</p>
       )}
     </Card>
   );

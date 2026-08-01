@@ -6,7 +6,7 @@ import { can, isBatchImportType } from "@/lib/constants";
 import { audit } from "@/lib/audit";
 import { recomputePreferredForAnimal } from "@/lib/priority";
 import { packTraits } from "@/lib/eval-traits";
-import { approveImportReview, denyImportReview } from "@/lib/import-staging";
+import { approveImportReview, denyImportReview, restoreImportReview } from "@/lib/import-staging";
 import { revalidatePath } from "next/cache";
 
 function parseDate(s?: string): Date | null {
@@ -197,6 +197,16 @@ export async function denyImport(fd: FormData) {
   const user = currentUser();
   if (!can(user?.role, "record:approve")) throw new Error("Only an admin can deny imports.");
   const res = await denyImportReview(String(fd.get("reviewId")), user);
+  if (!res.ok) throw new Error(res.message);
+  revalidatePath("/review");
+  revalidatePath("/animals");
+  revalidatePath("/dashboard");
+}
+
+export async function restoreImport(fd: FormData) {
+  const user = currentUser();
+  if (!can(user?.role, "record:approve")) throw new Error("Only an admin can restore imports.");
+  const res = await restoreImportReview(String(fd.get("reviewId")), user);
   if (!res.ok) throw new Error(res.message);
   revalidatePath("/review");
   revalidatePath("/animals");
