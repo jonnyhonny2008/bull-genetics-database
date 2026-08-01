@@ -12,6 +12,7 @@ import { qualityFlagsFor } from "@/lib/quality";
 import { matchExistingAnimals } from "@/lib/quality";
 import { archiveAnimal, addNote } from "../actions";
 import { LinearGraph, type LinearGroup, type LinearTraitDatum } from "@/components/LinearGraph";
+import { TraitTrendChart, type TrendSeries } from "@/components/TraitTrendChart";
 import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from "@/lib/rollback";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { PedigreeTree } from "@/components/PedigreeTree";
@@ -60,6 +61,20 @@ export default async function AnimalProfile({
   // An imported evaluation still marked pending means this animal is part of an
   // import awaiting an admin's approval in the review queue.
   const hasPending = a.evaluations.some((e) => e.approvalStatus === "pending");
+  // Per-trait trend across this bull's APPROVED proof rounds (oldest → newest),
+  // built from the indexed evaluation columns. Traits with <2 points are dropped.
+  const trendEvals = [...a.evaluations]
+    .filter((e) => e.approvalStatus === "approved")
+    .sort((x, y) => x.evaluationDate.getTime() - y.evaluationDate.getTime());
+  const trendSeries: TrendSeries[] = KEY_TRAITS
+    .map((kt) => ({
+      code: kt.col,
+      label: kt.label,
+      points: trendEvals
+        .map((e) => ({ date: e.evaluationDate.toISOString().slice(0, 10), label: e.proofRun ?? fmtDate(e.evaluationDate), value: (e as Record<string, unknown>)[kt.col] as number | null }))
+        .filter((p): p is TrendSeries["points"][number] => p.value != null),
+    }))
+    .filter((se) => se.points.length >= 2);
   const profile = parseHolsteinProfileJson(a.holsteinProfileJson);
   // Owners/breeders and show awards are breed-association registry data. The
   // Lactanet source doesn't publish them, so those two tabs are gone rather
@@ -518,6 +533,12 @@ export default async function AnimalProfile({
               </div>
             )}
           </Card>
+
+          {trendSeries.length > 0 && (
+            <Card title="Trait trend across proofs">
+              <TraitTrendChart series={trendSeries} />
+            </Card>
+          )}
 
           <Card title={`Genetic proof history (${evaluations.length})`} actions={writable ? <Link href={`/animals/${a.id}/proofs/new`} className="link text-xs">+ Add proof</Link> : undefined}>
             {evaluations.length === 0 ? <EmptyState message="No proofs recorded." /> : (
