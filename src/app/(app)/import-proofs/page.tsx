@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { listProofFiles, importsDir } from "@/lib/lactanet";
-import { importByReg, importBulk, startBulkImport } from "./actions";
+import { importByReg, importBulk } from "./actions";
+import MassImport from "./MassImport";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,13 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
         </div>
       )}
 
-      {/* Upload from your computer */}
+      {/* Browser-chunked mass import — works on Vercel, no server file needed. */}
+      <Card title="Mass import — ALL bulls" className="mb-4 border-brand-300">
+        <MassImport />
+      </Card>
+
+      {/* Upload from your computer (for the single/top-N imports below, which read
+          a server-side file — available on the local/self-hosted server). */}
       <Card title="Upload a proof file from your computer" className="mb-4">
         <form action="/api/proof-upload" method="post" encType="multipart/form-data" className="flex flex-wrap items-end gap-3">
           <div className="flex-1">
@@ -55,20 +62,6 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* Mass import — everything */}
-          <Card title="Mass import — ALL bulls in a file" className="lg:col-span-2 border-brand-300">
-            <form action={startBulkImport} className="flex flex-wrap items-end gap-3">
-              <div className="flex-1">
-                <label className="label">Proof file</label>
-                <select name="fileName" className="input">
-                  {files.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.sizeMB} MB)</option>)}
-                </select>
-              </div>
-              <button type="submit" className="btn-primary">Send ALL bulls for approval</button>
-            </form>
-            <p className="mt-2 text-[11px] text-slate-400">Queues a request to import every bull in the file (~99,000) with full genomics + linear conformation. An admin approves it in the review queue, which starts the background import; the app stays usable. Safe to re-run — already-imported bulls are skipped.</p>
-          </Card>
-
           <Card title="Import one bull by Reg # or NAAB code">
             <form action={importByReg} className="space-y-3">
               <div>
