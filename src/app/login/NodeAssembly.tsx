@@ -131,15 +131,6 @@ export function NodeAssembly({ igniting, boxRef }: { igniting: boolean; boxRef: 
         }
         if (alpha <= 0.003) continue;
 
-        // a short streak while the point is still travelling, so it reads as
-        // light crossing the room rather than a dot teleporting
-        if (!ignite && e > 0.02 && e < 0.96) {
-          const [fx, fy] = at(p, Math.max(0, e - 0.06));
-          ctx!.strokeStyle = `rgba(170,255,250,${0.45 * alpha})`;
-          ctx!.lineWidth = Math.max(0.8, size * 0.45);
-          ctx!.beginPath(); ctx!.moveTo(x, y); ctx!.lineTo(fx, fy); ctx!.stroke();
-        }
-
         ctx!.globalAlpha = clamp01(alpha);
         ctx!.drawImage(sprite, x - size * 3, y - size * 3, size * 6, size * 6);
       }
