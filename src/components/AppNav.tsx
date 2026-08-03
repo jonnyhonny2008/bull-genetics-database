@@ -142,7 +142,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
     <>
       {/* ---- desktop ---- */}
       <aside
-        className={`hidden w-60 shrink-0 flex-col bg-navy-700 md:sticky md:top-0 md:h-screen md:self-start ${
+        className={`hidden w-60 shrink-0 flex-col bg-navy-700 md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:self-start ${
           collapsed ? "md:hidden" : "md:flex"
         }`}
       >
