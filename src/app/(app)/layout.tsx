@@ -11,6 +11,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = currentUser();
   if (!user) redirect("/login");
 
+  const initials = user.name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
   const all: (NavItem & { need?: string })[] = [
     { href: "/dashboard", label: "Dashboard", group: "Overview" },
     { href: "/animals", label: "Animals", group: "Records", need: "animal:read" },
@@ -42,12 +44,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="font-serif text-lg font-bold tracking-tight text-white">GenetiBase</span>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <div className="text-right leading-tight">
+          {/* Initials avatar + name + role (no org dropdown), then a logout icon —
+              mirrors the Haystack header's right cluster. */}
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-navy-500 text-xs font-semibold text-white ring-1 ring-white/15">
+            {initials}
+          </div>
+          <div className="leading-tight">
             <div className="text-sm font-medium text-white">{user.name}</div>
-            <div className="text-[11px] text-slate-300">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              {ROLES[user.role as keyof typeof ROLES] ?? user.role}
+            </div>
           </div>
           <form action={logoutAction}>
-            <button className="btn-secondary btn-sm" type="submit">Sign out</button>
+            <button
+              type="submit"
+              aria-label="Sign out"
+              title="Sign out"
+              className="ml-1 rounded-md p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+              </svg>
+            </button>
           </form>
         </div>
       </header>
