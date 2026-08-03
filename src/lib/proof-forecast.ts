@@ -244,12 +244,37 @@ export interface TraitStats {
   level: number;
   /** Mean/SD of every consecutive round-to-round change. */
   drift: { mean: number; sd: number; n: number };
+  /** Spread of ORDINARY steps only — the right width for a non-April round. */
+  ordinarySd: number;
+  /** Spread of APRIL steps only — wider, because a base change moves everyone. */
+  aprilSd: number;
+  /**
+   * Empirical 10th/90th percentile of real changes, per kind of round, stated
+   * as an offset from that kind's MEAN. Real proof changes have fatter tails
+   * than a normal, so `1.28 × SD` leaves the quieter traits over-confident;
+   * quantiles taken straight from the data do not make that assumption.
+   */
+  ordinaryQ: { lo: number; hi: number } | null;
+  aprilQ: { lo: number; hi: number } | null;
   /** Mean change on steps that LAND on an April round (the base change). */
   aprilMean: number;
   aprilN: number;
   /** Mean change on steps that do not land on April. */
   ordinaryMean: number;
   ordinaryN: number;
+}
+
+/**
+ * 10th/90th percentile of a set of changes, expressed relative to their mean so
+ * the band can be re-centred on whatever we predict. Needs a decent sample —
+ * below that, quantiles are just the extremes of a handful of points.
+ */
+function centredQuantiles(deltas: number[]): { lo: number; hi: number } | null {
+  if (deltas.length < 20) return null;
+  const sorted = [...deltas].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))];
+  const mean = sorted.reduce((s, v) => s + v, 0) / sorted.length;
+  return { lo: at(0.1) - mean, hi: at(0.9) - mean };
 }
 
 /** Extract one trait's ordered observations from a bull's rounds. */
@@ -321,6 +346,12 @@ export function buildTraitStats(
     out.set(code, {
       level: levels.reduce((s, v) => s + v, 0) / levels.length,
       drift,
+      // Split, because pooling them widens ordinary-round intervals with the
+      // spread of base changes that only ever happen in April.
+      ordinarySd: ordinary.length >= MIN_COHORT_OBS ? traitStdStats(ordinary).sd : drift.sd,
+      aprilSd: april.length >= MIN_COHORT_OBS ? traitStdStats(april).sd : drift.sd,
+      ordinaryQ: centredQuantiles(ordinary),
+      aprilQ: centredQuantiles(april),
       aprilMean: april.length ? april.reduce((s, v) => s + v, 0) / april.length : 0,
       aprilN: april.length,
       ordinaryMean: ordinary.length ? ordinary.reduce((s, v) => s + v, 0) / ordinary.length : 0,
@@ -394,10 +425,17 @@ export function projectTrait(
   // move is, like the direction, essentially unforecastable. What IS stable is
   // how much bulls move on that trait in general, and that is what the range
   // reports. The bull's own spread is used only as a fallback.
-  const cohortSd = stats && stats.drift.n >= MIN_COHORT_OBS ? stats.drift.sd : 0;
+  // Match the spread to the KIND of round being predicted.
+  const cohortSd = stats && stats.drift.n >= MIN_COHORT_OBS
+    ? (opts.targetIsApril ? stats.aprilSd : stats.ordinarySd)
+    : 0;
   const bullSd = deltas.length >= 3 ? traitStdStats(deltas.map((x) => x.d)).sd : 0;
   const sigma = cohortSd > 0 ? cohortSd : bullSd;
-  const half = Z80 * sigma;
+  // Prefer the real quantiles; fall back to the normal approximation only when
+  // there aren't enough observations for quantiles to mean anything.
+  const q = stats ? (opts.targetIsApril ? stats.aprilQ : stats.ordinaryQ) : null;
+  const loOff = q ? q.lo : -Z80 * sigma;
+  const hiOff = q ? q.hi : Z80 * sigma;
   void rel;
 
   const basis: TraitForecast["basis"] =
@@ -407,7 +445,7 @@ export function projectTrait(
     : Math.abs(deviation) > 0 ? "trend"
     : systematic !== 0 ? "base change" : "hold";
 
-  return { predicted: round2(predicted), lo: round2(predicted - half), hi: round2(predicted + half), basis, steps: deltas.length };
+  return { predicted: round2(predicted), lo: round2(predicted + loOff), hi: round2(predicted + hiOff), basis, steps: deltas.length };
 }
 
 function confidenceOf(rounds: number, reliability: number | null, aprilTarget: boolean): Confidence {

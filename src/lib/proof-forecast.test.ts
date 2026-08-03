@@ -9,6 +9,9 @@ const obs = (pairs: [number, number, number][]) => pairs.map(([y, m, v]) => ({ d
 const flatStats = (level = 3000, sd = 50): TraitStats => ({
   level,
   drift: { mean: 0, sd, n: 100 },
+  ordinarySd: sd, aprilSd: sd,
+  // null → the normal approximation is used, which these tests exercise.
+  ordinaryQ: null, aprilQ: null,
   aprilMean: 0, aprilN: 100,
   ordinaryMean: 0, ordinaryN: 100,
 });
