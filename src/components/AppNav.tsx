@@ -126,11 +126,10 @@ export function NavToggle() {
 
 function Brand() {
   return (
-    <div className="p-3">
-      {/* Blondin Sires logo on a white panel — matches the Haystack sidebar. */}
-      <div className="flex items-center justify-center rounded-md bg-white px-3 py-3 shadow-sm">
-        <Image src="/BlondinSires.png" alt="Blondin Sires" width={140} height={88} priority className="h-auto w-full max-w-[150px]" />
-      </div>
+    // Solid white block that fills the top corner of the sidebar edge to edge
+    // (no inset padding, no rounded corners or shadow — not a floating window).
+    <div className="flex items-center justify-center border-b border-navy-600 bg-white px-4 py-5">
+      <Image src="/BlondinSires.png" alt="Blondin Sires" width={140} height={88} priority className="h-auto w-full max-w-[150px]" />
     </div>
   );
 }
@@ -176,13 +175,13 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-start justify-between">
+          <div className="relative">
             <Brand />
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
-              className="m-3 rounded-md p-2 text-slate-300 hover:bg-navy-600 hover:text-white"
+              className="absolute right-2 top-2 rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
             >
               <BurgerIcon open />
             </button>
