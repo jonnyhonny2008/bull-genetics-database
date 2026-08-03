@@ -128,7 +128,7 @@ function Brand() {
   return (
     // Solid white block that fills the top corner of the sidebar edge to edge
     // (no inset padding, no rounded corners or shadow — not a floating window).
-    <div className="flex items-center justify-center border-b border-navy-600 bg-white px-4 py-5">
+    <div className="flex items-center justify-center border-b border-navy-600 bg-slate-100 px-4 py-5">
       <Image src="/BlondinSires.png" alt="Blondin Sires" width={140} height={88} priority className="h-auto w-full max-w-[150px]" />
     </div>
   );
@@ -181,7 +181,7 @@ export function AppSidebar({ items }: { items: NavItem[] }) {
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
-              className="absolute right-2 top-2 rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              className="absolute right-2 top-2 rounded-md p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
             >
               <BurgerIcon open />
             </button>
