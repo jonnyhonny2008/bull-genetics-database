@@ -18,50 +18,26 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Closed silhouette, traced in the photograph's own pixel space: topline → head
- * → throat → front leg → belly → udder → hind leg → rear → back to the withers.
- * Kept in source coordinates so the numbers stay checkable against the photo.
+ * The silhouette, EXTRACTED rather than drawn.
+ *
+ * A sculpt render of a dairy cow was thresholded (background 25, animal 152 —
+ * a clean split), the largest connected component taken, its boundary walked
+ * with Moore neighbour tracing (2,767 pixels), and the result simplified with
+ * Douglas–Peucker to 184 points. The plinth she was standing on is cropped at
+ * y=356 — the last row where the four legs still read as separate runs, so the
+ * legs stay apart instead of webbing together — and she stands in the spotlight
+ * rather than on a slab.
+ *
+ * Coordinates are already normalised into a 100-unit box, y downward, head to
+ * the right. Do not hand-edit: re-run the trace if the reference changes.
  */
-const OUTLINE: [number, number][] = [
-  [95, 158], [150, 143], [250, 138], [350, 133], [450, 125], [520, 112],   // topline
-  [585, 96], [650, 76], [695, 46], [712, 38],                              // neck, poll
-  [734, 40], [756, 50], [775, 63], [790, 79], [788, 96], [770, 106],       // head + muzzle
-  [744, 110], [712, 110],                                                   // jaw, throat
-  [672, 120], [640, 138], [610, 158], [585, 182], [566, 205],              // neck underline, brisket
-  [560, 240], [552, 300], [546, 360], [540, 420], [534, 470], [530, 505],  // front leg, front edge
-  [505, 507], [503, 450], [505, 390], [509, 340],                          // front leg, back edge
-  [490, 335], [450, 344], [410, 350], [375, 350],                          // belly
-  [340, 353], [300, 353], [265, 347], [235, 333], [210, 312], [193, 285],  // udder
-  [183, 258],
-  [172, 300], [158, 348], [142, 392], [128, 442], [118, 495], [113, 525],  // hind leg, front edge
-  [148, 525], [157, 470], [167, 420], [177, 378], [186, 330], [193, 250],  // hind leg, back edge
-  [180, 240], [160, 235], [135, 225], [115, 205], [102, 180],              // buttock, pins
-];
+const TRACED =
+  "82.8,20.6 83.6,20.6 84.3,21.8 88.3,22.6 89.9,23.7 92.9,24.7 98.3,28.2 99.5,28.6 100.0,29.3 100.0,30.1 98.4,32.1 96.7,32.4 96.5,32.8 97.2,32.9 95.8,32.9 95.8,32.4 94.6,32.4 90.2,33.4 84.3,33.6 83.8,34.1 83.8,35.2 85.2,35.5 84.8,36.4 83.3,38.2 81.9,39.0 81.9,39.5 82.6,39.2 82.8,39.5 80.3,43.2 79.1,44.4 78.9,43.9 76.5,46.9 72.8,52.6 71.4,55.6 71.3,57.3 70.2,59.4 68.6,61.3 67.6,61.7 70.2,58.9 69.7,58.7 67.6,60.8 67.9,58.5 69.2,55.1 70.4,52.8 69.9,54.2 70.4,54.7 73.3,48.8 75.8,45.3 74.2,45.3 74.0,44.9 71.6,49.1 68.8,51.9 68.1,53.5 68.1,55.4 67.6,55.7 67.1,60.6 66.2,62.4 66.2,67.8 65.7,70.2 64.5,72.0 63.4,72.3 61.8,71.4 61.8,73.3 62.7,76.5 62.7,73.0 63.4,72.6 65.2,73.0 65.3,75.3 66.7,79.4 60.6,79.4 60.5,78.7 61.3,78.2 61.0,77.9 59.4,77.9 59.1,76.0 59.8,72.6 59.9,68.6 59.4,67.8 59.1,61.7 60.1,62.0 60.6,60.8 59.2,59.4 59.1,60.1 58.5,60.1 54.7,59.2 54.5,58.9 49.8,59.2 52.3,56.6 52.3,55.9 49.5,58.7 46.7,58.9 45.5,59.6 41.6,59.2 38.5,58.2 37.8,58.5 38.5,58.9 36.1,58.5 35.4,58.7 35.5,59.1 35.0,59.4 31.7,57.3 30.8,58.0 29.8,57.1 27.4,56.1 27.4,57.0 28.2,58.7 27.0,58.0 25.6,59.2 22.6,60.1 22.1,60.6 20.4,60.6 19.2,61.8 20.2,62.4 20.0,62.7 18.6,62.5 18.8,62.0 17.4,62.0 17.4,61.5 17.1,61.5 15.7,67.2 15.2,72.3 14.5,74.4 14.5,79.4 11.0,79.4 10.6,76.8 10.3,77.0 10.3,79.4 6.8,79.4 7.1,76.3 6.8,64.3 8.2,61.8 10.1,62.7 10.3,61.5 9.8,59.9 9.6,60.6 6.8,58.2 5.6,56.3 5.6,55.2 4.7,55.1 4.9,54.5 4.2,53.8 4.4,49.1 5.9,46.5 5.4,43.2 5.1,42.9 4.9,43.2 4.0,41.8 4.0,39.7 4.9,41.3 5.1,40.6 3.5,36.2 3.0,36.4 3.1,38.3 2.6,40.8 2.6,53.3 3.1,59.4 5.2,68.1 4.4,71.8 3.5,72.5 3.3,71.4 2.4,73.5 2.3,72.5 1.9,73.5 1.6,73.5 0.5,72.0 0.7,71.6 0.0,70.2 0.0,65.2 1.9,55.6 1.7,36.9 3.0,33.8 5.4,32.2 10.3,32.4 13.4,31.7 19.5,31.5 23.3,30.8 29.4,31.0 58.0,29.3 70.2,29.8 74.6,28.2 77.9,25.1 80.1,22.1 81.9,21.6 82.6,20.7";
 
-/**
- * The tail is hair, not surface — never part of the mesh. Two strands that
- * curve away from the body and splay at the switch, so it reads as hanging
- * hair rather than a rod.
- */
-const TAIL: [number, number][][] = [
-  [[93, 163], [86, 215], [80, 272], [76, 330], [73, 388], [70, 440], [64, 482], [57, 512]],
-  [[97, 170], [92, 222], [88, 280], [85, 338], [83, 394], [82, 446], [86, 486], [92, 512]],
-];
-
-/** Ear, drawn as an outline rather than meshed — it is a flap, not a volume. */
-const EAR: [number, number][] = [[712, 38], [702, 16], [686, 26], [700, 44]];
-
-// --- fit everything into a 100-unit box, preserving aspect ------------------
-const ALL = [...OUTLINE, ...TAIL.flat(), ...EAR];
-const MINX = Math.min(...ALL.map((p) => p[0])), MAXX = Math.max(...ALL.map((p) => p[0]));
-const MINY = Math.min(...ALL.map((p) => p[1])), MAXY = Math.max(...ALL.map((p) => p[1]));
-const S = 100 / Math.max(MAXX - MINX, MAXY - MINY);
-const OX = (100 - (MAXX - MINX) * S) / 2, OY = (100 - (MAXY - MINY) * S) / 2;
-const norm = ([x, y]: [number, number]): [number, number] => [(x - MINX) * S + OX, (y - MINY) * S + OY];
-
-const POLY = OUTLINE.map(norm);
-const TAIL_N = TAIL.map((t) => t.map(norm));
-const EAR_N = EAR.map(norm);
+const POLY: [number, number][] = TRACED.split(" ").map((p) => {
+  const [x, y] = p.split(",");
+  return [parseFloat(x), parseFloat(y)];
+});
 
 function pointInPolygon(x: number, y: number, poly: [number, number][]): boolean {
   let inside = false;
@@ -165,37 +141,9 @@ function buildMesh() {
       edges.push([a, b]);
     }
   }
-  const meshCount = verts.length;
-
-  // Tail and ear join the point cloud as their own strands, so they assemble
-  // out of light like everything else instead of appearing as bare lines.
-  const hairEdges: [number, number][] = [];
-  for (const strand of [...TAIL_N, EAR_N]) {
-    const pts = resampleOpen(strand, 2.2);
-    const base = verts.length;
-    verts.push(...pts);
-    for (let i = 0; i < pts.length - 1; i++) hairEdges.push([base + i, base + i + 1]);
-  }
-  return { verts, edges, hairEdges, rimCount: rim.length, meshCount };
-}
-
-/** Even spacing along an OPEN polyline (the closed version wraps). */
-function resampleOpen(path: [number, number][], step: number): [number, number][] {
-  const out: [number, number][] = [];
-  let carry = 0;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1], b = path[i];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    let d = carry;
-    while (d < len) {
-      const t = d / len;
-      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
-      d += step;
-    }
-    carry = d - len;
-  }
-  out.push(path[path.length - 1]);
-  return out;
+  // The traced contour already carries the tail and ears, so there is no
+  // separate "hair" pass any more.
+  return { verts, edges, hairEdges: [] as [number, number][], rimCount: rim.length, meshCount: verts.length };
 }
 
 function MINXP() { return Math.min(...POLY.map((p) => p[0])); }

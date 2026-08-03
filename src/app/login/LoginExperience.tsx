@@ -121,14 +121,6 @@ export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoL
             <SubmitButton disabled={!!state?.ok} />
           </form>
 
-          {isDemo && (
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-300/80">Demo environment</div>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                Seeded sample data — safe to test, reset and reseed.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
