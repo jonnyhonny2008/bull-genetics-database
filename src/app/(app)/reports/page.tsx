@@ -16,6 +16,13 @@ const REPORTS = [
     ready: true,
   },
   {
+    href: "/reports/proof-forecast",
+    title: "Projected Proof Report",
+    tag: "Projection",
+    blurb: "The proof change report run forwards: a modelled next-round proof for every NAAB bull, trait by trait, with an uncertainty range on each number. Charts the lineup trend and its projection, prints its own backtested accuracy, and lets you open any single bull's full projected index and linear profile.",
+    ready: true,
+  },
+  {
     href: "/reports/interim-changes",
     title: "Interim Proof Change Report",
     tag: "NAAB bulls",
