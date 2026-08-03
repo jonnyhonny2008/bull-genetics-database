@@ -1,43 +1,51 @@
 "use client";
 
-// The sign-in screen. The constellation assembles behind; the panel slides in
-// from the right once the cow has read; a successful sign-in ignites the herd
-// and carries straight into the dashboard.
+// The sign-in screen. A wireframe cow materialises out of the dark, the panel
+// slides in from the right, and a successful sign-in ignites her and carries
+// straight through into the dashboard.
+//
+// The cow is the artwork itself, as a cut-out PNG with a real alpha channel, so
+// it sits on the page with no backdrop to blend away and no rectangular seam.
+// The points of light are a separate full-screen canvas that converges on the
+// artwork's own measured vertices before it fades up beneath them.
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
-import { CowConstellation } from "./CowConstellation";
 import { loginAction, type LoginState } from "./actions";
+import { NodeAssembly, ASSEMBLE_SECONDS } from "./NodeAssembly";
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+
+function SubmitButton({ done }: { done: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending || disabled}
+      disabled={pending || done}
       className="group relative w-full overflow-hidden rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition-transform duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] hover:scale-[1.02] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {/* sliding sheen on hover */}
       <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-      <span className="relative">{pending ? "Signing in…" : disabled ? "Welcome back" : "Sign in"}</span>
+      <span className="relative">{pending ? "Signing in…" : done ? "Welcome back" : "Sign in"}</span>
     </button>
   );
 }
 
-export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoLogins: { role: string; email: string; pw: string }[] }) {
+export function LoginExperience() {
   const [state, formAction] = useFormState<LoginState, FormData>(loginAction, {});
+  const [assembled, setAssembled] = useState(false);
   const [panelIn, setPanelIn] = useState(false);
   const [igniting, setIgniting] = useState(false);
   const router = useRouter();
   const fired = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  // Let the cow assemble before the panel arrives.
   useEffect(() => {
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const id = window.setTimeout(() => setPanelIn(true), reduced ? 0 : 2100);
-    return () => window.clearTimeout(id);
+    // the artwork fades up exactly as the points land on its vertices
+    const a = window.setTimeout(() => setAssembled(true), reduced ? 0 : ASSEMBLE_SECONDS * 1000);
+    const b = window.setTimeout(() => setPanelIn(true), reduced ? 0 : ASSEMBLE_SECONDS * 1000 + 550);
+    return () => { window.clearTimeout(a); window.clearTimeout(b); };
   }, []);
 
   // On success: ignite, then enter the app.
@@ -47,18 +55,42 @@ export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoL
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (reduced) { router.push("/dashboard"); return; }
     setIgniting(true);
-    const id = window.setTimeout(() => { router.push("/dashboard"); router.refresh(); }, 1150);
+    const id = window.setTimeout(() => { router.push("/dashboard"); router.refresh(); }, 1050);
     return () => window.clearTimeout(id);
   }, [state, router]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-navy-900 text-white">
-      {/* deep radial wash so the points sit in a room, not on flat black */}
+    <div className="relative min-h-screen overflow-hidden bg-[#0a1219] text-white">
+      {/* the room she stands in */}
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(120% 90% at 42% 45%, #16323f 0%, #101d27 45%, #0a1219 100%)" }}
+        style={{ background: "radial-gradient(115% 85% at 40% 48%, #15303c 0%, #0f1e28 45%, #080f15 100%)" }}
       />
-      <CowConstellation igniting={igniting} />
+
+      {/* The artwork: a cut-out PNG with a real alpha channel, so it sits on the
+          page with no backdrop to blend away and no rectangular seam. */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 flex w-full items-center justify-center md:w-[62%] md:justify-end md:pr-6">
+        <div
+          ref={boxRef}
+          className={`relative w-[94%] max-w-[720px] transition-transform duration-[900ms] ease-out md:w-full ${igniting ? "scale-110" : "scale-100"}`}
+        >
+          <Image
+            src="/good-cow-removebg-preview.png"
+            alt=""
+            width={616}
+            height={405}
+            priority
+            unoptimized
+            className={`h-auto w-full select-none transition-opacity duration-[900ms] ease-out ${assembled && !igniting ? "opacity-100" : "opacity-0"}`}
+            style={{ filter: "contrast(1.12) saturate(1.15) brightness(1.05)" }}
+          />
+        </div>
+      </div>
+
+      {/* Full-screen particle layer: the lights start anywhere on the page and
+          converge on the artwork's own vertices, which is why it sits outside
+          the image box rather than inside it. */}
+      <NodeAssembly igniting={igniting} boxRef={boxRef} />
 
       {/* film grain — kills banding in the gradient */}
       <div
@@ -72,8 +104,7 @@ export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoL
         <div className="mt-1 text-[10px] uppercase tracking-[0.28em] text-brand-300/80">Genetics Intelligence</div>
       </div>
 
-      {/* Blondin logo + the line that tells you what you are looking at, stacked
-          in the bottom-left corner so neither crosses the animal. */}
+      {/* strapline + Blondin logo, bottom left */}
       <div className={`absolute bottom-6 left-6 z-20 transition-all duration-1000 sm:bottom-9 sm:left-10 ${panelIn ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}>
         <div className="mb-4 max-w-xs">
           <p className="text-[13px] font-medium leading-relaxed text-slate-300/80">
@@ -81,14 +112,27 @@ export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoL
           </p>
           <p className="font-serif text-2xl italic leading-tight text-white sm:text-3xl">one complete animal.</p>
         </div>
-        <div className="inline-block rounded-2xl bg-white/95 px-4 py-3 shadow-lg shadow-black/30 backdrop-blur">
-          <Image src="/BlondinSires.png" alt="Blondin Sires" width={150} height={94} priority className="h-auto w-[118px] sm:w-[140px]" />
-        </div>
+        {/* The logo PNG is already 75% transparent, so it needs no panel behind
+            it — but its greens are dark and would vanish against this
+            background. Stacked white drop-shadows trace a thin outline around
+            the artwork, which lifts it off the dark and reads as intended. */}
+        <Image
+          src="/BlondinSires.png"
+          alt="Blondin Sires"
+          width={140}
+          height={88}
+          priority
+          className="h-auto w-[170px] select-none sm:w-[210px]"
+          style={{
+            filter:
+              "drop-shadow(0 0 1px rgba(255,255,255,0.95)) drop-shadow(0 0 1px rgba(255,255,255,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.55)) brightness(1.12)",
+          }}
+        />
       </div>
 
       {/* sign-in panel — slides in from the right */}
       <div
-        className={`absolute inset-y-0 right-0 z-20 flex w-full items-center justify-center px-5 transition-all duration-[900ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] sm:px-10 md:w-[46%] ${
+        className={`absolute inset-y-0 right-0 z-20 flex w-full items-center justify-center px-5 transition-all duration-[900ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] sm:px-10 md:w-[44%] ${
           panelIn && !igniting ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0"
         }`}
       >
@@ -118,14 +162,13 @@ export function LoginExperience({ isDemo, demoLogins }: { isDemo: boolean; demoL
               <div className="rounded-xl border border-red-400/25 bg-red-500/12 px-3 py-2 text-xs text-red-200">{state.error}</div>
             )}
 
-            <SubmitButton disabled={!!state?.ok} />
+            <SubmitButton done={!!state?.ok} />
           </form>
-
         </div>
       </div>
 
       {/* the flash carries into the app, so the cut is not abrupt */}
-      <div className={`pointer-events-none absolute inset-0 z-30 bg-slate-100 transition-opacity duration-500 ${igniting ? "opacity-100 delay-500" : "opacity-0"}`} />
+      <div className={`pointer-events-none absolute inset-0 z-30 bg-slate-100 transition-opacity duration-500 ${igniting ? "opacity-100 delay-[420ms]" : "opacity-0"}`} />
     </div>
   );
 }
