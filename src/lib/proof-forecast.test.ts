@@ -60,13 +60,14 @@ test("a PUBLISHED base change overrides the historical estimate", () => {
   assert.equal(p.basis, "base change");
 });
 
-test("the interval widens as reliability falls, and always contains the prediction", () => {
+test("the interval comes from the cohort's real spread and contains the prediction", () => {
   const series = obs([[2024, 4, 3000], [2024, 8, 3010], [2024, 12, 3020]]);
-  const sure = projectTrait(series, flatStats(), { targetIsApril: false, reliability: 0.99 })!;
-  const unsure = projectTrait(series, flatStats(), { targetIsApril: false, reliability: 0.4 })!;
-  assert.ok(unsure.hi - unsure.lo > sure.hi - sure.lo, "a less reliable bull needs a wider band");
-  for (const p of [sure, unsure]) {
+  const narrow = projectTrait(series, flatStats(3000, 10), { targetIsApril: false, reliability: 0.9 })!;
+  const wide = projectTrait(series, flatStats(3000, 100), { targetIsApril: false, reliability: 0.9 })!;
+  assert.ok(wide.hi - wide.lo > narrow.hi - narrow.lo, "a more volatile trait needs a wider band");
+  for (const p of [narrow, wide]) {
     assert.ok(p.lo <= p.predicted && p.predicted <= p.hi, "prediction must sit inside its own band");
+    assert.ok(p.hi > p.lo, "the band must have width");
   }
 });
 

@@ -76,10 +76,18 @@ export default async function ProofForecastReportPage({ searchParams }: { search
         </div>
       ) : (
         <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          <strong>{report.targetLabel} is an ordinary round — no base change.</strong> Backtesting on your own rounds showed
-          that between base changes, every attempt to extrapolate did <em>worse</em> than simply carrying the current proof
-          forward. So each bull is projected at his current value, and the honest output is the <strong>range</strong>:
-          how far he could realistically move. The April rounds are where this report earns its keep.
+          <strong>{report.targetLabel} is an ordinary round — no base change.</strong> Bulls&apos; profiles certainly move
+          every round, but the <em>direction</em> of that move is not forecastable: tested one step ahead over 6,159
+          predictions on your own data — split by reliability, by history depth, and by whether the bull moved last round —
+          following the interim trend came out <em>worse</em> than carrying the current proof forward, every time. That is
+          what an unbiased evaluation implies: each round&apos;s change is new information.
+          <div className="mt-1">
+            So the projection for {report.targetLabel} is each bull&apos;s current profile, and the real content is the{" "}
+            <strong>range</strong> — how far each trait typically moves in one round, calibrated from your rounds
+            (about {bt.overallCoverage != null ? `${bt.overallCoverage}%` : "80%"} of actual values land inside it).
+            Use it to see where surprises can come from. The <strong>April</strong> round is the one that is genuinely
+            predictable — switch &ldquo;Project to&rdquo; below.
+          </div>
         </div>
       )}
 

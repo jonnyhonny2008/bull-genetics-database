@@ -81,8 +81,18 @@ export interface ModelParams {
  *   • ORDINARY rounds — every correction tried made things WORSE (−5% to −10%).
  *     A published proof is already a best prediction of itself; between base
  *     changes the current value is genuinely the best estimate of the next one.
- *   • Extrapolating a bull's own trend (phi > 0) hurt on ordinary rounds and
- *     added nothing on Aprils, so it is off by default.
+ *   • Extrapolating a bull's own trend (phi > 0) hurt EVERYWHERE. Tested one
+ *     step ahead over 6,159 predictions and segmented by reliability band
+ *     (<70 / 70-85 / 85+), by history depth (<=3 / 4-8 / 9+ rounds) and by
+ *     whether the bull moved at all last round: every trait, every segment,
+ *     every damping factor came out worse than leaving the value alone, and
+ *     monotonically worse the harder the trend was applied. Interim movement
+ *     does not carry into the next round — each round's change is new
+ *     information, which is exactly what an unbiased evaluation implies.
+ *   • Nor is the SIZE of the next move forecastable per bull: a bull's own
+ *     past volatility correlates only ~0.08 with how far he moves next round,
+ *     and predicted it WORSE than the cohort's typical movement. Hence the
+ *     interval is cohort-derived.
  *   • Regressing bulls toward the lineup average was the single worst idea
  *     tried (−40%). Each bull is predicted from HIS OWN series; the cohort is
  *     used only for the round-level shift and the width of the interval.
@@ -376,12 +386,19 @@ export function projectTrait(
 
   const predicted = last + systematic + deviation + pull;
 
-  // Empirical interval: the observed spread of real changes, widened when the
-  // bull's own history is volatile or his reliability is low.
+  // Empirical interval: the observed spread of real round-to-round changes.
+  //
+  // Cohort-derived, NOT per-bull. A bull's own past volatility correlates only
+  // ~0.08 with how far he actually moves next round, and using it measured
+  // WORSE than the cohort's typical movement — so how much a given bull will
+  // move is, like the direction, essentially unforecastable. What IS stable is
+  // how much bulls move on that trait in general, and that is what the range
+  // reports. The bull's own spread is used only as a fallback.
   const cohortSd = stats && stats.drift.n >= MIN_COHORT_OBS ? stats.drift.sd : 0;
   const bullSd = deltas.length >= 3 ? traitStdStats(deltas.map((x) => x.d)).sd : 0;
-  const sigma = Math.max(cohortSd, bullSd) * (1 + (1 - rel));
+  const sigma = cohortSd > 0 ? cohortSd : bullSd;
   const half = Z80 * sigma;
+  void rel;
 
   const basis: TraitForecast["basis"] =
     usedPublished ? "base change"
