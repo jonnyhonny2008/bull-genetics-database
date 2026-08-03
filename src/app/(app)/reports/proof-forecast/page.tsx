@@ -60,36 +60,28 @@ export default async function ProofForecastReportPage({ searchParams }: { search
         actions={<a href={exportHref} className="btn-primary">⬇ Export to Excel</a>}
       />
 
-      {report.targetIsApril ? (
-        <div className="mb-4 rounded-md border border-accent-200 bg-accent-50 px-3 py-2 text-sm text-accent-900">
-          <strong>{report.targetLabel} is an April round — the annual base change.</strong>{" "}
-          {report.basePublished
-            ? <>Lactanet has <strong>published</strong> the base change for this April, so the projection applies the real
-              per-breed shift rather than an estimate. When the base rises, every bull&apos;s published value falls by that
-              amount with no new information about the bull — that is the rollback.</>
-            : <>Lactanet has not published this April&apos;s base change yet, so the projection applies the most recent
-              published table. Expect the magnitudes to shift a little when the new one lands.</>}
-          <div className="mt-1 text-[12px]">
-            Note: <strong>LPI does not move on a base change</strong> — Lactanet absorbs it into the constant in the LPI
-            formula — so LPI shows no April change by design. The rollback shows up in Milk, Fat, Protein and Conformation.
-          </div>
+      <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <strong>
+          {report.targetLabel} is {report.targetKind === "official" ? "an official round (April / August / December)" : "an interim round"}.
+        </strong>{" "}
+        Bulls&apos; profiles do move every round, but the <em>direction</em> of that move is not forecastable. Tested one
+        step ahead over ~33,000 trait-rounds of your own data: following a bull&apos;s recent trend, matching him to
+        similar bulls in the past (daughter influx, reliability, career stage, movement pattern), and every damping
+        factor in between all came out <em>worse</em> than simply carrying the current proof forward. That is what an
+        unbiased evaluation implies — each round&apos;s change is genuinely new information.
+        <div className="mt-1">
+          So the projection is each bull&apos;s current profile, and the real content is the <strong>range</strong>.
+          That part <em>is</em> predictable: {report.targetKind === "official"
+            ? <>official rounds are about <strong>40% calmer</strong> than interims, so these ranges are correspondingly tighter.</>
+            : <>interim rounds are the noisiest of the year, so these ranges are correspondingly wider.</>}{" "}
+          Calibrated from your own rounds — about {bt.overallCoverage != null ? `${bt.overallCoverage}%` : "80%"} of
+          actual values land inside. Use it to see which bulls could move, and by how much.
         </div>
-      ) : (
-        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          <strong>{report.targetLabel} is an ordinary round — no base change.</strong> Bulls&apos; profiles certainly move
-          every round, but the <em>direction</em> of that move is not forecastable: tested one step ahead over 6,159
-          predictions on your own data — split by reliability, by history depth, and by whether the bull moved last round —
-          following the interim trend came out <em>worse</em> than carrying the current proof forward, every time. That is
-          what an unbiased evaluation implies: each round&apos;s change is new information.
-          <div className="mt-1">
-            So the projection for {report.targetLabel} is each bull&apos;s current profile, and the real content is the{" "}
-            <strong>range</strong> — how far each trait typically moves in one round, calibrated from your rounds
-            (about {bt.overallCoverage != null ? `${bt.overallCoverage}%` : "80%"} of actual values land inside it).
-            Use it to see where surprises can come from. The <strong>April</strong> round is the one that is genuinely
-            predictable — switch &ldquo;Project to&rdquo; below.
-          </div>
+        <div className="mt-1 text-[12px] text-slate-500">
+          April base changes are excluded here on purpose — a rollback moves every bull at once for reasons that have
+          nothing to do with the bull, and gets its own report.
         </div>
-      )}
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Bulls projected" value={fmtNum(report.compared)} hint={report.notComparable ? `${fmtNum(report.notComparable)} lack 2+ rounds` : undefined} tone="good" />
@@ -253,13 +245,6 @@ export default async function ProofForecastReportPage({ searchParams }: { search
       {/* Filters */}
       <form method="get" className="card card-pad mt-4 flex flex-wrap items-end gap-3">
         {searchParams.ctrait && <input type="hidden" name="ctrait" value={searchParams.ctrait} />}
-        <div>
-          <label className="label" title="Ordinary rounds carry no base change, so projections hold steady. The April round is the base change — the one worth previewing.">Project to</label>
-          <select name="target" defaultValue={report.target} className="input min-w-[190px]">
-            <option value="">Next round on cadence</option>
-            <option value="april">Next April (base change)</option>
-          </select>
-        </div>
         <div>
           <label className="label" htmlFor="q">Find a bull</label>
           <input id="q" name="q" defaultValue={report.q} placeholder="Name, NAAB, or reg…" className="input min-w-[220px]" />

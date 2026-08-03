@@ -228,8 +228,10 @@ export interface ForecastReport {
   fallers: number;
   avgLpiDelta: number | null;
   // filters / state
-  /** "" = next round on cadence, "april" = the next base change. */
+  /** Retained for URL compatibility; this report always targets the next round. */
   target: string;
+  /** interim | official | april — drives how wide the interval should be. */
+  targetKind: RoundKind;
   q: string;
   breed: string;
   sort: string;
@@ -259,18 +261,19 @@ export interface TraitStats {
   level: number;
   /** Mean/SD of every consecutive round-to-round change. */
   drift: { mean: number; sd: number; n: number };
-  /** Spread of ORDINARY steps only — the right width for a non-April round. */
-  ordinarySd: number;
-  /** Spread of APRIL steps only — wider, because a base change moves everyone. */
-  aprilSd: number;
   /**
-   * Empirical 10th/90th percentile of real changes, per kind of round, stated
-   * as an offset from that kind's MEAN. Real proof changes have fatter tails
-   * than a normal, so `1.28 × SD` leaves the quieter traits over-confident;
-   * quantiles taken straight from the data do not make that assumption.
+   * Behaviour split by KIND of round, because they are not alike. Measured over
+   * ~33k real trait-rounds:
+   *   interim  — the noisiest (LPI ±31, Milk ±60)
+   *   official — Aug/Dec, about 40% CALMER than an interim (LPI ±20, Milk ±42)
+   *   april    — the base change; by far the widest (Milk |Δ| ≈ 101)
+   * Pooling them produced an August interval half again too wide.
+   *
+   * `q` is the empirical 10th/90th percentile as an offset from that kind's
+   * mean. Real proof changes have fatter tails than a normal, so `1.28 × SD`
+   * leaves the quieter traits over-confident; quantiles make no such assumption.
    */
-  ordinaryQ: { lo: number; hi: number } | null;
-  aprilQ: { lo: number; hi: number } | null;
+  byKind: Record<RoundKind, { mean: number; sd: number; n: number; q: { lo: number; hi: number } | null }>;
   /** Mean change on steps that LAND on an April round (the base change). */
   aprilMean: number;
   aprilN: number;
@@ -292,6 +295,12 @@ function centredQuantiles(deltas: number[]): { lo: number; hi: number } | null {
   return { lo: at(0.1) - mean, hi: at(0.9) - mean };
 }
 
+/** Summarise one kind of round, falling back to the pooled spread when thin. */
+function kindStats(xs: number[], drift: { mean: number; sd: number; n: number }) {
+  const s = xs.length >= MIN_COHORT_OBS ? traitStdStats(xs) : { mean: drift.mean, sd: drift.sd, n: xs.length };
+  return { mean: s.mean, sd: s.sd, n: xs.length, q: centredQuantiles(xs) };
+}
+
 /** Extract one trait's ordered observations from a bull's rounds. */
 function seriesOf(rounds: { date: Date; traits: Map<string, number> }[], code: string): Obs[] {
   const out: Obs[] = [];
@@ -302,10 +311,20 @@ function seriesOf(rounds: { date: Date; traits: Map<string, number> }[], code: s
   return out;
 }
 
-/** Consecutive changes, tagged with whether the LATER round is an April. */
-function deltasOf(obs: Obs[]): { d: number; april: boolean; at: Date }[] {
-  const out: { d: number; april: boolean; at: Date }[] = [];
-  for (let i = 1; i < obs.length; i++) out.push({ d: obs[i].value - obs[i - 1].value, april: isRollbackRound(obs[i].date), at: obs[i].date });
+/** The three kinds of round, which behave very differently. */
+export type RoundKind = "interim" | "official" | "april";
+
+export function roundKind(d: Date): RoundKind {
+  if (isRollbackRound(d)) return "april";
+  return isOfficialProof(d) ? "official" : "interim";
+}
+
+/** Consecutive changes, tagged with the kind of the LATER round. */
+function deltasOf(obs: Obs[]): { d: number; april: boolean; kind: RoundKind; at: Date }[] {
+  const out: { d: number; april: boolean; kind: RoundKind; at: Date }[] = [];
+  for (let i = 1; i < obs.length; i++) {
+    out.push({ d: obs[i].value - obs[i - 1].value, april: isRollbackRound(obs[i].date), kind: roundKind(obs[i].date), at: obs[i].date });
+  }
   return out;
 }
 
@@ -347,13 +366,15 @@ export function buildTraitStats(
     const all: number[] = [];
     const april: number[] = [];
     const ordinary: number[] = [];
+    const kinds: Record<RoundKind, number[]> = { interim: [], official: [], april: [] };
     for (const b of bulls) {
       const obs = seriesOf(b.rounds, code);
       if (obs.length) levels.push(obs[obs.length - 1].value);
-      for (const { d, april: isApr, at } of deltasOf(obs)) {
+      for (const { d, april: isApr, kind, at } of deltasOf(obs)) {
         if (cutoff != null && at.getTime() < cutoff) continue;
         all.push(d);
         (isApr ? april : ordinary).push(d);
+        kinds[kind].push(d);
       }
     }
     if (!levels.length) continue;
@@ -363,10 +384,11 @@ export function buildTraitStats(
       drift,
       // Split, because pooling them widens ordinary-round intervals with the
       // spread of base changes that only ever happen in April.
-      ordinarySd: ordinary.length >= MIN_COHORT_OBS ? traitStdStats(ordinary).sd : drift.sd,
-      aprilSd: april.length >= MIN_COHORT_OBS ? traitStdStats(april).sd : drift.sd,
-      ordinaryQ: centredQuantiles(ordinary),
-      aprilQ: centredQuantiles(april),
+      byKind: {
+        interim: kindStats(kinds.interim, drift),
+        official: kindStats(kinds.official, drift),
+        april: kindStats(kinds.april, drift),
+      },
       aprilMean: april.length ? april.reduce((s, v) => s + v, 0) / april.length : 0,
       aprilN: april.length,
       ordinaryMean: ordinary.length ? ordinary.reduce((s, v) => s + v, 0) / ordinary.length : 0,
@@ -383,7 +405,7 @@ export function buildTraitStats(
 export function projectTrait(
   obs: Obs[],
   stats: TraitStats | undefined,
-  opts: { targetIsApril: boolean; reliability: number | null; params?: ModelParams; publishedShift?: number | null },
+  opts: { targetIsApril: boolean; targetKind?: RoundKind; reliability: number | null; params?: ModelParams; publishedShift?: number | null },
 ): { predicted: number; lo: number; hi: number; basis: TraitForecast["basis"]; steps: number } | null {
   if (obs.length === 0) return null;
   const P = opts.params ?? DEFAULT_PARAMS;
@@ -391,6 +413,7 @@ export function projectTrait(
   const deltas = deltasOf(obs);
   const rel = opts.reliability ?? DEFAULT_RELIABILITY;
 
+  const kind: RoundKind = opts.targetKind ?? (opts.targetIsApril ? "april" : "official");
   // Cohort expectation for each kind of step. Only trusted with enough
   // observations, otherwise it is noise dressed as signal.
   const fallback = stats && stats.drift.n >= MIN_COHORT_OBS ? stats.drift.mean : 0;
@@ -440,15 +463,15 @@ export function projectTrait(
   // move is, like the direction, essentially unforecastable. What IS stable is
   // how much bulls move on that trait in general, and that is what the range
   // reports. The bull's own spread is used only as a fallback.
-  // Match the spread to the KIND of round being predicted.
-  const cohortSd = stats && stats.drift.n >= MIN_COHORT_OBS
-    ? (opts.targetIsApril ? stats.aprilSd : stats.ordinarySd)
-    : 0;
+  // Match the spread to the KIND of round being predicted — an official round
+  // is ~40% calmer than an interim, so pooling them overstates August badly.
+  const ks = stats?.byKind[kind];
+  const cohortSd = ks && ks.n >= MIN_COHORT_OBS ? ks.sd : (stats && stats.drift.n >= MIN_COHORT_OBS ? stats.drift.sd : 0);
   const bullSd = deltas.length >= 3 ? traitStdStats(deltas.map((x) => x.d)).sd : 0;
   const sigma = cohortSd > 0 ? cohortSd : bullSd;
   // Prefer the real quantiles; fall back to the normal approximation only when
   // there aren't enough observations for quantiles to mean anything.
-  const q = stats ? (opts.targetIsApril ? stats.aprilQ : stats.ordinaryQ) : null;
+  const q = ks?.q ?? null;
   const loOff = q ? q.lo : -Z80 * sigma;
   const hiOff = q ? q.hi : Z80 * sigma;
   void rel;
@@ -548,16 +571,12 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     .sort((a, b) => b.key.localeCompare(a.key));
 
   const allDates = [...periodMap.values()].map((v) => v.date);
-  // Default target is simply the next round on the observed cadence. Choosing
-  // "april" jumps to the next base change instead — the round people actually
-  // want to see coming, since it is the only one that moves everyone at once.
-  const wantApril = sp.target === "april";
-  const nextByCadence = allDates.length ? nextPeriod(allDates) : new Date();
-  const latestOnFile = allDates.length ? allDates.reduce((a, b) => (a > b ? a : b)) : new Date();
-  const nextApril = new Date(Date.UTC(
-    latestOnFile.getUTCFullYear() + (latestOnFile.getUTCMonth() >= 3 ? 1 : 0), 3, 1,
-  ));
-  const target = wantApril ? nextApril : nextByCadence;
+  // This report covers the NEXT round on the observed cadence — the monthly /
+  // official proof. April is deliberately not offered here: a base change is a
+  // different animal (it moves every bull at once for reasons that have nothing
+  // to do with the bull) and gets its own report.
+  const target = allDates.length ? nextPeriod(allDates) : new Date();
+  const targetKind = roundKind(target);
   const targetIsApril = isRollbackRound(target);
   const targetLabel = periodLabelOf(target);
   const latestLabel = periods[0]?.label ?? null;
@@ -586,7 +605,7 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       const publishedShift = targetIsApril
         ? projectedShift(targetYear, code, breedCode) ?? fallbackShift(code, breedCode)
         : null;
-      const p = projectTrait(obs, stats.get(code), { targetIsApril, reliability: rel, publishedShift });
+      const p = projectTrait(obs, stats.get(code), { targetIsApril, targetKind, reliability: rel, publishedShift });
       if (!p) continue;
       const def = defMap.get(code);
       const current = obs[obs.length - 1].value;
@@ -730,7 +749,8 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     risers: rows.filter((r) => r.forecast.direction === "up").length,
     fallers: rows.filter((r) => r.forecast.direction === "down").length,
     avgLpiDelta: lpiDeltas.length ? Math.round((lpiDeltas.reduce((s, v) => s + v, 0) / lpiDeltas.length) * 10) / 10 : null,
-    target: wantApril ? "april" : "",
+    target: "",
+    targetKind,
     q, breed, sort, dir, blondin, cohortLabel, cohortN: rows.length, minConfidence,
     focus, focusSeries,
   };
@@ -781,7 +801,7 @@ export function runBacktest(
       if (actual == null) continue;
       const obs = seriesOf(history, kt.code);
       if (obs.length === 0) continue;
-      const p = projectTrait(obs, stats.get(kt.code), { targetIsApril: isApril, reliability: rel, params });
+      const p = projectTrait(obs, stats.get(kt.code), { targetIsApril: isApril, targetKind: roundKind(actualRound.date), reliability: rel, params });
       if (!p) continue;
       const a = acc.get(kt.code) ?? { err: [], naive: [], hit: 0 };
       a.err.push(Math.abs(p.predicted - actual));
