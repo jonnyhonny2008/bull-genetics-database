@@ -43,7 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <header className="flex items-center justify-between border-b border-navy-800 bg-navy-700 px-4 py-2">
             <div className="flex items-center gap-2">
               <NavToggle />
-              <div className="text-sm text-slate-300 md:hidden">Blondin Sires</div>
+              <span className="font-serif text-lg font-bold tracking-tight text-white">GenetiBase</span>
             </div>
             <div className="ml-auto flex items-center gap-3">
               <div className="text-right leading-tight">
