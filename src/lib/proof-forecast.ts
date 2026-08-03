@@ -41,7 +41,22 @@
 
 import { prisma } from "./db";
 import type { Prisma } from "@prisma/client";
-import { blondinWhere } from "./sire-class";
+// NOTE: the Blondin filter is defined HERE rather than imported from
+// ./sire-class on purpose. An identical helper lives there, but it is part of
+// work that has not been committed yet — importing it built fine locally and
+// broke the Vercel build, which only ever sees committed code. Keeping this
+// module self-contained means it cannot be broken by another branch's state.
+const BLONDIN_ROLE = "blondin";
+
+function blondinWhere(v: string | null | undefined): Prisma.AnimalWhereInput | null {
+  switch (v) {
+    case "1":
+    case "only": return { roles: { some: { roleType: BLONDIN_ROLE, active: true } } };
+    case "0":
+    case "exclude": return { roles: { none: { roleType: BLONDIN_ROLE, active: true } } };
+    default: return null;
+  }
+}
 import { isRollbackRound, isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap } from "./eval-traits";
 import { breedCodeOf, projectedShift, fallbackShift, hasPublished, LATEST_PUBLISHED_YEAR } from "./base-change";
