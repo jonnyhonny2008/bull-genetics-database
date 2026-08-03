@@ -49,12 +49,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-navy-500 text-xs font-semibold text-white ring-1 ring-white/15">
             {initials}
           </div>
-          <div className="leading-tight">
-            <div className="text-sm font-medium text-white">{user.name}</div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-              {ROLES[user.role as keyof typeof ROLES] ?? user.role}
-            </div>
-          </div>
+          <span className="text-sm font-medium text-white">{user.name}</span>
+          <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+            {ROLES[user.role as keyof typeof ROLES] ?? user.role}
+          </span>
           <form action={logoutAction}>
             <button
               type="submit"
