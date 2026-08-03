@@ -23,7 +23,7 @@ export default function LoginPage() {
         )}
         <div className="card card-pad">
           <div className="mb-6 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-600 text-xl font-bold text-white">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-accent-500 to-red-500 text-xl font-bold text-white">
               BS
             </div>
             <h1 className="text-lg font-bold text-slate-900">Bull Stud Genetics</h1>

@@ -68,7 +68,7 @@ export default async function DashboardPage() {
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Total animals" value={fmtNum(totalAnimals)} href="/animals" tone="good" />
-        <StatCard label="Proof rounds" value={fmtNum(totalRounds)} href="/analysis" />
+        <StatCard label="Proof rounds" value={fmtNum(totalRounds)} href="/analysis" tone="accent" />
         <StatCard label="Pending review" value={pendingReviews.length} href="/review" tone={pendingReviews.length ? "warn" : "default"} />
         <StatCard label="Needs approval" value={needingApproval} tone={needingApproval ? "warn" : "default"} />
         <StatCard label="Missing primary ID" value={fmtNum(missingPrimary)} tone={missingPrimary ? "warn" : "default"} />
@@ -101,6 +101,7 @@ export default async function DashboardPage() {
                     value={bySireClass.get(r.code) ?? 0}
                     max={Math.max(1, ...bySireClass.values())}
                     href={`/animals?role=${r.code}`}
+                    barClass="bg-accent-500"
                   />
                 ))}
               </div>
@@ -173,7 +174,7 @@ export default async function DashboardPage() {
   );
 }
 
-function BarRow({ label, value, max, href }: { label: string; value: number; max: number; href?: string }) {
+function BarRow({ label, value, max, href, barClass = "bg-brand-500" }: { label: string; value: number; max: number; href?: string; barClass?: string }) {
   const pct = max ? Math.round((value / max) * 100) : 0;
   return (
     <div>
@@ -184,7 +185,7 @@ function BarRow({ label, value, max, href }: { label: string; value: number; max
         <span className="text-slate-500">{value}</span>
       </div>
       <div className="h-2 w-full rounded-full bg-slate-100">
-        <div className="h-2 rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
+        <div className={`h-2 rounded-full ${barClass}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

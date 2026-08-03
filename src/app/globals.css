@@ -36,6 +36,9 @@ body {
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
   }
+  .btn-accent {
+    @apply btn bg-accent-500 text-white hover:bg-accent-600;
+  }
   .btn-sm {
     @apply px-2 py-1 text-xs;
   }
@@ -56,5 +59,10 @@ body {
   }
   .link {
     @apply text-brand-700 hover:text-brand-900 hover:underline;
+  }
+  /* Warm orange→red accent rule — sits under page titles and section heads to
+     inject a bit of colour into the otherwise teal/slate chrome. */
+  .accent-bar {
+    @apply h-1 w-12 rounded-full bg-gradient-to-r from-accent-500 to-red-500;
   }
 }

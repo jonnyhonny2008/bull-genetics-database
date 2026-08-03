@@ -14,7 +14,8 @@ export function PageHeader({
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-        {subtitle && <div className="mt-1 text-sm text-slate-500">{subtitle}</div>}
+        <div className="accent-bar mt-2" />
+        {subtitle && <div className="mt-2 text-sm text-slate-500">{subtitle}</div>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -56,22 +57,29 @@ export function StatCard({
   value: React.ReactNode;
   hint?: string;
   href?: string;
-  tone?: "default" | "warn" | "danger" | "good";
+  tone?: "default" | "warn" | "danger" | "good" | "accent";
 }) {
-  const tones: Record<string, string> = {
-    default: "text-slate-900",
-    warn: "text-amber-600",
-    danger: "text-red-600",
-    good: "text-brand-700",
+  // Each tone pairs a value colour with a top accent stripe, so the warm tones
+  // (warn / danger / accent) read as "pay attention" at a glance across the grid.
+  const tones: Record<string, { text: string; bar: string }> = {
+    default: { text: "text-slate-900", bar: "bg-brand-500" },
+    warn: { text: "text-amber-600", bar: "bg-amber-400" },
+    danger: { text: "text-red-600", bar: "bg-red-500" },
+    good: { text: "text-brand-700", bar: "bg-brand-500" },
+    accent: { text: "text-accent-600", bar: "bg-accent-500" },
   };
+  const t = tones[tone] ?? tones.default;
   const inner = (
-    <div className="card card-pad h-full">
-      {/* text-[11px] + leading-tight + break-words keeps long labels (e.g.
-          "Possible duplicates") tidy inside the narrow 6-across dashboard tiles
-          instead of overflowing the card. */}
-      <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500 break-words">{label}</div>
-      <div className={`mt-1 text-3xl font-bold ${tones[tone]}`}>{value}</div>
-      {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
+    <div className="card h-full overflow-hidden">
+      <div className={`h-1 w-full ${t.bar}`} />
+      <div className="card-pad">
+        {/* text-[11px] + leading-tight + break-words keeps long labels (e.g.
+            "Possible duplicates") tidy inside the narrow 6-across dashboard tiles
+            instead of overflowing the card. */}
+        <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500 break-words">{label}</div>
+        <div className={`mt-1 text-3xl font-bold ${t.text}`}>{value}</div>
+        {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
+      </div>
     </div>
   );
   return href ? (
@@ -91,6 +99,7 @@ const badgeTones: Record<string, string> = {
   blue: "bg-blue-100 text-blue-800",
   purple: "bg-purple-100 text-purple-800",
   brand: "bg-brand-100 text-brand-800",
+  orange: "bg-accent-100 text-accent-800",
 };
 
 export function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: keyof typeof badgeTones }) {
