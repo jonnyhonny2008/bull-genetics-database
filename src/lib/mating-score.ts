@@ -45,6 +45,8 @@
 // value) contributes NOTHING and says so out loud. It is never divided by.
 // ---------------------------------------------------------------------------
 
+import { correctionNote, deficit, idealBullValue, isIntermediate, targetFor } from "./mating-targets";
+
 /** One rankable index: its code, how it is spelled to a user, and its column. */
 export interface MatingIndex {
   code: string;
@@ -108,6 +110,42 @@ export const WEIGHT_STEP = "any";
 /** The base-100 scale, shared with Rollback Resistance. */
 export const SCORE_BASE = 100;
 export const SCORE_SD_POINTS = 5;
+
+// --- corrective mating: the merit/correction dial ---------------------------
+
+/**
+ * How the final score splits between MERIT (raise the calf's index) and
+ * CORRECTION (fix what is wrong with this particular cow):
+ *
+ *     final = blend × meritZ + (1 − blend) × correctionZ
+ *
+ * 1 is the ranking this report has always produced. 0 ignores merit entirely and
+ * ranks purely on how well the bull suits her faults. 0.5 is the default because
+ * neither half is worth having alone: merit alone breeds a high-index cow with
+ * the same bad legs, and correction alone breeds a correct cow nobody wants.
+ */
+export const DEFAULT_BLEND = 0.5;
+export const MIN_BLEND = 0;
+export const MAX_BLEND = 1;
+
+/**
+ * The `step` for the blend slider. A STRING for the same reason WEIGHT_STEP is:
+ * a numeric step is measured from `min`, and any value off that grid is a
+ * stepMismatch that makes the browser refuse to submit the whole GET form. "0.05"
+ * as a string is passed through to the attribute verbatim and divides 1 exactly,
+ * but keeping it out of the numeric-literal shape also keeps the form free of the
+ * hard-coded steps that broke it once already.
+ */
+export const BLEND_STEP = "0.05";
+
+/**
+ * How many of her weaknesses a run acts on. Five is a real mating decision;
+ * beyond that every trait's weight is diluted to the point where the correction
+ * term is just noise, and no breeder mates a cow on ten faults at once.
+ */
+export const DEFAULT_WEAK_N = 5;
+export const MIN_WEAK_N = 1;
+export const MAX_WEAK_N = 10;
 
 /**
  * Decimal places for the Match score, everywhere it is shown — screen and
@@ -420,4 +458,211 @@ export function describeSelection(
   }
 
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// CORRECTIVE MATING — finding a cow's weaknesses and weighting them.
+//
+// The scoring above answers "which bull is best?". This section answers "which
+// bull is best FOR HER?", and the two are not the same question.
+//
+// --- WHY THE DEFICIT IS DIVIDED BY THE POOL SD ------------------------------
+// A cow's deficit is measured on the trait's OWN scale: −250 kg on Milk is a
+// deficit of 250, +9 on Stature is a deficit of 9. Weighting the traits by those
+// raw numbers directly — the obvious implementation — is the same defect this
+// whole module was written to prevent, one level up: Milk's hundreds would carry
+// 96% of the weight and every cow in the country would be "weakest on Milk",
+// including one standing three points off the Stature target. The word
+// "correction" would appear on the report while the ranking corrected nothing.
+//
+// So a deficit is expressed in POOL STANDARD DEVIATIONS of that trait before the
+// traits are compared with one another:
+//
+//     deficitSd_t = deficit_t / sd_t          sd_t from the candidate pool
+//     w_t         = deficitSd_t / SUM(deficitSd)      so the weights sum to 1
+//
+// The raw deficit is still what is DISPLAYED and exported — it is the number a
+// classifier would recognise. deficitSd exists only to make "which fault is
+// worse?" a question with an answer.
+//
+// A trait she is already on target for has deficit 0, so it carries weight 0 by
+// construction. Nothing has to remember to exclude it.
+//
+// --- WHAT IS DELIBERATELY NOT DONE ------------------------------------------
+// A trait she has NO value for is UNASSESSABLE. It is reported by name and left
+// out; it is never read as "0", which on the Canadian linear scale means breed
+// average and would silently declare an unmeasured cow perfect.
+//
+// A trait the POOL has no spread on cannot be corrected by any bull in it. It is
+// also reported by name and left out, rather than dividing by a zero sd.
+// ---------------------------------------------------------------------------
+
+/** One trait offered to the weakness scan, with the spread available to fix it. */
+export interface WeaknessInput {
+  code: string;
+  label: string;
+  /** HER value. null means unassessable — it is never guessed and never zeroed. */
+  cowValue: number | null;
+  /**
+   * Where the POPULATION sits on this trait — the pool mean, not an assumed
+   * origin. Required for directional traits, because the scales in this
+   * database do not share one: measured over the 1,047 preferred evaluations,
+   * LPI averages 3242, Pro$ 1433, the LPI subindexes 450-700, the functional
+   * RBVs (DF, HL, MR, SCS, CA, DCA) 100, and only the linear traits and the
+   * fat/protein percentages sit near 0. Defaulting this to 0 made
+   * `max(0, 0 - cowValue)` identically zero for every trait with a positive
+   * mean, so a cow could never be weak on Conformation, Daughter Fertility or
+   * Milking Speed no matter how poor she was. Deriving it from the pool also
+   * survives an LPI rebasing without a code change.
+   *
+   * null = we do not know where this trait's population sits, so the fault
+   * cannot be measured -> the trait is reported as uncorrectable, never as 0.
+   * Ignored for intermediate-optimum traits, which carry an explicit target.
+   */
+  mean: number | null;
+  /** Spread of this trait across the bull pool. null or 0 = uncorrectable here. */
+  sd: number | null;
+}
+
+/** One fault worth mating for, with everything needed to explain it. */
+export interface Weakness {
+  code: string;
+  label: string;
+  /** Her own value, on the trait's own scale. */
+  cowValue: number;
+  /** The daughter value aimed at, or null for a directional trait. */
+  target: number | null;
+  /** How far off she is, on the trait's OWN scale. This is the displayed number. */
+  deficit: number;
+  /** The same distance in pool standard deviations — the comparable magnitude. */
+  deficitSd: number;
+  /** The bull value that would land the daughter exactly on target. Null when
+   *  directional: there the answer is "as high as you can get", not a number. */
+  idealBull: number | null;
+  /** Share of the correction term this fault carries. 0 unless acted on. */
+  weight: number;
+  /** One sentence a breeder can read, from correctionNote(). */
+  note: string | null;
+}
+
+export interface WeaknessSet {
+  /** The faults actually acted on, worst first. Their weights sum to 1. */
+  weaknesses: Weakness[];
+  /** Every fault found, worst first — including the ones past the cut, which
+   *  carry weight 0. Shown so the report can say what it chose NOT to act on. */
+  ranked: Weakness[];
+  /** Traits she has no value for. Named, never guessed. */
+  unassessable: { code: string; label: string }[];
+  /** Traits she is weak on that this pool has no spread to fix. Named, never
+   *  divided by. */
+  uncorrectable: { code: string; label: string }[];
+}
+
+/**
+ * Rank a cow's faults and hand the worst `topK` their share of the correction
+ * weight. Pure: the caller supplies her values and the pool spreads.
+ */
+export function rankWeaknesses(
+  inputs: WeaknessInput[],
+  topK: number,
+  lowerIsBetter: Set<string> = LOWER_IS_BETTER,
+): WeaknessSet {
+  const unassessable: { code: string; label: string }[] = [];
+  const uncorrectable: { code: string; label: string }[] = [];
+  const ranked: Weakness[] = [];
+
+  for (const i of inputs) {
+    if (i.cowValue == null || !Number.isFinite(i.cowValue)) {
+      unassessable.push({ code: i.code, label: i.label });
+      continue;
+    }
+    // A directional trait is measured against where the POPULATION sits, not
+    // against an assumed origin — see WeaknessInput.mean. Without a centre the
+    // fault is unmeasurable and must be named as such rather than scored 0,
+    // which would quietly read as "she is fine here".
+    const intermediate = isIntermediate(i.code);
+    if (!intermediate && (i.mean == null || !Number.isFinite(i.mean))) {
+      uncorrectable.push({ code: i.code, label: i.label });
+      continue;
+    }
+    // For a lower-is-better trait the fault is being ABOVE the population, so
+    // the comparison flips: reflect her through the centre and the same
+    // "how far below" arithmetic applies.
+    const centre = intermediate ? 0 : (i.mean as number);
+    const value = !intermediate && lowerIsBetter.has(i.code)
+      ? centre - (i.cowValue - centre)
+      : i.cowValue;
+    const d = deficit(i.code, value, centre);
+    // Already where she should be. Weight 0 falls out of the arithmetic; there is
+    // nothing here to remember to skip.
+    if (!(d > 0)) continue;
+    if (i.sd == null || !(i.sd > 1e-9)) {
+      uncorrectable.push({ code: i.code, label: i.label });
+      continue;
+    }
+    ranked.push({
+      code: i.code,
+      label: i.label,
+      cowValue: i.cowValue,
+      target: targetFor(i.code),
+      deficit: d,
+      deficitSd: d / i.sd,
+      idealBull: idealBullValue(i.code, i.cowValue),
+      weight: 0,
+      note: correctionNote(i.code, i.label, i.cowValue, lowerIsBetter.has(i.code)),
+    });
+  }
+
+  ranked.sort((a, b) => b.deficitSd - a.deficitSd || a.code.localeCompare(b.code));
+  // The same objects appear in both lists on purpose: setting a weight below is
+  // visible in `ranked` too, so the report can show weight 0 against the faults
+  // that fell past the cut without holding two copies that can disagree.
+  const weaknesses = ranked.slice(0, Math.max(0, Math.floor(topK)));
+  const total = weaknesses.reduce((s, w) => s + w.deficitSd, 0);
+  for (const w of weaknesses) w.weight = total > 0 ? w.deficitSd / total : 0;
+
+  return { weaknesses, ranked, unassessable, uncorrectable };
+}
+
+/**
+ * The correction term as a SelectedTrait[], so the fit values can be pushed
+ * through poolTraitStats() and compositeScore() — the same two functions the
+ * merit term uses, rather than a second standardisation that could drift from
+ * the first.
+ *
+ * `higherIsBetter` is always true here: matingFit() has already turned every
+ * trait, intermediate or directional, into a number where larger is better. A
+ * second reversal at this point would undo it.
+ */
+export function correctionTraits(weaknesses: Weakness[]): SelectedTrait[] {
+  return weaknesses.map((w) => ({
+    code: w.code,
+    label: w.label,
+    col: "",
+    weight: w.weight,
+    higherIsBetter: true,
+  }));
+}
+
+/**
+ * The blended final score.
+ *
+ *     final = blend × meritZ + (1 − blend) × correctionZ
+ *
+ * Both terms are already in standard deviations of their own pool, so they are
+ * on one scale and this addition is legitimate — unlike adding LPI to
+ * Conformation, which is the defect at the top of this file.
+ *
+ * A null on EITHER side is null overall. A bull whose correction could not be
+ * computed is not quietly ranked on merit alone at (1 − blend) of the score
+ * missing: that would flatter him for exactly the traits nobody could read.
+ * The one exception is a cow with NOTHING to correct — pass correctionZ = null
+ * and blend = 1 for her, which the caller does explicitly.
+ */
+export function blendScores(meritZ: number | null, correctionZ: number | null, blend: number): number | null {
+  const b = Math.min(Math.max(blend, MIN_BLEND), MAX_BLEND);
+  if (b >= 1) return meritZ;
+  if (b <= 0) return correctionZ;
+  if (meritZ == null || correctionZ == null) return null;
+  return b * meritZ + (1 - b) * correctionZ;
 }
