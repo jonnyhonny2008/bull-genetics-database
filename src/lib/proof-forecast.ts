@@ -65,6 +65,11 @@ import {
   buildCorpus, forecastTrait, stepsFor, cohortFacts, quantileOf, QUANTILES,
   type AnalogueBull, type AnalogueTraitForecast, type Corpus,
 } from "./proof-analogue";
+import {
+  buildResidualIndex, findSimilar, curveOf, parseMode,
+  ALL_TRAITS, MIN_OVERLAP, DEFAULT_LIMIT as SIMILAR_LIMIT,
+  type SimilarityMode, type SubjectStatus,
+} from "./proof-similarity";
 
 export { KEY_TRAITS } from "./proof-change";
 
@@ -307,6 +312,189 @@ export interface ForecastReport {
   cohortLabel: string;
   cohortN: number;
   minConfidence: string;
+
+  // --- "Sires that move like him" -----------------------------------------
+  /**
+   * Built only for the one bull named in `?similar=`, from the rounds this
+   * request has ALREADY loaded — see buildSimilarPanel. Null the rest of the
+   * time, which is every request that has not asked for it.
+   */
+  similar: SimilarPanel | null;
+  similarFor: string | null;
+  similarTrait: string;
+  similarMode: SimilarityMode;
+}
+
+// ---------------------------------------------------------------------------
+// "SIRES THAT MOVE LIKE HIM"
+//
+// The maths lives in proof-similarity.ts, which is pure and unit-tested. What
+// is here is the loader and the display shapes.
+//
+// EGRESS: this adds NO database work. The whole-history load is the expensive
+// part of this report and it has already happened by the time this runs — every
+// bull's rounds are decoded once, at the top of getProofForecastReport, and the
+// panel is built from those same in-memory rounds. A second query "just for the
+// similar bulls" would re-read the entire lineup's history to answer a question
+// about one bull.
+// ---------------------------------------------------------------------------
+
+/** A curve in the shape TraitTrendChart consumes. */
+export interface SimilarSeries {
+  code: string;
+  label: string;
+  points: { date: string; label: string; value: number; hint?: string }[];
+}
+
+export interface SimilarMatchRow {
+  id: string;
+  name: string;
+  naab: string | null;
+  breed: string | null;
+  /** RMS distance between the residual series. Lower is more alike. */
+  distance: number;
+  /** The same number as 0-1, for readers who want one. */
+  similarity: number;
+  /**
+   * The ranking statistic — the agreement over its null standard deviation.
+   * The list is ordered by THIS, not by distance: see evidenceScore.
+   */
+  score: number;
+  /**
+   * CAREER STEPS where both bulls had a comparable round. This is what "rounds
+   * overlapped" means to a reader, and it is deliberately NOT `elements`: with
+   * nine traits selected, four career rounds make thirty-six compared elements,
+   * and showing that as a round count overstates the evidence ninefold.
+   */
+  rounds: number;
+  /** …of which this many are steps where both bulls actually moved on their own. */
+  informativeRounds: number;
+  /** Compared elements pooled across traits — the RMS denominator, not a round count. */
+  elements: number;
+  /** How many of the selected traits actually had enough shared history. */
+  traitsMatched: number;
+  series: SimilarSeries[];
+}
+
+export interface SimilarPanel {
+  bullId: string;
+  bullName: string;
+  bullNaab: string | null;
+  mode: SimilarityMode;
+  /** The trait selection as it appears in the URL (a code, or ALL9). */
+  trait: string;
+  traitLabel: string;
+  codes: string[];
+  status: SubjectStatus;
+  subject: SimilarSeries[];
+  matches: SimilarMatchRow[];
+  /** Other bulls in the reported lineup. */
+  cohort: number;
+  /** …of whom this many had enough shared history to be scored. */
+  compared: number;
+  /** …and this many were left out rather than scored on too little. */
+  skipped: number;
+  minOverlap: number;
+  /** Informative career steps a trait needs before it may be compared at all. */
+  minInformative: number;
+  /** Rounds whose cohort term was too thin to measure, so were not compared. */
+  roundsWithoutCohortTerm: number;
+  /** Steps that crossed a round the bull has no row for, corrected against all of them. */
+  stepsAcrossMissedRounds: number;
+  /** …and steps dropped because a round they crossed had no measurable cohort term. */
+  stepsDropped: number;
+}
+
+/** Resolve the trait parameter to the codes and the label to print. */
+export function similarTraitCodes(trait: string | undefined): { key: string; codes: string[]; label: string } {
+  if (trait === ALL_TRAITS) {
+    return { key: ALL_TRAITS, codes: KEY_TRAIT_CODES, label: "all nine key traits" };
+  }
+  const kt = KEY_TRAITS.find((k) => k.code === trait);
+  if (kt) return { key: kt.code, codes: [kt.code], label: kt.label };
+  return { key: "LPI", codes: ["LPI"], label: "LPI" };
+}
+
+interface SimilarMeta { name: string; naab: string | null; breed: string | null }
+
+/**
+ * Build the panel for ONE bull from rounds already in memory.
+ *
+ * Exported so it can be driven from a future standalone picker without going
+ * back to the database.
+ */
+export function buildSimilarPanel(
+  bulls: AnalogueBull[],
+  meta: Map<string, SimilarMeta>,
+  bullId: string,
+  trait: string | undefined,
+  mode: string | undefined,
+): SimilarPanel | null {
+  const subjectMeta = meta.get(bullId);
+  if (!subjectMeta) return null;
+
+  const { key, codes, label } = similarTraitCodes(trait);
+  const m = parseMode(mode);
+  const index = buildResidualIndex(bulls, codes);
+  const result = findSimilar(index, bullId, { mode: m, codes, limit: SIMILAR_LIMIT });
+
+  const seriesFor = (id: string): SimilarSeries[] => {
+    const out: SimilarSeries[] = [];
+    for (const code of codes) {
+      const curve = curveOf(index, id, code);
+      if (curve.length < 2) continue;
+      out.push({
+        code,
+        label: KEY_TRAITS.find((k) => k.code === code)?.label ?? code,
+        points: curve.map((p) => ({
+          date: String(p.position),
+          label: `Round ${p.position + 2}`,
+          value: round2(p.cumulative),
+          hint: p.residual == null
+            ? `${periodLabelOf(new Date(p.time))} — no comparable round`
+            : `${periodLabelOf(new Date(p.time))} · own move ${p.residual > 0 ? "+" : ""}${round2(p.residual)}`,
+        })),
+      });
+    }
+    return out;
+  };
+
+  return {
+    bullId,
+    bullName: subjectMeta.name,
+    bullNaab: subjectMeta.naab,
+    mode: m,
+    trait: key,
+    traitLabel: label,
+    codes,
+    status: result.status,
+    subject: seriesFor(bullId),
+    matches: result.matches.map((mm) => {
+      const md = meta.get(mm.id);
+      return {
+        id: mm.id,
+        name: md?.name ?? mm.id,
+        naab: md?.naab ?? null,
+        breed: md?.breed ?? null,
+        distance: Math.round(mm.distance * 1000) / 1000,
+        similarity: Math.round(mm.similarity * 1000) / 1000,
+        score: Math.round(mm.score * 100) / 100,
+        rounds: mm.rounds,
+        informativeRounds: mm.informativeRounds,
+        elements: mm.elements,
+        traitsMatched: mm.traits.length,
+        series: seriesFor(mm.id),
+      };
+    }),
+    cohort: result.cohort,
+    compared: result.compared,
+    skipped: result.skipped,
+    minOverlap: MIN_OVERLAP,
+    minInformative: result.minInformative,
+    roundsWithoutCohortTerm: index.unmeasuredRounds,
+    stepsAcrossMissedRounds: index.spanningSteps,
+    stepsDropped: index.droppedSteps,
+  };
 }
 
 interface EvalLite {
@@ -865,6 +1053,23 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     r.forecast.exposureBand = pct >= 75 ? "exposed" : pct <= 25 ? "steady" : "typical";
   }
 
+  // --- "Sires that move like him" (only when a bull has been asked about) ---
+  // Built from `analogueBulls`, which is the same decoded history the forecast
+  // already ran on — no extra query, and the cohort it residualises against is
+  // exactly the lineup named by `cohortLabel`.
+  const similarFor = (sp.similar ?? "").trim() || null;
+  const similarTrait = similarTraitCodes(sp.simTrait).key;
+  const similarMode = parseMode(sp.simMode);
+  const similar = similarFor
+    ? buildSimilarPanel(
+        analogueBulls,
+        new Map(rows.map((r) => [r.id, { name: r.name, naab: r.naab, breed: r.breed }])),
+        similarFor,
+        sp.simTrait,
+        sp.simMode,
+      )
+    : null;
+
   // --- Backtest: re-predict the most recent round from history only ---
   const backtest = runBacktest(decoded, codes);
   // …and score the RANGE, which is the part the model genuinely forecasts.
@@ -978,6 +1183,7 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     target: "",
     targetKind,
     q, breed, sort, dir, blondin, cohortLabel, cohortN: rows.length, minConfidence,
+    similar, similarFor, similarTrait, similarMode,
   };
 }
 

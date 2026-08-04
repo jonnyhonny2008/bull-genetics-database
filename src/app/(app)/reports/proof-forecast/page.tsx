@@ -29,8 +29,10 @@ export default async function ProofForecastReportPage({ searchParams }: { search
 
   // Every active filter EXCEPT sort/dir — the sortable column headers append
   // their own, so clicking one keeps the rest of the report state intact.
+  // The similarity selection rides along too, so sorting the table does not
+  // close an open "sires that move like him" panel.
   const tableParams: Record<string, string> = {};
-  for (const k of ["q", "breed", "blondin", "conf"]) {
+  for (const k of ["q", "breed", "blondin", "conf", "simTrait", "simMode"]) {
     const v = searchParams[k];
     if (v) tableParams[k] = v;
   }
@@ -150,6 +152,8 @@ export default async function ProofForecastReportPage({ searchParams }: { search
               basePath="/reports/proof-forecast"
               targetLabel={report.targetLabel}
               isApril={report.targetIsApril}
+              similar={report.similar}
+              similarFor={report.similarFor}
             />
           </>
         )}

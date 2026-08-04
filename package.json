@@ -26,7 +26,7 @@
     "start:prod": "dotenv -e .env.production -- next start -p 3100",
     "lint": "next lint",
     "test:agent": "dotenv -e .env.production -- tsx --test src/lib/agent/agent.test.ts",
-    "test:reports": "dotenv -e .env.production -- tsx --test src/lib/proof-change.test.ts src/lib/proof-forecast.test.ts src/lib/mating-score.test.ts src/lib/mating-targets.test.ts src/lib/relatedness.test.ts",
+    "test:reports": "dotenv -e .env.production -- tsx --test src/lib/proof-change.test.ts src/lib/proof-forecast.test.ts src/lib/proof-similarity.test.ts src/lib/mating-score.test.ts src/lib/mating-targets.test.ts src/lib/relatedness.test.ts",
     "test:holstein": "tsx --test src/lib/holstein-parse.test.ts"
   },
   "prisma": {

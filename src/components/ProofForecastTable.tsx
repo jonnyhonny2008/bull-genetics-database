@@ -9,7 +9,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { HScroll } from "./HScroll";
-import type { ForecastRow, TraitForecast, Confidence } from "@/lib/proof-forecast";
+import { SimilarSiresPanel } from "./SimilarSiresPanel";
+import type { ForecastRow, TraitForecast, Confidence, SimilarPanel } from "@/lib/proof-forecast";
 
 const fmt = (n: number | null) => (n == null ? "—" : String(Math.round(n * 100) / 100));
 const signed = (n: number | null) => (n == null ? "—" : `${n > 0 ? "+" : ""}${Math.round(n * 100) / 100}`);
@@ -35,7 +36,7 @@ const EVIDENCE_TONE: Record<Confidence, string> = {
 };
 
 export function ProofForecastTable({
-  rows, keyTraits, sort, dir, params, basePath, targetLabel, isApril,
+  rows, keyTraits, sort, dir, params, basePath, targetLabel, isApril, similar, similarFor,
 }: {
   rows: ForecastRow[];
   keyTraits: { code: string; label: string }[];
@@ -47,9 +48,16 @@ export function ProofForecastTable({
   targetLabel: string;
   /** On an April round the projection has a direction, so the change is shown. */
   isApril: boolean;
+  /** "Sires that move like him", built server-side for one bull at a time. */
+  similar?: SimilarPanel | null;
+  similarFor?: string | null;
 }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  // A bull asked about by URL opens with the page, so a link into the panel
+  // lands on something rather than on a collapsed row.
+  const [open, setOpen] = useState<Record<string, boolean>>(() => (similarFor ? { [similarFor]: true } : {}));
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+  // The panel's own links must preserve the sort as well as the filters.
+  const stateParams = { ...params, sort, dir };
   const cols = 3 + keyTraits.length;
 
   // An expanded panel lives inside the table, so without help it inherits the
@@ -118,7 +126,7 @@ export function ProofForecastTable({
               const isOpen = !!open[r.id];
               return (
                 <Fragment key={r.id}>
-                  <tr className="cursor-pointer align-top hover:bg-slate-50" onClick={() => toggle(r.id)}>
+                  <tr id={`bull-${r.id}`} className="cursor-pointer align-top hover:bg-slate-50" onClick={() => toggle(r.id)}>
                     <td className="td sticky left-0 z-10 bg-white">
                       <Link href={`/animals/${r.id}`} onClick={(e) => e.stopPropagation()} className="link font-medium">{r.name}</Link>
                       <div className="text-[10px] text-slate-400">
@@ -162,7 +170,14 @@ export function ProofForecastTable({
                     <tr className="bg-slate-50/60">
                       <td className="p-0" colSpan={cols + 2}>
                         <div className="sticky left-0 px-3 py-2" style={panelW ? { width: panelW } : undefined}>
-                          <BullDetail row={r} targetLabel={targetLabel} isApril={isApril} />
+                          <BullDetail
+                            row={r}
+                            targetLabel={targetLabel}
+                            isApril={isApril}
+                            basePath={basePath}
+                            params={stateParams}
+                            similar={similarFor === r.id ? similar ?? null : null}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -204,10 +219,24 @@ function TraitLine({ t, isApril }: { t: TraitForecast; isApril: boolean }) {
   );
 }
 
-function BullDetail({ row, targetLabel, isApril }: { row: ForecastRow; targetLabel: string; isApril: boolean }) {
+function BullDetail({
+  row, targetLabel, isApril, basePath, params, similar,
+}: {
+  row: ForecastRow;
+  targetLabel: string;
+  isApril: boolean;
+  basePath: string;
+  params: Record<string, string>;
+  similar: SimilarPanel | null;
+}) {
   const f = row.forecast;
   const keys = f.allForecasts.filter((t) => t.key);
   const others = f.allForecasts.filter((t) => !t.key);
+  const openSimilar = (() => {
+    const p = new URLSearchParams(params);
+    p.set("similar", row.id);
+    return `${basePath}?${p.toString()}#bull-${row.id}`;
+  })();
   return (
     <div className="space-y-2 py-1">
       <div className="text-xs text-slate-600"><span className="font-semibold">Forecast:</span> {f.summary}</div>
@@ -242,6 +271,16 @@ function BullDetail({ row, targetLabel, isApril }: { row: ForecastRow; targetLab
       <div className="text-[10px] text-slate-400">
         Columns: projected {targetLabel} · trait · current→projected · {isApril ? "change" : "confidence"}.
       </div>
+
+      {/* Which OTHER bulls have a career shaped like his. A description of the
+          past, deliberately kept separate from the projection above it. */}
+      {similar
+        ? <SimilarSiresPanel data={similar} basePath={basePath} params={params} />
+        : (
+          <Link href={openSimilar} className="link inline-block text-[11px]" title="Other bulls whose proof history rises and falls the same way his does">
+            Sires that move like him →
+          </Link>
+        )}
     </div>
   );
 }
