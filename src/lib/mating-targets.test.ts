@@ -18,7 +18,15 @@ import {
   matingFit,
   targetFor,
 } from "./mating-targets";
-import { LOWER_IS_BETTER, rankWeaknesses, type WeaknessInput } from "./mating-score";
+import {
+  LOWER_IS_BETTER,
+  MATING_DISPLAY_TRAITS,
+  MATING_INDEXES,
+  matingDisplayOnly,
+  rankWeaknesses,
+  type WeaknessInput,
+} from "./mating-score";
+import { KEY_TRAITS } from "./key-traits";
 
 /** Rank bulls for one cow on one trait, best first. */
 function rankBulls(code: string, cowValue: number, bulls: number[], lowerIsBetter = false): number[] {
@@ -156,4 +164,34 @@ test("correctionNote tells the breeder which way to go", () => {
   assert.match(down, /above/);
   assert.match(down, /-10/);
   assert.equal(correctionNote("STA", "Stature", 0), null, "nothing to say when she is on target");
+});
+
+// --- the mating report must show what the proof reports show ----------------
+
+test("every KEY_TRAIT the proof reports show is visible on the mating report", () => {
+  const shown = new Set(MATING_DISPLAY_TRAITS.map((t) => t.code));
+  for (const kt of KEY_TRAITS) {
+    assert.ok(shown.has(kt.code), `${kt.code} is on the proof reports but not the mating report`);
+  }
+  // …and in the reports' own order, so a bull reads the same left to right.
+  const firstNine = MATING_DISPLAY_TRAITS.slice(0, KEY_TRAITS.length).map((t) => t.code);
+  assert.deepEqual(firstNine, KEY_TRAITS.map((t) => t.code));
+});
+
+test("labels match the proof reports exactly — no 'Fat %' vs 'Fat Percent' drift", () => {
+  const byCode = new Map(MATING_DISPLAY_TRAITS.map((t) => [t.code, t.label]));
+  for (const kt of KEY_TRAITS) assert.equal(byCode.get(kt.code), kt.label, `${kt.code} label`);
+});
+
+test("a displayed trait with no indexed column is named, not silently unrankable", () => {
+  const rankable = new Set(MATING_INDEXES.map((i) => i.code));
+  const displayOnly = matingDisplayOnly().map((t) => t.code);
+  // Milking Speed has no column in TRAIT_COLUMNS, so it can be shown but not ranked.
+  assert.deepEqual(displayOnly, ["MSPD"]);
+  assert.ok(!rankable.has("MSPD"));
+  // Everything else the proof reports show IS rankable here.
+  for (const kt of KEY_TRAITS) {
+    if (kt.code === "MSPD") continue;
+    assert.ok(rankable.has(kt.code), `${kt.code} should be rankable`);
+  }
 });

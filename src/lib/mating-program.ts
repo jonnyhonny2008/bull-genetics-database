@@ -61,6 +61,7 @@ import {
   parentAverage,
   parseTraitSelection,
   poolTraitStats,
+  MATING_DISPLAY_TRAITS,
   rankIsComposite,
   type CompositeScore,
   type SelectedTrait,
@@ -87,7 +88,7 @@ import {
 // are re-exported here because the page and the Excel export have always read
 // them from this module.
 
-export { MATING_INDEXES } from "./mating-score";
+export { MATING_INDEXES, MATING_DISPLAY_TRAITS, matingDisplayOnly } from "./mating-score";
 export type { SelectedTrait } from "./mating-score";
 
 const MAX_FEMALES = 50;
@@ -1242,7 +1243,7 @@ export async function getMatingProgramReport(
         if (result.ok) {
           const byCode = new Map(result.pa.map((row) => [row.code, row]));
           const unavByCode = new Map(result.unavailable.map((u) => [u.code, u]));
-          for (const m of MATING_INDEXES) {
+          for (const m of MATING_DISPLAY_TRAITS) {
             const row = byCode.get(m.code);
             if (row) {
               pa.push({ code: m.code, label: m.label, value: row.pa });
@@ -1261,7 +1262,7 @@ export async function getMatingProgramReport(
           const chosen = byCode.get(idx.code);
           if (chosen) paIndex = round2(chosen.pa);
         } else {
-          for (const m of MATING_INDEXES) {
+          for (const m of MATING_DISPLAY_TRAITS) {
             unavailable.push({
               code: m.code,
               label: m.label,
@@ -1270,7 +1271,7 @@ export async function getMatingProgramReport(
           }
         }
       } else {
-        for (const m of MATING_INDEXES) {
+        for (const m of MATING_DISPLAY_TRAITS) {
           unavailable.push({
             code: m.code,
             label: m.label,

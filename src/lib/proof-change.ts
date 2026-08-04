@@ -32,19 +32,12 @@ import { unpackTraits, traitDefMap, type TraitDefLite } from "./eval-traits";
 //                   (interim or official). This is the interim-to-interim view.
 export type ChangeMode = "official" | "consecutive";
 
-/** The nine traits the report always focuses on, in display order. */
-export const KEY_TRAITS: { code: string; label: string }[] = [
-  { code: "CONF", label: "Conformation" },
-  { code: "LPI", label: "LPI" },
-  { code: "MILK", label: "Milk" },
-  { code: "FAT", label: "Fat" },
-  { code: "FATPCT", label: "Fat %" },
-  { code: "PROT", label: "Protein" },
-  { code: "PROTPCT", label: "Protein %" },
-  { code: "MSPD", label: "Milking Speed" },
-  { code: "DF", label: "Daughter Fertility" },
-];
-export const KEY_TRAIT_CODES = KEY_TRAITS.map((t) => t.code);
+// The nine traits now live in ./key-traits, which carries no prisma import, so
+// the Mating Program's pure scoring module can show the same set. Imported for
+// use below AND re-exported, so every existing `from "./proof-change"` import
+// keeps working unchanged.
+import { KEY_TRAITS, KEY_TRAIT_CODES } from "./key-traits";
+export { KEY_TRAITS, KEY_TRAIT_CODES };
 const KEY_LABEL = new Map(KEY_TRAITS.map((t) => [t.code, t.label]));
 
 export const SD_LEVELS = [0.5, 1, 1.5] as const;

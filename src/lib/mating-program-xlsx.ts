@@ -20,7 +20,7 @@ import ExcelJS from "exceljs";
 // nothing from it at run time. The index menu and the scale come from the pure
 // scoring module, which is where they are defined.
 import type { MatingFemale, MatingReport } from "./mating-program";
-import { MATING_INDEXES, SCORE_BASE, SCORE_SD_POINTS, blendLabel } from "./mating-score";
+import { MATING_INDEXES, MATING_DISPLAY_TRAITS, SCORE_BASE, SCORE_SD_POINTS, blendLabel } from "./mating-score";
 
 const HEADER_FILL = "FF0F3D3E"; // navy/teal header band
 const HEADER_FONT = "FFFFFFFF";
@@ -115,7 +115,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
 
   // ---- Sheet 1: Recommendations -------------------------------------------
   const s1 = wb.addWorksheet("Recommendations");
-  const paCols = MATING_INDEXES.map((m) => `PA ${m.label}`);
+  const paCols = MATING_DISPLAY_TRAITS.map((m) => `PA ${m.label}`);
   // The ranking columns. Single trait: the bull's own value and the projected
   // calf value, as always. Blend: the Match score the order is actually based
   // on, then the projected calf value of each trait in it.
@@ -193,7 +193,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         basis,
         m.confidence,
         `${m.bullSlots} of 14`,
-        ...MATING_INDEXES.map((mi) => byCode.get(mi.code) ?? null),
+        ...MATING_DISPLAY_TRAITS.map((mi) => byCode.get(mi.code) ?? null),
       ]);
       if (multi ? gaps.length > 0 : f.paBasis !== "pa") {
         row.getCell(BASIS_COL).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };

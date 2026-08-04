@@ -45,6 +45,7 @@
 // value) contributes NOTHING and says so out loud. It is never divided by.
 // ---------------------------------------------------------------------------
 
+import { KEY_TRAITS } from "./key-traits";
 import { correctionNote, deficit, idealBullValue, isIntermediate, targetFor } from "./mating-targets";
 
 /** One rankable index: its code, how it is spelled to a user, and its column. */
@@ -68,9 +69,40 @@ export const MATING_INDEXES: MatingIndex[] = [
   { code: "MAMM", label: "Mammary", col: "mamm" },
   { code: "MILK", label: "Milk", col: "milk" },
   { code: "FAT", label: "Fat", col: "fat" },
+  { code: "FATPCT", label: "Fat %", col: "fatPct" },
   { code: "PROT", label: "Protein", col: "prot" },
+  { code: "PROTPCT", label: "Protein %", col: "protPct" },
+  { code: "DF", label: "Daughter Fertility", col: "df" },
   { code: "SCS", label: "SCS", col: "scs" },
 ];
+
+/**
+ * The traits shown as projected-calf columns, so a bull reads the SAME here as
+ * he does in the Proof Change and Projected Proof reports. KEY_TRAITS first, in
+ * the reports' own order, then the mating-only extras.
+ *
+ * This is deliberately WIDER than MATING_INDEXES: a trait can be displayed from
+ * traitsJson (loaded for the shortlist by Q5) without being rankable. Ranking
+ * needs an indexed column, because the pool standardisation reads the candidate
+ * query's numeric columns across the whole lineup, not the shortlist.
+ *
+ * Milking Speed is the one KEY_TRAIT with no indexed column — see
+ * TRAIT_COLUMNS in eval-traits.ts. It is therefore visible but not rankable,
+ * and `matingDisplayOnly()` names it so the UI can say which is which rather
+ * than leaving a breeder wondering why it is missing from the Rank-on menu.
+ */
+export const MATING_DISPLAY_TRAITS: { code: string; label: string }[] = [
+  ...KEY_TRAITS,
+  { code: "PRO$", label: "Pro$" },
+  { code: "MAMM", label: "Mammary" },
+  { code: "SCS", label: "SCS" },
+];
+
+/** Displayed traits that cannot be ranked on, because they have no indexed column. */
+export function matingDisplayOnly(): { code: string; label: string }[] {
+  const rankable = new Set(MATING_INDEXES.map((i) => i.code));
+  return MATING_DISPLAY_TRAITS.filter((t) => !rankable.has(t.code));
+}
 
 /**
  * Indexes where a LOWER number is the better animal. Somatic Cell Score is the
