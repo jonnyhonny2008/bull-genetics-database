@@ -9,6 +9,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { packTraits } from "./eval-traits";
+import { pedigreeNotesFromFamilyTree } from "./pedigree";
 import { buildAisUrl, type ParsedHolstein, type HolsteinProfile } from "./holstein-parse";
 
 export interface HolsteinImportDeps {
@@ -189,6 +190,25 @@ export async function storeHolsteinProfile(
   deps: Pick<HolsteinImportDeps, "holCanadaSourceId" | "userId" | "approve">,
 ): Promise<{ classifications: number; lactations: number }> {
   await prisma.animal.update({ where: { id: animalId }, data: { holsteinProfileJson: JSON.stringify(profile) } });
+
+  // --- Pedigree reference -------------------------------------------------
+  // The proof-file importer writes this row; a live profile fetch did not, so
+  // an animal pulled in specifically to close a pedigree gap arrived with no
+  // readable pedigree and left the gap open. The relatedness engine only ever
+  // reads PedigreeReference.notes, so without this the familyTree above is
+  // invisible to it.
+  if (profile.familyTree.length && deps.holCanadaSourceId) {
+    const summary = pedigreeNotesFromFamilyTree(profile.familyTree);
+    if (summary) {
+      await prisma.pedigreeReference.deleteMany({ where: { animalId, sourceId: deps.holCanadaSourceId } });
+      await prisma.pedigreeReference.create({
+        data: {
+          animalId, sourceId: deps.holCanadaSourceId,
+          displayStatus: "linked", lastCheckedAt: new Date(), notes: summary,
+        },
+      });
+    }
+  }
 
   // --- Lactation / milk records (305-day standardized rows) ---
   let lactationsWritten = 0;

@@ -96,6 +96,49 @@ export function parsePedigreeNotes(notes: string | null | undefined): ParsedAnce
   return RELATIONS.map((r) => found.get(r.code)).filter((a): a is ParsedAncestor => !!a);
 }
 
+/**
+ * Build the stored pedigree line from a scraped family tree.
+ *
+ * The proof-file importer writes this line for every bull it loads, and the
+ * relatedness engine reads it back with parsePedigreeNotes. A profile fetched
+ * live from Lactanet arrives as a `familyTree` array instead, and until this
+ * existed nothing converted one to the other — so a bull fetched to fill a
+ * pedigree gap was stored with no usable pedigree of his own, and the gap
+ * stayed open. Round-tripping through parsePedigreeNotes is what makes a
+ * fetched ancestor actually screenable.
+ *
+ * Only the four unambiguous slots are emitted. Generation 2 on the SIRE side is
+ * the paternal grandparents, which this format has no slot for — they are
+ * reached by recursing into the sire's own record, which is the whole point of
+ * holding him. Generation 3 is not emitted because the dam-side entries there
+ * cannot be attributed to MGS versus MGD without guessing.
+ */
+export function pedigreeNotesFromFamilyTree(
+  familyTree: { generation: number; side: string; name?: string | null; reg?: string | null }[],
+  label = "Pedigree (from Lactanet)",
+): string | null {
+  const isFemaleReg = (reg: string | null | undefined) => !!reg && /^[A-Z]{2}[A-Z]{3}F/i.test(reg.replace(/\s+/g, ""));
+  const at = (generation: number, side: string, want?: "M" | "F") =>
+    familyTree.find((n) => {
+      if (n.generation !== generation || n.side !== side) return false;
+      if (!want) return true;
+      return want === "F" ? isFemaleReg(n.reg) : !isFemaleReg(n.reg);
+    });
+
+  const slots: [Relation, { name?: string | null; reg?: string | null } | undefined][] = [
+    ["sire", at(1, "sire")],
+    ["dam", at(1, "dam")],
+    ["mgs", at(2, "dam", "M")],
+    ["mgd", at(2, "dam", "F")],
+  ];
+
+  const parts = slots
+    .filter((s): s is [Relation, { name?: string | null; reg?: string | null }] => !!s[1])
+    .map(([rel, n]) => `${rel.toUpperCase()}: ${n.name ?? "?"}${n.reg ? ` (${n.reg})` : ""}`);
+
+  return parts.length ? `${label}: ${parts.join(" · ")}` : null;
+}
+
 export type AncestorEval = Partial<Record<string, number | null>>;
 
 /** A parsed ancestor plus whatever we resolved about it from our own database. */
