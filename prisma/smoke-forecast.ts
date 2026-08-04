@@ -28,8 +28,6 @@ async function main() {
     console.log(`  ${m.label.padEnd(22)}${(m.movedShare + "%").padStart(8)}${String(m.typicalMove).padStart(10)}${String(m.material).padStart(10)}${String(m.n).padStart(7)}`);
   }
 
-  console.log(`\n  LEAST PREDICTABLE`);
-  for (const b of r.mostExposed) console.log(`  ${b.name.slice(0, 34).padEnd(36)}${b.naab ?? "—"}   LPI projection ${b.confidence}% confident`);
 
   console.log(`\n  ACCURACY (range, vs the cohort band this replaces)`);
   const bt = r.backtest;
@@ -42,7 +40,7 @@ async function main() {
   const top = r.rows[0];
   if (top) {
     console.log(`\n  TOP ROW — ${top.name} (${top.naab ?? "—"})`);
-    console.log(`    exposure ${top.forecast.exposure} (${top.forecast.exposureBand})  expected LPI move ±${top.forecast.expectedLpiMove}`);
+    console.log(`    overall confidence ${Math.round((top.forecast.confidencePct ?? 0) * 100)}%  ·  evidence ${top.forecast.confidence}`);
     console.log(`    summary: ${top.forecast.summary}`);
     console.log(`    drivers: ${top.forecast.drivers.join(" · ")}`);
     console.log(`    ${"trait".padEnd(20)}${"current".padStart(10)}${"projected".padStart(11)}${"confidence".padStart(12)}`);

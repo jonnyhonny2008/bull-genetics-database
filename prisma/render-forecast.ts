@@ -31,6 +31,8 @@ async function main() {
       dir: report.dir,
       params: {},
       basePath: "/reports/proof-forecast",
+      targetLabel: report.targetLabel,
+      isApril: report.targetIsApril,
     }),
   );
   console.log(`  rendered ${html.length} chars of HTML`);

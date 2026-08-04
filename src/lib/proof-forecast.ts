@@ -60,7 +60,7 @@ function blondinWhere(v: string | null | undefined): Prisma.AnimalWhereInput | n
 import { isRollbackRound, isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap } from "./eval-traits";
 import { breedCodeOf, projectedShift, fallbackShift, hasPublished, LATEST_PUBLISHED_YEAR } from "./base-change";
-import { KEY_TRAITS, KEY_TRAIT_CODES, periodKey, traitStdStats, type ProofPeriod } from "./proof-change";
+import { KEY_TRAITS, KEY_TRAIT_CODES, periodKey, traitStdStats } from "./proof-change";
 import {
   buildCorpus, forecastTrait, stepsFor, cohortFacts, quantileOf, QUANTILES,
   type AnalogueBull, type AnalogueTraitForecast, type Corpus,
@@ -266,13 +266,6 @@ export interface Backtest {
   rangeRounds: number;
 }
 
-export interface TrendPoint {
-  label: string;
-  value: number | null;
-  projected: boolean;
-  bulls: number;
-}
-
 export interface ForecastReport {
   rows: ForecastRow[];
   compared: number;
@@ -285,10 +278,6 @@ export interface ForecastReport {
   /** True when Lactanet's published base change for the target April is on file. */
   basePublished: boolean;
   latestLabel: string | null;
-  periods: ProofPeriod[];
-  /** Lineup-average history of the charted trait, plus the projected point. */
-  trend: TrendPoint[];
-  chartTrait: { code: string; label: string };
   backtest: Backtest;
   risers: number;
   fallers: number;
@@ -305,10 +294,6 @@ export interface ForecastReport {
   lowConfidence: number;
   /** Mean confidence in the projected LPI across the reported lineup. */
   avgLpiConfidence: number | null;
-  /** Median expected LPI move across the reported lineup. */
-  typicalLpiMove: number | null;
-  /** The least predictable bulls, already sorted — where a projection is weakest. */
-  mostExposed: { id: string; name: string; naab: string | null; expectedMove: number; confidence: number }[];
   // filters / state
   /** Retained for URL compatibility; this report always targets the next round. */
   target: string;
@@ -322,9 +307,6 @@ export interface ForecastReport {
   cohortLabel: string;
   cohortN: number;
   minConfidence: string;
-  /** Single-bull focus (set when ?bull=<id> resolves), for the full profile view. */
-  focus: ForecastRow | null;
-  focusSeries: { code: string; label: string; points: { label: string; value: number | null }[]; predicted: number | null; lo: number | null; hi: number | null }[];
 }
 
 interface EvalLite {
@@ -662,7 +644,10 @@ function sinceWindow(latest: Date, months: number | null): Date | undefined {
   return new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() - months, 1));
 }
 
-const SORTABLE = new Set(["exposure", "lpi", "conf", "name", "confidence", ...KEY_TRAIT_CODES.map((c) => c.toLowerCase())]);
+// "certainty" sorts by the confidence percentage; "confidence" sorts by the
+// high/medium/low evidence grade. They are different questions and the report
+// labels them differently — see BullForecast.
+const SORTABLE = new Set(["certainty", "lpi", "conf", "name", "confidence", ...KEY_TRAIT_CODES.map((c) => c.toLowerCase())]);
 
 export async function getProofForecastReport(sp: Record<string, string | undefined>): Promise<ForecastReport> {
   const defMap = await traitDefMap();
@@ -715,8 +700,9 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       if (p) p.bulls++; else periodMap.set(k, { date: r.date, bulls: 1 });
     }
   }
-  const periods: ProofPeriod[] = [...periodMap.entries()]
-    .map(([key, v]) => ({ key, label: periodLabelOf(v.date), official: isOfficialProof(v.date), bulls: v.bulls }))
+  // Newest round first, so `periods[0]` names the round being forecast from.
+  const periods = [...periodMap.entries()]
+    .map(([key, v]) => ({ key, label: periodLabelOf(v.date) }))
     .sort((a, b) => b.key.localeCompare(a.key));
 
   const allDates = [...periodMap.values()].map((v) => v.date);
@@ -928,29 +914,6 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     };
   }).filter((m): m is NonNullable<typeof m> => m != null);
 
-  // --- Lineup trend for the chart (average of the charted trait per round) ---
-  const chartCode = (sp.ctrait ?? "LPI").toUpperCase();
-  const chartTrait = KEY_TRAITS.find((t) => t.code === chartCode) ?? KEY_TRAITS.find((t) => t.code === "LPI")!;
-  const perPeriod = new Map<string, { sum: number; n: number; date: Date }>();
-  for (const x of decoded) {
-    for (const r of x.rounds) {
-      const v = r.traits.get(chartTrait.code);
-      if (v == null) continue;
-      const k = periodKey(r.date);
-      const e = perPeriod.get(k);
-      if (e) { e.sum += v; e.n++; } else perPeriod.set(k, { sum: v, n: 1, date: r.date });
-    }
-  }
-  const history = [...perPeriod.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-12)
-    .map(([, v]) => ({ label: periodLabelOf(v.date), value: Math.round((v.sum / v.n) * 10) / 10, projected: false, bulls: v.n }));
-  const projRows = rows.map((r) => r.forecast.allForecasts.find((f) => f.code === chartTrait.code)?.predicted).filter((v): v is number => v != null);
-  const trend: TrendPoint[] = [...history];
-  if (projRows.length) {
-    trend.push({ label: targetLabel, value: Math.round((projRows.reduce((s, v) => s + v, 0) / projRows.length) * 10) / 10, projected: true, bulls: projRows.length });
-  }
-
   // --- Filters / sort ---
   const breeds = [...new Set(rows.map((r) => r.breed).filter((b): b is string => !!b))].sort();
   const q = (sp.q ?? "").trim();
@@ -965,28 +928,23 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
   if (minConfidence === "high") filtered = filtered.filter((r) => r.forecast.confidence === "high");
   else if (minConfidence === "medium") filtered = filtered.filter((r) => r.forecast.confidence !== "low");
 
-  // Default to exposure. Sorting by projected change was the old default and is
-  // meaningless now: outside an April every projected change is zero, because
-  // the direction of a move is not forecastable. "Who is most likely to move"
-  // is both answerable and the question people actually have.
+  // Default to confidence. Sorting by projected change was the old default and
+  // is meaningless outside an April, where every projected change is zero
+  // because direction is not forecastable.
   const sort = SORTABLE.has((sp.sort ?? "").toLowerCase())
     ? (sp.sort as string).toLowerCase()
-    : (targetIsApril ? "lpi" : "exposure");
+    : (targetIsApril ? "lpi" : "certainty");
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const rank = { high: 3, medium: 2, low: 1 } as const;
   if (sort === "name") {
     filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name) * (dir === "asc" ? 1 : -1));
   } else {
+    // A trait column sorts by the figure it actually displays — the projected
+    // value — exactly as the change reports sort by the change they display.
     const val = (r: ForecastRow): number | null =>
-      sort === "exposure" ? r.forecast.expectedLpiMove
+      sort === "certainty" ? r.forecast.confidencePct
       : sort === "confidence" ? rank[r.forecast.confidence]
-      // On a non-April round the delta is zero for everyone, so a trait column
-      // sorts by how far that trait is likely to move instead.
-      : (() => {
-        const f = r.forecast.allForecasts.find((t) => t.code === sort.toUpperCase());
-        if (!f) return null;
-        return targetIsApril ? f.delta : f.expectedMove ?? f.delta;
-      })();
+      : r.forecast.allForecasts.find((t) => t.code === sort.toUpperCase())?.predicted ?? null;
     filtered = [...filtered].sort((a, b) => {
       const av = val(a), bv = val(b);
       if (av == null && bv == null) return 0;
@@ -994,26 +952,6 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       if (bv == null) return -1;
       return dir === "asc" ? av - bv : bv - av;
     });
-  }
-
-  // --- Single-bull focus: the full projected profile for one bull ---
-  const focusId = (sp.bull ?? "").trim();
-  const focus = focusId ? rows.find((r) => r.id === focusId) ?? null : null;
-  const focusSeries: ForecastReport["focusSeries"] = [];
-  if (focus) {
-    const src = decoded.find((d) => d.b.id === focus.id);
-    if (src) {
-      for (const kt of KEY_TRAITS) {
-        const obs = seriesOf(src.rounds, kt.code);
-        if (obs.length === 0) continue;
-        const f = focus.forecast.allForecasts.find((x) => x.code === kt.code);
-        focusSeries.push({
-          code: kt.code, label: kt.label,
-          points: obs.slice(-10).map((o) => ({ label: periodLabelOf(o.date), value: o.value })),
-          predicted: f?.predicted ?? null, lo: f?.lo ?? null, hi: f?.hi ?? null,
-        });
-      }
-    }
   }
 
   const lpiDeltas = rows.map((r) => r.forecast.lpiDelta).filter((v): v is number => v != null);
@@ -1026,8 +964,7 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     notComparable: bulls.length - rows.length,
     breeds, targetLabel, targetIsApril, targetIsOfficial: isOfficialProof(target),
     basePublished: targetIsApril && hasPublished(targetYear),
-    latestLabel, periods,
-    trend, chartTrait: { code: chartTrait.code, label: chartTrait.label },
+    latestLabel,
     backtest,
     risers: rows.filter((r) => r.forecast.direction === "up").length,
     fallers: rows.filter((r) => r.forecast.direction === "down").length,
@@ -1038,22 +975,9 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       const cs = rows.map((r) => r.forecast.lpiConfidence).filter((v): v is number => v != null);
       return cs.length ? Math.round((cs.reduce((s, v) => s + v, 0) / cs.length) * 100) : null;
     })(),
-    typicalLpiMove: exposures.length
-      ? Math.round(quantileOf(exposures, 0.5) * 10) / 10
-      : null,
-    mostExposed: [...rows]
-      .filter((r) => r.forecast.expectedLpiMove != null)
-      .sort((a, b) => (b.forecast.expectedLpiMove ?? 0) - (a.forecast.expectedLpiMove ?? 0))
-      .slice(0, 5)
-      .map((r) => ({
-        id: r.id, name: r.name, naab: r.naab,
-        expectedMove: Math.round((r.forecast.expectedLpiMove ?? 0) * 10) / 10,
-        confidence: Math.round((r.forecast.lpiConfidence ?? 0) * 100),
-      })),
     target: "",
     targetKind,
     q, breed, sort, dir, blondin, cohortLabel, cohortN: rows.length, minConfidence,
-    focus, focusSeries,
   };
 }
 
