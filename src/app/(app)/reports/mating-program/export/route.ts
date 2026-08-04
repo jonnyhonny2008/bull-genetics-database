@@ -3,6 +3,8 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { getMatingProgramReport } from "@/lib/mating-program";
 import { buildMatingProgramWorkbook, matingProgramFilename } from "@/lib/mating-program-xlsx";
+import { matingProgramHtml } from "@/lib/report-html-mating";
+import { attachment } from "@/lib/report-http";
 
 export const dynamic = "force-dynamic";
 
@@ -15,16 +17,19 @@ export async function GET(request: Request) {
   // exclusion list. The web page caps that list because its copy is serialised
   // into the browser payload on every load; this one never leaves the server.
   const report = await getMatingProgramReport(sp, { fullExclusions: true });
+
+  // ?format=html — a single self-contained interactive file, for emailing the
+  // report exactly as it looks in the app. Default stays the Excel workbook.
+  if (sp.format === "html") {
+    const html = matingProgramHtml(report);
+    const filename = matingProgramFilename(report).replace(/\.xlsx$/i, ".html");
+    return new Response(html, { headers: attachment("text/html; charset=utf-8", filename) });
+  }
+
   const wb = await buildMatingProgramWorkbook(report);
   const buf = await wb.xlsx.writeBuffer();
   const filename = matingProgramFilename(report);
-
   return new Response(buf, {
-    headers: {
-      "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      // filename* (RFC 5987) keeps the spaces/em-dashes intact in modern browsers.
-      "content-disposition": `attachment; filename="${filename.replace(/[^\x20-\x7E]/g, "-")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "cache-control": "no-store",
-    },
+    headers: attachment("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename),
   });
 }

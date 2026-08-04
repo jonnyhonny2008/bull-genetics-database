@@ -66,7 +66,10 @@ export default async function MatingProgramReportPage({
     const v = searchParams[k];
     if (v) exportParams.set(k, v);
   }
-  const exportHref = `/reports/mating-program/export${exportParams.toString() ? `?${exportParams}` : ""}`;
+  const exportQs = exportParams.toString();
+  const exportHref = `/reports/mating-program/export${exportQs ? `?${exportQs}` : ""}`;
+  // Same run, emitted as one self-contained interactive HTML file for emailing.
+  const htmlHref = `/reports/mating-program/export?${exportQs ? `${exportQs}&` : ""}format=html`;
 
   // One trait: its own label, exactly as before. Several: the blend, weights and
   // all — "LPI ×2 + Conformation".
@@ -92,7 +95,10 @@ export default async function MatingProgramReportPage({
         subtitle="Paste your females; each one is ranked against the bull lineup by the projected parent average of the calf, with any bull sharing a registered ancestor inside three generations excluded."
         actions={
           report.females.length > 0 ? (
-            <a href={exportHref} className="btn-primary">⬇ Export to Excel</a>
+            <div className="flex gap-2">
+              <a href={exportHref} className="btn-primary">⬇ Excel</a>
+              <a href={htmlHref} className="btn-secondary" title="A single self-contained file you can email — opens in any browser, no login needed">⬇ HTML</a>
+            </div>
           ) : undefined
         }
       />
