@@ -28,33 +28,24 @@ function deltaClass(d: number | null): string {
 }
 const sign = (d: number | null) => (d == null ? "—" : `${d > 0 ? "+" : ""}${d}`);
 
-/**
- * One trait line. Where there is a distribution (any non-April round) it leads
- * with the RANGE and the odds, because the projected value is by construction
- * the current value — printing "+0" for every bull was the old behaviour and it
- * read as "nothing will happen" when in fact most bulls move.
- */
+/** Colour the confidence figure so a weak projection is visible at a glance. */
+export function confidenceClass(c: number | null): string {
+  if (c == null) return "text-slate-400";
+  return c >= 0.7 ? "text-emerald-700" : c >= 0.45 ? "text-amber-600" : "text-red-600";
+}
+const pct = (c: number | null) => (c == null ? "—" : `${Math.round(c * 100)}%`);
+
+/** One trait line: the projected value for the next round, and the confidence in it. */
 function TraitLine({ t }: { t: TraitForecast }) {
-  const hasOdds = t.pUp != null && t.pDown != null;
   return (
     <div className="flex items-baseline justify-between gap-3 whitespace-nowrap py-0.5">
       <span className="text-xs text-slate-600">{t.name}</span>
-      <span className="flex items-baseline gap-1.5 tabular-nums">
-        {hasOdds ? (
-          <>
-            <span className="text-xs font-semibold text-slate-800">{t.lo}–{t.hi}</span>
-            {t.expectedMove != null && <span className="text-[10px] text-slate-400">±{t.expectedMove}</span>}
-            <span className="text-[10px] text-emerald-700">↑{Math.round((t.pUp ?? 0) * 100)}</span>
-            <span className="text-[10px] text-red-600">↓{Math.round((t.pDown ?? 0) * 100)}</span>
-          </>
-        ) : (
-          <>
-            <span className={`text-xs font-semibold ${deltaClass(t.delta)}`}>{sign(t.delta)}</span>
-            <span className="text-[11px] text-slate-400">{t.current ?? "—"} →</span>
-            <span className="text-xs font-semibold text-slate-800">{t.predicted ?? "—"}</span>
-            {t.lo != null && t.hi != null && <span className="text-[10px] text-slate-400">({t.lo}–{t.hi})</span>}
-          </>
-        )}
+      <span className="flex items-baseline gap-2 tabular-nums">
+        <span className="text-[11px] text-slate-400">{t.current ?? "—"} →</span>
+        <span className="text-xs font-semibold text-slate-800">{t.predicted ?? "—"}</span>
+        {t.confidence != null
+          ? <span className={`text-[11px] font-semibold ${confidenceClass(t.confidence)}`}>{pct(t.confidence)}</span>
+          : <span className={`text-xs font-semibold ${deltaClass(t.delta)}`}>{sign(t.delta)}</span>}
       </span>
     </div>
   );
@@ -104,10 +95,9 @@ function BullDetail({ row }: { row: ForecastRow }) {
       ))}
 
       <p className="text-[11px] text-slate-400">
-        Where odds are shown, the figure is the <strong>range</strong> he could land in, the typical size of his
-        analogues&apos; moves, and the chance of a material move up (↑) or down (↓). The value itself is unchanged
-        because direction is not forecastable. Ranges come from the bulls who were at his career stage — they are a
-        model, not a published proof.
+        Each figure is the current value, the <strong>projected value</strong> for the next round, and the
+        <strong> confidence</strong> in that projection — the share of bulls at the same career stage whose value
+        landed close to where it started. These are modelled, not a published proof.
       </p>
     </div>
   );
@@ -149,15 +139,17 @@ export function ProofForecastTable({
                 <Link href={sortHref("name")} prefetch={false} className="hover:text-brand-700">Bull{arrow("name")}</Link>
               </th>
               <th className="th">
-                <Link href={sortHref("exposure")} prefetch={false} className="hover:text-brand-700" title="How far this bull is likely to move, relative to the rest of the lineup">
-                  Exposure{arrow("exposure")}
+                <Link href={sortHref("exposure")} prefetch={false} className="hover:text-brand-700" title="Average confidence in this bull's projected values across the nine key traits">
+                  Confidence{arrow("exposure")}
                 </Link>
               </th>
               <th className="th">
-                <Link href={sortHref("confidence")} prefetch={false} className="hover:text-brand-700">Confidence{arrow("confidence")}</Link>
+                <Link href={sortHref("confidence")} prefetch={false} className="hover:text-brand-700" title="How much history backs the forecast: rounds on file and reliability">
+                  Evidence{arrow("confidence")}
+                </Link>
               </th>
               {keyTraits.map((t) => (
-                <th key={t.code} className="th text-right">
+                <th key={t.code} className="th text-right" title={`Projected ${t.label} for the next round, and the confidence in that value`}>
                   <Link href={sortHref(t.code.toLowerCase())} prefetch={false} className="hover:text-brand-700">{t.label}{arrow(t.code.toLowerCase())}</Link>
                 </th>
               ))}
@@ -188,13 +180,10 @@ export function ProofForecastTable({
                       </div>
                     </td>
                     <td className="td">
-                      {r.forecast.exposureBand ? (
-                        <>
-                          <span className={`badge ${EXPOSURE_TONE[r.forecast.exposureBand]}`}>{r.forecast.exposureBand}</span>
-                          {r.forecast.expectedLpiMove != null && (
-                            <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">±{r.forecast.expectedLpiMove} LPI</div>
-                          )}
-                        </>
+                      {r.forecast.confidencePct != null ? (
+                        <div className={`font-semibold tabular-nums ${confidenceClass(r.forecast.confidencePct)}`}>
+                          {pct(r.forecast.confidencePct)}
+                        </div>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="td">
@@ -202,23 +191,15 @@ export function ProofForecastTable({
                     </td>
                     {keyTraits.map((t) => {
                       const f = byCode.get(t.code);
-                      const hasOdds = f && f.pUp != null && f.pDown != null;
                       return (
                         <td key={t.code} className="td text-right">
-                          {!f ? <span className="text-slate-300">—</span> : hasOdds ? (
+                          {!f ? <span className="text-slate-300">—</span> : (
                             <>
-                              {/* The range is the forecast; the value never changes. */}
-                              <div className="font-semibold tabular-nums text-slate-800">{f.lo}–{f.hi}</div>
-                              <div className="text-[11px] tabular-nums text-slate-500">
-                                <span className="text-emerald-700">↑{Math.round((f.pUp ?? 0) * 100)}</span>
-                                {" "}
-                                <span className="text-red-600">↓{Math.round((f.pDown ?? 0) * 100)}</span>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className={`font-semibold tabular-nums ${deltaClass(f.delta)}`}>{sign(f.delta)}</div>
-                              <div className="text-[11px] tabular-nums text-slate-500">{f.predicted}</div>
+                              {/* Projected value for the next round, then the confidence in it. */}
+                              <div className="font-semibold tabular-nums text-slate-800">{f.predicted ?? "—"}</div>
+                              {f.confidence != null
+                                ? <div className={`text-[11px] font-semibold tabular-nums ${confidenceClass(f.confidence)}`}>{pct(f.confidence)}</div>
+                                : <div className={`text-[11px] tabular-nums ${deltaClass(f.delta)}`}>{sign(f.delta)}</div>}
                             </>
                           )}
                         </td>

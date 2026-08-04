@@ -161,16 +161,20 @@ export interface TraitForecast {
   // Direction is not forecastable; MOVEMENT is. These are what the report
   // actually leads with, and they come from the bulls who were at this bull's
   // career stage — see proof-analogue.ts.
+  /**
+   * CONFIDENCE IN THE PROJECTED VALUE, 0-1 — the headline number beside every
+   * projection. See proof-analogue.ts for exactly what it measures.
+   */
+  confidence: number | null;
   /** Mean absolute move among his analogues: how far he is likely to move. */
   expectedMove: number | null;
   /** Share of his analogues whose value did not change at all. */
   zeroShare: number | null;
-  /** A move bigger than this is "material" — the cohort's median move size. */
-  material: number | null;
-  /** Probability of a material move up / down, and of holding within it. */
-  pUp: number | null;
-  pDown: number | null;
-  pSteady: number | null;
+  /** Chance of coming in lower / higher, and the typical size of each. */
+  pDrop: number | null;
+  dropSize: number | null;
+  pRise: number | null;
+  riseSize: number | null;
   /** Full distribution at QUANTILE_LEVELS, for charting the fan. */
   quantiles: number[] | null;
   /** How many analogues stood behind it (K, or fewer near the fallback). */
@@ -203,8 +207,15 @@ export interface BullForecast {
   /** Where that sits in the reported lineup, 0 (steadiest) to 100 (most exposed). */
   exposure: number | null;
   exposureBand: ExposureBand | null;
-  /** Chance of a material LPI move in either direction. */
-  pLpiMove: number | null;
+  /**
+   * Mean confidence across the nine key traits, 0-1 — the bull's overall figure.
+   * Distinct from `confidence` above, which is the high/medium/low grade for how
+   * much history backs the forecast at all. This one is the percentage shown
+   * beside each projected value; that one is displayed as "evidence".
+   */
+  confidencePct: number | null;
+  /** Confidence in the projected LPI specifically. */
+  lpiConfidence: number | null;
 }
 
 export interface ForecastRow {
@@ -290,12 +301,14 @@ export interface ForecastReport {
    * is what replaces a column of zeroes.
    */
   movement: { code: string; label: string; movedShare: number; typicalMove: number; material: number; n: number }[];
-  /** Bulls whose chance of a material LPI move exceeds one in three. */
-  likelyToMove: number;
+  /** Bulls whose projected LPI carries under 50% confidence. */
+  lowConfidence: number;
+  /** Mean confidence in the projected LPI across the reported lineup. */
+  avgLpiConfidence: number | null;
   /** Median expected LPI move across the reported lineup. */
   typicalLpiMove: number | null;
-  /** The most movement-exposed bulls, already sorted. */
-  mostExposed: { id: string; name: string; naab: string | null; expectedMove: number; pMove: number }[];
+  /** The least predictable bulls, already sorted — where a projection is weakest. */
+  mostExposed: { id: string; name: string; naab: string | null; expectedMove: number; confidence: number }[];
   // filters / state
   /** Retained for URL compatibility; this report always targets the next round. */
   target: string;
@@ -783,12 +796,13 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
         hi: an ? round2(an.hi) : p.hi,
         basis: an ? an.basis : p.basis,
         steps: p.steps,
+        confidence: an ? an.confidence : null,
         expectedMove: an ? round2(an.expectedMove) : null,
         zeroShare: an ? an.zeroShare : null,
-        material: an ? an.material : null,
-        pUp: an ? an.pUp : null,
-        pDown: an ? an.pDown : null,
-        pSteady: an ? an.pSteady : null,
+        pDrop: an ? an.pDrop : null,
+        dropSize: an ? round2(an.dropSize) : null,
+        pRise: an ? an.pRise : null,
+        riseSize: an ? round2(an.riseSize) : null,
         quantiles: an ? an.quantiles.map(round2) : null,
         neighbours: an ? an.neighbours : null,
       });
@@ -815,10 +829,10 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       const lpiAn = byCode.get("LPI");
       drivers.push(
         lpiAn?.neighbours
-          ? `matched against ${lpiAn.neighbours} bulls at the same career stage`
+          ? `confidence from ${lpiAn.neighbours} bulls at the same career stage`
           : "ordinary round — no base change; best estimate is the current proof",
       );
-      drivers.push("direction is not forecastable — the range is the forecast");
+      drivers.push("projection carried forward — direction is not forecastable");
     }
     // Reliability GROWTH is what predicts movement — the level barely does.
     if (relGrowth != null && relGrowth > 0.03) drivers.push("reliability climbing fast — expect a bigger move");
@@ -837,7 +851,11 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
         direction: lpiDelta == null || Math.abs(lpiDelta) < 1 ? "hold" : lpiDelta > 0 ? "up" : "down",
         summary: buildSummary(keyForecasts), drivers,
         expectedLpiMove: lpiKey?.expectedMove ?? null,
-        pLpiMove: lpiKey && lpiKey.pUp != null && lpiKey.pDown != null ? round2(lpiKey.pUp + lpiKey.pDown) : null,
+        lpiConfidence: lpiKey?.confidence ?? null,
+        confidencePct: (() => {
+          const cs = keyForecasts.map((k) => k.confidence).filter((v): v is number => v != null);
+          return cs.length ? cs.reduce((s, v) => s + v, 0) / cs.length : null;
+        })(),
         // Filled in below, once the whole lineup is known.
         exposure: null,
         exposureBand: null,
@@ -1015,7 +1033,11 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     fallers: rows.filter((r) => r.forecast.direction === "down").length,
     avgLpiDelta: lpiDeltas.length ? Math.round((lpiDeltas.reduce((s, v) => s + v, 0) / lpiDeltas.length) * 10) / 10 : null,
     movement,
-    likelyToMove: rows.filter((r) => (r.forecast.pLpiMove ?? 0) >= 1 / 3).length,
+    lowConfidence: rows.filter((r) => r.forecast.lpiConfidence != null && r.forecast.lpiConfidence < 0.5).length,
+    avgLpiConfidence: (() => {
+      const cs = rows.map((r) => r.forecast.lpiConfidence).filter((v): v is number => v != null);
+      return cs.length ? Math.round((cs.reduce((s, v) => s + v, 0) / cs.length) * 100) : null;
+    })(),
     typicalLpiMove: exposures.length
       ? Math.round(quantileOf(exposures, 0.5) * 10) / 10
       : null,
@@ -1026,7 +1048,7 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       .map((r) => ({
         id: r.id, name: r.name, naab: r.naab,
         expectedMove: Math.round((r.forecast.expectedLpiMove ?? 0) * 10) / 10,
-        pMove: Math.round((r.forecast.pLpiMove ?? 0) * 100),
+        confidence: Math.round((r.forecast.lpiConfidence ?? 0) * 100),
       })),
     target: "",
     targetKind,
@@ -1051,11 +1073,10 @@ function buildSummary(keys: TraitForecast[]): string {
   if (shifted.length) return shifted.join(", ");
 
   const lpi = keys.find((c) => c.code === "LPI");
-  if (lpi?.expectedMove != null && lpi.pUp != null && lpi.pDown != null) {
-    const move = Math.round(lpi.pUp * 100 + lpi.pDown * 100);
-    return `LPI ${lpi.lo}–${lpi.hi} · typically ±${Math.round(lpi.expectedMove)} · ${move}% chance of a material move`;
+  if (lpi?.predicted != null && lpi.confidence != null) {
+    return `LPI projected ${lpi.predicted} · ${Math.round(lpi.confidence * 100)}% confidence`;
   }
-  return "Range only — direction not forecastable";
+  return "Projection carried forward — direction not forecastable";
 }
 
 /**

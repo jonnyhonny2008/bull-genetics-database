@@ -20,7 +20,7 @@ async function main() {
   console.log(`  target        : ${r.targetLabel} (${r.targetKind})`);
   console.log(`  latest on file: ${r.latestLabel}`);
   console.log(`  bulls         : ${r.compared} (${r.notComparable} not comparable)`);
-  console.log(`  typical LPI move: ${r.typicalLpiMove}   likely to move: ${r.likelyToMove}/${r.compared}`);
+  console.log(`  avg LPI confidence: ${r.avgLpiConfidence}%   under 50%: ${r.lowConfidence}/${r.compared}`);
 
   console.log(`\n  HOW THE LINEUP MOVES ON A ${r.targetKind.toUpperCase()} ROUND`);
   console.log(`  ${"trait".padEnd(22)}${"moves".padStart(8)}${"typical".padStart(10)}${"material".padStart(10)}${"n".padStart(7)}`);
@@ -28,8 +28,8 @@ async function main() {
     console.log(`  ${m.label.padEnd(22)}${(m.movedShare + "%").padStart(8)}${String(m.typicalMove).padStart(10)}${String(m.material).padStart(10)}${String(m.n).padStart(7)}`);
   }
 
-  console.log(`\n  MOST EXPOSED`);
-  for (const b of r.mostExposed) console.log(`  ${b.name.slice(0, 34).padEnd(36)}${b.naab ?? "—"}   ±${b.expectedMove} LPI   ${b.pMove}% chance of a material move`);
+  console.log(`\n  LEAST PREDICTABLE`);
+  for (const b of r.mostExposed) console.log(`  ${b.name.slice(0, 34).padEnd(36)}${b.naab ?? "—"}   LPI projection ${b.confidence}% confident`);
 
   console.log(`\n  ACCURACY (range, vs the cohort band this replaces)`);
   const bt = r.backtest;
@@ -45,9 +45,10 @@ async function main() {
     console.log(`    exposure ${top.forecast.exposure} (${top.forecast.exposureBand})  expected LPI move ±${top.forecast.expectedLpiMove}`);
     console.log(`    summary: ${top.forecast.summary}`);
     console.log(`    drivers: ${top.forecast.drivers.join(" · ")}`);
-    for (const k of top.forecast.keyForecasts.slice(0, 5)) {
-      console.log(`    ${k.name.padEnd(20)} ${String(k.current).padStart(8)} → range ${String(k.lo).padStart(8)}–${String(k.hi).padEnd(8)}` +
-        ` ±${k.expectedMove}  up ${Math.round((k.pUp ?? 0) * 100)}% / steady ${Math.round((k.pSteady ?? 0) * 100)}% / down ${Math.round((k.pDown ?? 0) * 100)}%  [${k.basis}, n=${k.neighbours}]`);
+    console.log(`    ${"trait".padEnd(20)}${"current".padStart(10)}${"projected".padStart(11)}${"confidence".padStart(12)}`);
+    for (const k of top.forecast.keyForecasts) {
+      console.log(`    ${k.name.padEnd(20)}${String(k.current).padStart(10)}${String(k.predicted).padStart(11)}` +
+        `${(Math.round((k.confidence ?? 0) * 100) + "%").padStart(12)}`);
     }
   }
 

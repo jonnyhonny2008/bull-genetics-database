@@ -39,15 +39,23 @@ async function main() {
   // so strip them before matching text that spans more than one expression.
   const text = html.replace(/<!--\s*-->/g, "");
 
-  // The row content must actually contain the new information, not just render.
+  // Every key trait must carry a projected value and a confidence figure.
+  const withConf = report.rows.filter((r) =>
+    r.forecast.keyForecasts.length > 0 &&
+    r.forecast.keyForecasts.every((k) => k.predicted != null && k.confidence != null));
+
   const checks: [string, boolean][] = [
     ["every bull is present", report.rows.every((r) => html.includes(r.name.slice(0, 12)))],
-    ["exposure badges rendered", /steady|typical|exposed/.test(html)],
-    ["ranges rendered (n–n)", /\d+(\.\d+)?–\d+/.test(text)],
-    ["up/down odds rendered", text.includes("↑") && text.includes("↓")],
+    ["every bull has a projection + confidence on all key traits", withConf.length === report.rows.length],
+    ["confidence percentages rendered", (html.match(/>\d{1,3}%</g) ?? []).length >= report.rows.length],
+    ["overall confidence per bull", report.rows.every((r) => r.forecast.confidencePct != null)],
+    ["confidence is a real share (0-100%)", report.rows.every((r) =>
+      r.forecast.keyForecasts.every((k) => k.confidence == null || (k.confidence >= 0 && k.confidence <= 1)))],
     ["no literal 'undefined'", !html.includes("undefined")],
     ["no literal 'NaN'", !html.includes("NaN")],
     ["no stale 'No material change'", !html.includes("No material change")],
+    // Odds were rendered as "↑38"; a bare arrow is just the sort indicator.
+    ["no leftover odds arrows", !/[↑↓]\s*\d/.test(text)],
   ];
   for (const [label, ok] of checks) console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
 

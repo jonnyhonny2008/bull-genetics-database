@@ -138,6 +138,13 @@ interface TraitCorpus {
   movesByKind: Map<RoundKind, number[]>;
   /** Median |move| per kind: what "a typical move" means for this trait. */
   materialByKind: Map<RoundKind, number>;
+  /**
+   * Mean |move| across the WHOLE lineup, per kind. This is the yardstick that
+   * confidence is measured against, and it is deliberately lineup-wide rather
+   * than per-bull: a fixed ruler makes one bull's confidence comparable with
+   * another's instead of each being graded against his own volatility.
+   */
+  typicalByKind: Map<RoundKind, number>;
   /** Share of cohort moves that were exactly zero, per kind. */
   zeroShareByKind: Map<RoundKind, number>;
 }
@@ -147,6 +154,16 @@ export interface Corpus {
   codes: string[];
 }
 
+/**
+ * A trait's forecast, phrased the way a weather forecast is: a projected value,
+ * and how likely it is to move which way and by roughly how much.
+ *
+ * `dropSize` and `riseSize` are CONDITIONAL — the typical size of a drop among
+ * the analogues that actually dropped, not averaged over the ones that held.
+ * Averaging in the bulls who did not move would understate every move and make
+ * "38% likely to drop about 4" out of what is really "38% likely to drop about
+ * 12".
+ */
 export interface AnalogueTraitForecast {
   /** Absolute values at each level of QUANTILES. */
   quantiles: number[];
@@ -156,11 +173,29 @@ export interface AnalogueTraitForecast {
   expectedMove: number;
   /** Share of analogues that did not move at all. */
   zeroShare: number;
-  /** A move larger than this counts as material for this trait and round kind. */
-  material: number;
-  pUp: number;
-  pDown: number;
-  pSteady: number;
+  /** Chance the next round comes in lower, and how far it typically falls. */
+  pDrop: number;
+  dropSize: number;
+  /** Chance it comes in higher, and how far it typically rises. */
+  pRise: number;
+  riseSize: number;
+  /** Chance it does not move at all. */
+  pHold: number;
+  /**
+   * CONFIDENCE IN THE PROJECTED VALUE, 0-1.
+   *
+   * The share of this bull's analogues that landed close to where they started
+   * — "close" being one typical move for that trait, measured once across the
+   * whole lineup so the yardstick is identical for every bull. That makes the
+   * number comparable: a bull on 88% really is more predictable than one on 44%,
+   * rather than merely being measured against a looser ruler.
+   *
+   * It behaves the way it should. Conformation barely moves, so its projections
+   * are trustworthy and score high; Milk moves almost every round, so it scores
+   * low and says so. A confident-looking number on a trait that cannot be
+   * predicted would be the worst outcome here.
+   */
+  confidence: number;
   neighbours: number;
   basis: "analogue" | "cohort";
 }
@@ -338,19 +373,21 @@ function buildTraitCorpus(
 
   const movesByKind = new Map<RoundKind, number[]>();
   const materialByKind = new Map<RoundKind, number>();
+  const typicalByKind = new Map<RoundKind, number>();
   const zeroShareByKind = new Map<RoundKind, number>();
   for (const kind of ["interim", "official"] as const) {
     const ms = rows.filter((r) => r.c.kind === kind).map((r) => r.c.move).sort((a, b) => a - b);
     movesByKind.set(kind, ms);
     const abs = ms.map(Math.abs).sort((a, b) => a - b);
     materialByKind.set(kind, quantileOf(abs, 0.5));
+    typicalByKind.set(kind, mean(abs));
     zeroShareByKind.set(kind, ms.length ? ms.filter((m) => m === 0).length / ms.length : 0);
   }
 
   return {
     cases: rows.map((r) => r.c), X, dim, colMean, colSd,
     scale, levelMean: lv.m, levelSd: lv.s,
-    movesByKind, materialByKind, zeroShareByKind,
+    movesByKind, materialByKind, typicalByKind, zeroShareByKind,
   };
 }
 
@@ -395,25 +432,25 @@ class MaxHeap {
 function cohortForecast(tc: TraitCorpus, last: number, kind: RoundKind): AnalogueTraitForecast | null {
   const moves = tc.movesByKind.get(kind) ?? [];
   if (moves.length < MIN_COHORT_MOVES) return null;
-  const material = tc.materialByKind.get(kind) ?? 0;
-  return summarise(moves, last, material, "cohort");
+  return summarise(moves, last, tc.typicalByKind.get(kind) ?? 0, "cohort");
 }
 
-/** Turn a set of realised moves into the published distribution. */
+/** Turn a set of realised moves into the published forecast. */
 function summarise(
   sortedMoves: number[],
   last: number,
-  material: number,
+  yardstick: number,
   basis: "analogue" | "cohort",
 ): AnalogueTraitForecast {
   const n = sortedMoves.length;
   const quantiles = QUANTILES.map((q) => last + quantileOf(sortedMoves, q));
-  let up = 0, down = 0, zero = 0, absSum = 0;
+  let rise = 0, drop = 0, zero = 0, absSum = 0, riseSum = 0, dropSum = 0, close = 0;
   for (const m of sortedMoves) {
-    if (m > material) up++;
-    else if (m < -material) down++;
-    if (m === 0) zero++;
     absSum += Math.abs(m);
+    if (m > 0) { rise++; riseSum += m; }
+    else if (m < 0) { drop++; dropSum -= m; }
+    else zero++;
+    if (Math.abs(m) <= yardstick) close++;
   }
   return {
     quantiles,
@@ -421,10 +458,12 @@ function summarise(
     hi: quantiles[Q_HI],
     expectedMove: n ? absSum / n : 0,
     zeroShare: n ? zero / n : 0,
-    material,
-    pUp: n ? up / n : 0,
-    pDown: n ? down / n : 0,
-    pSteady: n ? (n - up - down) / n : 0,
+    pDrop: n ? drop / n : 0,
+    dropSize: drop ? dropSum / drop : 0,
+    pRise: n ? rise / n : 0,
+    riseSize: rise ? riseSum / rise : 0,
+    pHold: n ? zero / n : 0,
+    confidence: n ? close / n : 0,
     neighbours: n,
     basis,
   };
@@ -486,8 +525,7 @@ export function forecastTrait(
   if (heap.size < MIN_NEIGHBOURS) return cohortForecast(tc, last, targetKind);
 
   const moves = heap.indices().map((i) => tc.cases[i].move).sort((a, b) => a - b);
-  const material = tc.materialByKind.get(targetKind) ?? 0;
-  return summarise(moves, last, material, "analogue");
+  return summarise(moves, last, tc.typicalByKind.get(targetKind) ?? 0, "analogue");
 }
 
 /** Step series for one bull across every trait — hoisted so a caller can reuse it. */

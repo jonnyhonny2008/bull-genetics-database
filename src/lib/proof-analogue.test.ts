@@ -66,10 +66,27 @@ test("a forecast returns monotone quantiles and coherent probabilities", () => {
     assert.ok(f!.quantiles[i] >= f!.quantiles[i - 1], `quantiles must not cross at ${i}`);
   }
   assert.ok(f!.lo <= f!.hi, "lo must not exceed hi");
-  const total = f!.pUp + f!.pDown + f!.pSteady;
+  const total = f!.pRise + f!.pDrop + f!.pHold;
   assert.ok(Math.abs(total - 1) < 1e-9, `probabilities must sum to 1, got ${total}`);
   assert.ok(f!.expectedMove >= 0, "expected move is a magnitude");
   assert.ok(f!.zeroShare >= 0 && f!.zeroShare <= 1);
+  assert.ok(f!.confidence >= 0 && f!.confidence <= 1, "confidence is a share");
+  // Drop and rise sizes are conditional on having dropped/risen, so they must be
+  // magnitudes and must not be diluted by the bulls that held.
+  assert.ok(f!.dropSize >= 0 && f!.riseSize >= 0);
+});
+
+test("confidence is high where a trait rarely moves and low where it always does", () => {
+  // CONF only changes every fifth round in the fixture; LPI changes every round.
+  const bulls = makeLineup(60, 20);
+  const corpus = buildCorpus(bulls, CODES);
+  const conf = forecastTrait(corpus, "CONF", bulls[7], "interim", future);
+  const lpi = forecastTrait(corpus, "LPI", bulls[7], "interim", future);
+  assert.ok(conf && lpi);
+  assert.ok(
+    conf!.confidence > lpi!.confidence,
+    `a trait that seldom moves should project more confidently: CONF ${conf!.confidence} vs LPI ${lpi!.confidence}`,
+  );
 });
 
 test("with a full lineup the analogue path is used, not the cohort fallback", () => {

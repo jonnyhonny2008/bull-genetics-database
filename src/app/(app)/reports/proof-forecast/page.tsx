@@ -5,7 +5,7 @@ import { can } from "@/lib/constants";
 import { PageHeader, Card, EmptyState, StatCard, Badge, Table } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { getProofForecastReport, KEY_TRAITS } from "@/lib/proof-forecast";
-import { ProofForecastTable } from "@/components/ProofForecastTable";
+import { ProofForecastTable, confidenceClass } from "@/components/ProofForecastTable";
 import { LineChart, type LineSeries } from "@/components/TrendCharts";
 
 export const dynamic = "force-dynamic";
@@ -61,8 +61,8 @@ export default async function ProofForecastReportPage({ searchParams }: { search
   return (
     <div>
       <PageHeader
-        title="Movement Forecast"
-        subtitle={`How far every NAAB bull could move in ${report.targetLabel}, and the odds on each — matched against the bulls who were at the same career stage. Latest round on file: ${report.latestLabel ?? "—"}.`}
+        title="Proof Forecast"
+        subtitle={`A projected ${report.targetLabel} value for every trait, with the confidence in each — measured against the bulls who were at the same career stage. Latest round on file: ${report.latestLabel ?? "—"}.`}
         actions={<a href={exportHref} className="btn-primary">⬇ Export to Excel</a>}
       />
 
@@ -73,17 +73,17 @@ export default async function ProofForecastReportPage({ searchParams }: { search
             {Math.round(lpiMove.movedShare)}% of bulls will move on LPI, by {lpiMove.typicalMove} points on average.
           </strong>
           <div className="mt-1">
-            Which <em>way</em> each bull moves is not forecastable, and that is not a shortcoming of this report —
-            a published proof is already Lactanet&apos;s best estimate of the next one. Eight methods were tested against
-            your own rounds (recent trend, mean reversion, cohort drift, seasonality, analogue matching,
-            interim-to-official carry-over, cross-trait structure, and the lineup average itself); every one scored
-            worse than simply carrying the current proof forward. So each projected value below is the current value,
-            and <strong>the forecast is the range and the odds beside it</strong>.
+            Each trait shows a <strong>projected value</strong> and the <strong>confidence</strong> in it — the share of
+            bulls at the same career stage whose value landed close to where it started. Confidence varies by trait for
+            a real reason: Conformation seldom moves, so its projections are trustworthy; Milk moves almost every round,
+            so it says so rather than pretending otherwise.
           </div>
           <div className="mt-1">
-            That part is genuinely predictable, and this model is{" "}
-            <strong>{bt.overallRangeSkill != null ? `${bt.overallRangeSkill}%` : "measurably"} sharper</strong> than the
-            single lineup-wide range this report used to publish — measured by holding back the last{" "}
+            The projected value is the current one. Which <em>way</em> a bull moves is not forecastable — a published
+            proof is already Lactanet&apos;s best estimate of the next one, and eight methods tested against your own
+            rounds all scored worse than carrying it forward. What the model does add is{" "}
+            <strong>{bt.overallRangeSkill != null ? `${bt.overallRangeSkill}%` : "measurably"} better</strong> confidence
+            than the single lineup-wide figure this report used to publish, measured by holding back the last{" "}
             {bt.rangeRounds} rounds and re-forecasting them.
           </div>
           <div className="mt-1 text-[12px] text-slate-500">
@@ -104,19 +104,19 @@ export default async function ProofForecastReportPage({ searchParams }: { search
         ) : (
           <>
             <StatCard
-              label="Likely to move materially"
-              value={fmtNum(report.likelyToMove)}
-              hint={lpiMove ? `LPI move over ${lpiMove.material}` : undefined}
-              tone={report.likelyToMove > report.compared / 2 ? "danger" : "accent"}
+              label="Avg LPI confidence"
+              value={report.avgLpiConfidence != null ? `${report.avgLpiConfidence}%` : "—"}
+              hint="in the projected value"
+              tone={(report.avgLpiConfidence ?? 0) >= 60 ? "good" : "accent"}
             />
             <StatCard
-              label="Typical LPI move"
-              value={report.typicalLpiMove != null ? `±${report.typicalLpiMove}` : "—"}
-              hint="median across the lineup"
-              tone="accent"
+              label="Low-confidence bulls"
+              value={fmtNum(report.lowConfidence)}
+              hint="LPI projection under 50%"
+              tone={report.lowConfidence > report.compared / 2 ? "danger" : "accent"}
             />
             <StatCard
-              label="Range vs old model"
+              label="Forecast vs old model"
               value={bt.overallRangeSkill != null ? `${bt.overallRangeSkill > 0 ? "+" : ""}${bt.overallRangeSkill}%` : "—"}
               hint="sharper, backtested"
               tone={(bt.overallRangeSkill ?? 0) > 0 ? "good" : "warn"}
@@ -155,10 +155,10 @@ export default async function ProofForecastReportPage({ searchParams }: { search
 
       {/* Who is most exposed */}
       {report.mostExposed.length > 0 && (
-        <Card className="mt-4" title="Most exposed to movement">
+        <Card className="mt-4" title="Least predictable bulls">
           <p className="mb-3 text-sm text-slate-600">
-            The bulls whose analogues moved furthest. Worth watching before {report.targetLabel} lands — not because
-            they will fall, but because they are the least settled.
+            Where the {report.targetLabel} projection is weakest. Not a warning that they will fall — only that they are
+            the least settled, so their projected values carry the lowest confidence.
           </p>
           <div className="flex flex-wrap gap-2">
             {report.mostExposed.map((b) => (
@@ -170,7 +170,7 @@ export default async function ProofForecastReportPage({ searchParams }: { search
               >
                 <div className="font-medium text-slate-800">{b.name}</div>
                 <div className="text-[11px] text-slate-500">
-                  {b.naab ?? "—"} · ±{b.expectedMove} LPI · {b.pMove}% chance of a material move
+                  {b.naab ?? "—"} · LPI projection {b.confidence}% confident
                 </div>
               </Link>
             ))}
@@ -312,37 +312,29 @@ export default async function ProofForecastReportPage({ searchParams }: { search
             </div>
           )}
 
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Full profile and the odds</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Projected profile</div>
           <p className="mb-2 text-[11px] text-slate-400">
-            Every index and linear trait for {report.targetLabel}, with the range he could land in and — for the nine key
-            traits — how his analogues actually split between moving up, holding, and moving down.
+            Every index and linear trait: the projected value for {report.targetLabel} and the confidence in it.
           </p>
           <div className="overflow-x-auto">
             <Table head={<>
               <th className="th">Trait</th>
               <th className="th">Category</th>
               <th className="th text-right">Current</th>
-              <th className="th text-right">Range</th>
-              <th className="th text-right" title="Mean absolute move among his analogues">Typical move</th>
-              <th className="th text-right" title="Chance of a material move up">Up</th>
-              <th className="th text-right" title="Chance of holding within a material move">Holds</th>
-              <th className="th text-right" title="Chance of a material move down">Down</th>
+              <th className="th text-right">Projected {report.targetLabel}</th>
+              <th className="th text-right" title="Share of bulls at the same career stage whose value landed close to where it started">Confidence</th>
             </>}>
-              {report.focus.forecast.allForecasts.map((t) => {
-                const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
-                return (
-                  <tr key={t.code} className={t.key ? "bg-brand-50/40" : undefined}>
-                    <td className="td">{t.name}{t.key && <span className="ml-1.5 text-[10px] uppercase text-brand-600">key</span>}</td>
-                    <td className="td text-xs text-slate-500">{t.category ?? "—"}</td>
-                    <td className="td text-right tabular-nums text-slate-600">{t.current ?? "—"}</td>
-                    <td className="td text-right font-semibold tabular-nums">{t.lo != null ? `${t.lo} – ${t.hi}` : "—"}</td>
-                    <td className="td text-right tabular-nums text-slate-500">{t.expectedMove != null ? `±${t.expectedMove}` : "—"}</td>
-                    <td className="td text-right tabular-nums text-emerald-700">{pct(t.pUp)}</td>
-                    <td className="td text-right tabular-nums text-slate-500">{pct(t.pSteady)}</td>
-                    <td className="td text-right tabular-nums text-red-600">{pct(t.pDown)}</td>
-                  </tr>
-                );
-              })}
+              {report.focus.forecast.allForecasts.map((t) => (
+                <tr key={t.code} className={t.key ? "bg-brand-50/40" : undefined}>
+                  <td className="td">{t.name}{t.key && <span className="ml-1.5 text-[10px] uppercase text-brand-600">key</span>}</td>
+                  <td className="td text-xs text-slate-500">{t.category ?? "—"}</td>
+                  <td className="td text-right tabular-nums text-slate-600">{t.current ?? "—"}</td>
+                  <td className="td text-right font-semibold tabular-nums">{t.predicted ?? "—"}</td>
+                  <td className={`td text-right font-semibold tabular-nums ${confidenceClass(t.confidence)}`}>
+                    {t.confidence == null ? "—" : `${Math.round(t.confidence * 100)}%`}
+                  </td>
+                </tr>
+              ))}
             </Table>
           </div>
         </Card>
@@ -413,7 +405,7 @@ export default async function ProofForecastReportPage({ searchParams }: { search
               Showing {fmtNum(report.rows.length)} of {fmtNum(report.compared)} bulls for <strong>{report.targetLabel}</strong>.
               {report.targetIsApril
                 ? " Each cell is the projected change and the projected value."
-                : " Each cell is the range he could land in and the chance he moves materially — the value itself is unchanged, because direction is not forecastable."}{" "}
+                : " Each cell is the projected value for the next round and the confidence in it."}{" "}
               Expand a bull with <strong>+</strong> for his full profile, or click his name to pin it.
               Cohort: {report.cohortLabel}.
             </p>

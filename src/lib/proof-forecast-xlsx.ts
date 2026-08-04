@@ -9,8 +9,8 @@ const GREEN = { fill: "FFE7F6EC", font: "FF15803D" };
 const RED = { fill: "FFFDE7E7", font: "FFB91C1C" };
 
 /** Sheet 1 layout: fixed leading columns, then a block of columns per trait. */
-const LEAD_COLS = 11;
-const PER_TRAIT = 7;
+const LEAD_COLS = 10;
+const PER_TRAIT = 4;
 
 function paint(cell: ExcelJS.Cell, delta: number | null) {
   if (delta == null || delta === 0) return;
@@ -41,11 +41,11 @@ export async function buildProofForecastWorkbook(report: ForecastReport): Promis
 
   // --- Sheet 1: key traits, one row per bull ---
   const s1 = wb.addWorksheet("Projections");
-  const head: string[] = ["Bull", "NAAB", "Reg", "Breed", "Rounds on file", "Reliability", "Confidence", "From round", "Projected round", "Exposure", "Expected LPI move"];
+  const head: string[] = ["Bull", "NAAB", "Reg", "Breed", "Rounds on file", "Reliability", "Evidence", "From round", "Projected round", "Overall confidence %"];
   // Per trait: where he is, the range he could land in, how far he typically
   // moves, and the odds. The Δ column is retained because an April base change
   // genuinely does have a direction.
-  for (const t of KEY_TRAITS) head.push(`${t.label} now`, `${t.label} Δ`, `${t.label} low`, `${t.label} high`, `${t.label} ± typical`, `${t.label} P(up)`, `${t.label} P(down)`);
+  for (const t of KEY_TRAITS) head.push(`${t.label} now`, `${t.label} projected`, `${t.label} confidence %`, `${t.label} Δ`);
   head.push("Summary", "Drivers");
   s1.addRow(head);
   s1.getRow(1).font = { bold: true };
@@ -58,22 +58,22 @@ export async function buildProofForecastWorkbook(report: ForecastReport): Promis
       r.name, r.naab ?? "", r.reg ?? "", r.breed ?? "",
       f.roundsOnFile, f.reliability != null ? Math.round(f.reliability * 100) / 100 : null,
       f.confidence, f.fromRun ?? report.latestLabel ?? "", report.targetLabel,
-      f.exposureBand ?? "", f.expectedLpiMove ?? null,
+      f.confidencePct != null ? Math.round(f.confidencePct * 100) : null,
     ];
     for (const t of KEY_TRAITS) {
       const k = byCode.get(t.code);
       cells.push(
-        k?.current ?? null, k?.delta ?? null, k?.lo ?? null, k?.hi ?? null,
-        k?.expectedMove ?? null,
-        k?.pUp != null ? Math.round(k.pUp * 100) / 100 : null,
-        k?.pDown != null ? Math.round(k.pDown * 100) / 100 : null,
+        k?.current ?? null,
+        k?.predicted ?? null,
+        k?.confidence != null ? Math.round(k.confidence * 100) : null,
+        k?.delta ?? null,
       );
     }
     cells.push(f.summary, f.drivers.join("; "));
     const row = s1.addRow(cells);
     KEY_TRAITS.forEach((t, i) => {
       const k = byCode.get(t.code);
-      paint(row.getCell(LEAD_COLS + i * PER_TRAIT + 2), k?.delta ?? null); // Δ is the 2nd of each trait block
+      paint(row.getCell(LEAD_COLS + i * PER_TRAIT + 4), k?.delta ?? null); // Δ is the 4th of each trait block
     });
   }
   s1.columns.forEach((col, i) => { col.width = i < LEAD_COLS ? 15 : 11; });
@@ -82,20 +82,18 @@ export async function buildProofForecastWorkbook(report: ForecastReport): Promis
   s1.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
 
   // --- Sheet 2: the full projected profile, every trait ---
-  const s2 = wb.addWorksheet("Full profile and odds");
-  s2.addRow(["Bull", "NAAB", "Trait", "Category", "Key trait", "Current", "Change", "Low", "High", "Typical move", "P(up)", "P(holds)", "P(down)", "Analogues", "Basis"]);
+  const s2 = wb.addWorksheet("Projected profile");
+  s2.addRow(["Bull", "NAAB", "Trait", "Category", "Key trait", "Current", "Projected", "Confidence %", "Change", "Low", "High", "Comparable bulls", "Basis"]);
   s2.getRow(1).font = { bold: true };
   for (const r of report.rows) {
     for (const t of r.forecast.allForecasts as TraitForecast[]) {
       const row = s2.addRow([
         r.name, r.naab ?? "", t.name, t.category ?? "", t.key ? "yes" : "",
-        t.current, t.delta, t.lo, t.hi, t.expectedMove,
-        t.pUp != null ? Math.round(t.pUp * 100) / 100 : null,
-        t.pSteady != null ? Math.round(t.pSteady * 100) / 100 : null,
-        t.pDown != null ? Math.round(t.pDown * 100) / 100 : null,
-        t.neighbours, t.basis,
+        t.current, t.predicted,
+        t.confidence != null ? Math.round(t.confidence * 100) : null,
+        t.delta, t.lo, t.hi, t.neighbours, t.basis,
       ]);
-      paint(row.getCell(7), t.delta);
+      paint(row.getCell(9), t.delta);
     }
   }
   s2.columns.forEach((col, i) => { col.width = i === 0 ? 22 : i === 2 ? 26 : i === 3 ? 14 : 11; });
