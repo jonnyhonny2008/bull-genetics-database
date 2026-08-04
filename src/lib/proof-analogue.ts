@@ -47,8 +47,13 @@ import { isRollbackRound, isOfficialProof } from "./rollback";
 
 export type RoundKind = "interim" | "official" | "april";
 
-export function roundKindOf(d: Date): RoundKind {
+// April (the base change) is a calendar fact; official vs interim comes from the
+// proof's recorded runKind, not the month. runKind is omitted only when the
+// caller has just a date (e.g. test fixtures), where the month is the fallback.
+export function roundKindOf(d: Date, runKind?: string | null): RoundKind {
   if (isRollbackRound(d)) return "april";
+  if (runKind === "official") return "official";
+  if (runKind === "interim") return "interim";
   return isOfficialProof(d) ? "official" : "interim";
 }
 

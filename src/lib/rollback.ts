@@ -114,9 +114,15 @@ export function isRollbackRound(d: Date): boolean {
 }
 
 /**
- * Official proof rounds are April, August and December (Lactanet's three yearly
- * evaluation releases); every other month is an interim run. Month alone is
- * authoritative — evaluationDate is the 1st of the run's month in UTC.
+ * MONTH-BASED FALLBACK ONLY — do not use this to decide a stored proof's kind.
+ *
+ * Whether a proof is official or interim is recorded on the row (`runKind`), read
+ * from the Lactanet file it came from. This calendar guess (April/August/December
+ * are Lactanet's usual official releases) is wrong in both directions — interim
+ * proofs are issued in those months for sires short of daughters, and official
+ * runs ship in other months — so it is used ONLY for a future round with no file
+ * yet, or a legacy row imported before `runKind` existed. Everywhere a row is in
+ * hand, branch on `runKind` (see e.g. proof-change.ts `isOfficialRow`).
  */
 export function isOfficialProof(d: Date): boolean {
   const m = d.getUTCMonth();

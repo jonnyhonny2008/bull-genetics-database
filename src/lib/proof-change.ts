@@ -1,10 +1,12 @@
 // ---------------------------------------------------------------------------
 // Proof Change Report — how each NAAB bull moved between its latest proof and
-// the immediately previous OFFICIAL (April / August / December) proof.
+// the immediately previous OFFICIAL proof.
 //
 // Only bulls with a current NAAB code are included. The comparison is:
 //   latest  = the newest proof on file (interim or official)
-//   previous = the most recent official (Apr/Aug/Dec) proof strictly before it
+//   previous = the most recent OFFICIAL proof strictly before it. Official vs
+//              interim is read from the row's runKind (the Lactanet file), NOT
+//              the month — Apr/Aug/Dec can be interim and other months official.
 //
 // SIGNIFICANCE is standard-deviation based, not a raw percentage: a trait is
 // flagged when its change is unusual versus how the REPORTED COHORT moved on
@@ -27,7 +29,7 @@ import { isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap, type TraitDefLite } from "./eval-traits";
 
 // How the "previous" side is auto-selected when neither round is pinned:
-//   "official"    — latest proof vs the previous OFFICIAL (Apr/Aug/Dec) round.
+//   "official"    — latest proof vs the previous OFFICIAL round (by runKind).
 //   "consecutive" — latest proof vs the immediately previous run of ANY kind
 //                   (interim or official). This is the interim-to-interim view.
 export type ChangeMode = "official" | "consecutive";

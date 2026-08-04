@@ -183,13 +183,18 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // different years line up at the same point in their active life.
   const col = chartTrait.col;
   // Career-stage basis: align sires by their Nth proof round, Nth official proof
-  // (April / August / December), or Nth rollback (April base change). This is
+  // (by recorded runKind, not the month), or Nth rollback (April base change). This is
   // what makes "a sire at its 2nd rollback" comparable to every other sire at
   // THEIR 2nd rollback, rather than comparing by calendar date.
   // Default alignment is Rollback (April rounds) — this page is framed around
   // Rollback Resistance, and it's the comparison the user cares about most.
   const alignBy = sp.align === "proof" ? "proof" : sp.align === "official" ? "official" : "rollback";
-  const basisMatch = (d: Date) => (alignBy === "rollback" ? isRollbackRound(d) : alignBy === "official" ? isOfficialProof(d) : true);
+  // A round counts as "official" from its recorded runKind — not the month —
+  // falling back to the calendar only for rows imported before the field existed.
+  const officialRow = (e: { evaluationDate: Date; runKind?: string | null }) =>
+    e.runKind === "official" || (e.runKind == null && isOfficialProof(e.evaluationDate));
+  const basisMatch = (e: { evaluationDate: Date; runKind?: string | null }) =>
+    alignBy === "rollback" ? isRollbackRound(e.evaluationDate) : alignBy === "official" ? officialRow(e) : true;
   const stageNoun = alignBy === "rollback" ? "rollback (April round)" : alignBy === "official" ? "official proof" : "proof round";
   const xUnit = alignBy === "rollback" ? "Rollback " : alignBy === "official" ? "Official proof " : "Proof round ";
   const MAX_SIRES = 5;
@@ -207,7 +212,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // Default to the first sire so the chart isn't empty on first open.
   if (selectedIds.length === 0 && pickerBulls[0]) selectedIds = [pickerBulls[0].id];
 
-  const evalSelect = { evaluationDate: true, [col]: true } as Prisma.GeneticEvaluationSelect;
+  const evalSelect = { evaluationDate: true, runKind: true, [col]: true } as Prisma.GeneticEvaluationSelect;
   const selBulls = view === "charts" && selectedIds.length
     ? await prisma.animal.findMany({
         where: { id: { in: selectedIds } },
@@ -222,7 +227,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   const avgRows = view === "charts"
     ? await prisma.geneticEvaluation.findMany({
         where: { animal: animalWhere },
-        select: { animalId: true, evaluationDate: true, [col]: true } as Prisma.GeneticEvaluationSelect,
+        select: { animalId: true, evaluationDate: true, runKind: true, [col]: true } as Prisma.GeneticEvaluationSelect,
         orderBy: [{ animalId: "asc" }, { evaluationDate: "asc" }],
       })
     : [];
@@ -230,9 +235,9 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   {
     let cur: string | null = null; let stage = 0;
     for (const row of avgRows) {
-      const r = row as unknown as { animalId: string; evaluationDate: Date; [k: string]: unknown };
+      const r = row as unknown as { animalId: string; evaluationDate: Date; runKind?: string | null; [k: string]: unknown };
       if (r.animalId !== cur) { cur = r.animalId; stage = 0; }
-      if (!basisMatch(r.evaluationDate)) continue; // interim rounds don't advance an official / rollback stage
+      if (!basisMatch(r)) continue; // interim rounds don't advance an official / rollback stage
       const v = r[col];
       if (typeof v === "number") { stageSum[stage] = (stageSum[stage] ?? 0) + v; stageCnt[stage] = (stageCnt[stage] ?? 0) + 1; }
       stage++;
@@ -245,7 +250,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
     const d = e?.evaluationDate; return d ? `${MON[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}` : "";
   };
   // Each sire's rounds on the chosen basis, oldest first.
-  const selRounds = orderedSel.map((b) => b.evaluations.filter((e) => basisMatch((e as unknown as { evaluationDate: Date }).evaluationDate)));
+  const selRounds = orderedSel.map((b) => b.evaluations.filter((e) => basisMatch(e as unknown as { evaluationDate: Date; runKind?: string | null })));
   const maxStage = Math.max(0, ...selRounds.map((r) => r.length));
   const xs = Array.from({ length: maxStage }, (_, i) => `${i + 1}`);
   const sireSeries: LineSeries[] = orderedSel.map((b, idx) => ({
@@ -420,7 +425,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
                     <label className="label">Align by</label>
                     <select name="align" defaultValue={alignBy} className="input">
                       <option value="proof">Proof round (all)</option>
-                      <option value="official">Official proof (Apr/Aug/Dec)</option>
+                      <option value="official">Official proof only</option>
                       <option value="rollback">Rollback (April)</option>
                     </select>
                   </div>
@@ -442,7 +447,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
                         <LineChart series={trendSeries} yLabel={chartTrait.label} xUnit={xUnit} />
                       </div>
                       <p className="mt-2 text-[11px] text-slate-400">
-                        The x-axis is each sire&apos;s {stageNoun} number — stage 1 is their first {stageNoun}, so sires that debuted in different years line up at the same point in their career. The dashed line is the {includeInactive ? "whole" : "active"} lineup&apos;s average at that same stage (every sire compared at their 2nd, 3rd, … {stageNoun}). Official proofs are April, August and December; all others are interims{alignBy === "proof" ? " — both are counted here" : alignBy === "official" ? " — interims are skipped" : " — only April rollbacks are counted"}. Hover for values; click a legend label to toggle a line.
+                        The x-axis is each sire&apos;s {stageNoun} number — stage 1 is their first {stageNoun}, so sires that debuted in different years line up at the same point in their career. The dashed line is the {includeInactive ? "whole" : "active"} lineup&apos;s average at that same stage (every sire compared at their 2nd, 3rd, … {stageNoun}). Whether a proof is official or interim comes from the file Lactanet shipped it in, not the month{alignBy === "proof" ? " — both are counted here" : alignBy === "official" ? " — interims are skipped" : " — only April rollbacks are counted"}. Hover for values; click a legend label to toggle a line.
                       </p>
                     </div>
                     {singleSel && compareRows.length > 0 && (

@@ -530,7 +530,7 @@ interface DecodedBull {
   b: { id: string; primaryName: string; shortName: string | null; birthDate: Date | null };
   rounds: {
     date: Date; run: string | null; reliability: number | null;
-    daughters: number | null; sireType: string | null; traits: Map<string, number>;
+    daughters: number | null; sireType: string | null; runKind: string | null; traits: Map<string, number>;
   }[];
 }
 
@@ -541,7 +541,7 @@ function toAnalogueBulls(decoded: DecodedBull[]): AnalogueBull[] {
     birthTime: x.b.birthDate ? x.b.birthDate.getTime() : null,
     rounds: x.rounds.map((r) => ({
       time: r.date.getTime(),
-      kind: roundKind(r.date),
+      kind: roundKind(r.date, r.runKind),
       rel: r.reliability,
       daughters: r.daughters,
       sireType: r.sireType,
@@ -551,7 +551,7 @@ function toAnalogueBulls(decoded: DecodedBull[]): AnalogueBull[] {
 }
 
 /** One trait's observed history for a bull: value per round, oldest first. */
-interface Obs { date: Date; value: number }
+interface Obs { date: Date; value: number; runKind?: string | null }
 
 /** Cohort-level statistics per trait, learned from the whole reported lineup. */
 export interface TraitStats {
@@ -600,11 +600,11 @@ function kindStats(xs: number[], drift: { mean: number; sd: number; n: number })
 }
 
 /** Extract one trait's ordered observations from a bull's rounds. */
-function seriesOf(rounds: { date: Date; traits: Map<string, number> }[], code: string): Obs[] {
+function seriesOf(rounds: { date: Date; traits: Map<string, number>; runKind?: string | null }[], code: string): Obs[] {
   const out: Obs[] = [];
   for (const r of rounds) {
     const v = r.traits.get(code);
-    if (v != null && Number.isFinite(v)) out.push({ date: r.date, value: v });
+    if (v != null && Number.isFinite(v)) out.push({ date: r.date, value: v, runKind: r.runKind });
   }
   return out;
 }
@@ -612,8 +612,17 @@ function seriesOf(rounds: { date: Date; traits: Map<string, number> }[], code: s
 /** The three kinds of round, which behave very differently. */
 export type RoundKind = "interim" | "official" | "april";
 
-export function roundKind(d: Date): RoundKind {
+/**
+ * Which of the three round kinds this is. April (the base change) is a calendar
+ * fact and stays month-based. Official vs interim comes from the proof's recorded
+ * runKind — NOT the month — because Lactanet publishes interim proofs in April /
+ * August / December too, and official ones in other months. `runKind` is omitted
+ * only for a future target round (no file yet), where the month is the best guess.
+ */
+export function roundKind(d: Date, runKind?: string | null): RoundKind {
   if (isRollbackRound(d)) return "april";
+  if (runKind === "official") return "official";
+  if (runKind === "interim") return "interim";
   return isOfficialProof(d) ? "official" : "interim";
 }
 
@@ -621,7 +630,7 @@ export function roundKind(d: Date): RoundKind {
 function deltasOf(obs: Obs[]): { d: number; april: boolean; kind: RoundKind; at: Date }[] {
   const out: { d: number; april: boolean; kind: RoundKind; at: Date }[] = [];
   for (let i = 1; i < obs.length; i++) {
-    out.push({ d: obs[i].value - obs[i - 1].value, april: isRollbackRound(obs[i].date), kind: roundKind(obs[i].date), at: obs[i].date });
+    out.push({ d: obs[i].value - obs[i - 1].value, april: isRollbackRound(obs[i].date), kind: roundKind(obs[i].date, obs[i].runKind), at: obs[i].date });
   }
   return out;
 }
@@ -653,7 +662,7 @@ export function weightedTrend(deltas: number[]): number {
  * current era. Levels and the interval still use everything available.
  */
 export function buildTraitStats(
-  bulls: { rounds: { date: Date; traits: Map<string, number> }[] }[],
+  bulls: { rounds: { date: Date; traits: Map<string, number>; runKind?: string | null }[] }[],
   codes: Set<string>,
   since?: Date,
 ): Map<string, TraitStats> {
@@ -895,6 +904,7 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       reliability: e.reliabilityOverall,
       daughters: e.daughters,
       sireType: e.sireType,
+      runKind: e.runKind,
       traits: new Map(unpackTraits(e.traitsJson, defMap).filter((t) => t.numericValue != null).map((t) => [t.traitCode, t.numericValue as number])),
     })),
   })).filter((x) => x.rounds.length >= 2);
@@ -1240,7 +1250,7 @@ function buildSummary(keys: TraitForecast[]): string {
  * produces are printed on the report so a projection is never read as fact.
  */
 export function runBacktest(
-  decoded: { rounds: { date: Date; reliability: number | null; traits: Map<string, number> }[] }[],
+  decoded: { rounds: { date: Date; reliability: number | null; traits: Map<string, number>; runKind?: string | null }[] }[],
   codes: Set<string>,
   params: ModelParams = DEFAULT_PARAMS,
 ): Backtest {
@@ -1272,7 +1282,7 @@ export function runBacktest(
       if (actual == null) continue;
       const obs = seriesOf(history, kt.code);
       if (obs.length === 0) continue;
-      const p = projectTrait(obs, stats.get(kt.code), { targetIsApril: isApril, targetKind: roundKind(actualRound.date), reliability: rel, relGrowth, params });
+      const p = projectTrait(obs, stats.get(kt.code), { targetIsApril: isApril, targetKind: roundKind(actualRound.date, actualRound.runKind), reliability: rel, relGrowth, params });
       if (!p) continue;
       const a = acc.get(kt.code) ?? { err: [], naive: [], hit: 0 };
       a.err.push(Math.abs(p.predicted - actual));

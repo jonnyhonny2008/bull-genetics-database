@@ -12,7 +12,7 @@ const REPORTS = [
     href: "/reports/proof-changes",
     title: "Proof Change Report",
     tag: "NAAB bulls",
-    blurb: "How each NAAB bull moved between its latest proof and the previous official (April / August / December) proof. Ranks bulls by their biggest changes, flags any trait that moved 10% or more, and exports to Excel.",
+    blurb: "How each NAAB bull moved between its latest proof and the previous official proof (official vs interim is read from the Lactanet file, not the month). Ranks bulls by their biggest changes, flags any trait that moved 10% or more, and exports to Excel.",
     ready: true,
   },
   {
