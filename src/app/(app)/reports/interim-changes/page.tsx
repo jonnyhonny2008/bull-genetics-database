@@ -19,7 +19,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
 
   // Preserve current filters/sort on the Excel export link.
   const exportParams = new URLSearchParams();
-  for (const k of ["q", "breed", "significant", "sort", "dir", "sd", "from", "to"]) {
+  for (const k of ["q", "breed", "significant", "blondin", "sort", "dir", "sd", "from", "to"]) {
     const v = searchParams[k];
     if (v) exportParams.set(k, v);
   }
@@ -28,7 +28,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
   // Every active filter EXCEPT sort/dir — the sortable column headers append
   // their own, so clicking one keeps the rest of the report state intact.
   const tableParams: Record<string, string> = {};
-  for (const k of ["q", "breed", "significant", "sd", "from", "to"]) {
+  for (const k of ["q", "breed", "significant", "blondin", "sd", "from", "to"]) {
     const v = searchParams[k];
     if (v) tableParams[k] = v;
   }
@@ -56,7 +56,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
         <StatCard label="NAAB bulls compared" value={fmtNum(report.compared)} hint={report.notComparable ? `${fmtNum(report.notComparable)} lack a selected round` : undefined} tone="good" />
         <StatCard label="Significant movers" value={fmtNum(report.significantCount)} hint="≥1 key trait past the bar" tone={report.significantCount ? "warn" : "default"} />
         <StatCard label="Key traits tracked" value={KEY_TRAITS.length} />
-        <StatCard label="Flag threshold" value={`${report.sdMult} SD`} hint="vs how the lineup moved" />
+        <StatCard label="Flag threshold" value={`${report.sdMult} SD`} hint={`vs how ${report.cohortLabel} moved`} />
       </div>
 
       {/* Which two rounds to compare. Defaults to each bull's latest proof vs
@@ -87,6 +87,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
         <input type="hidden" name="sort" value={report.sort} />
         <input type="hidden" name="dir" value={report.dir} />
         {report.significantOnly && <input type="hidden" name="significant" value="1" />}
+        {report.blondin && <input type="hidden" name="blondin" value={report.blondin} />}
         <button type="submit" className="btn-primary">Compare rounds</button>
       </form>
 
@@ -118,7 +119,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
           </select>
         </div>
         <div>
-          <label className="label" title="A trait is flagged when its change is this many standard deviations from how the whole lineup moved on that trait.">Sensitivity</label>
+          <label className="label" title={`A trait is flagged when its change is this many standard deviations from how ${report.cohortLabel} moved on that trait.`}>Sensitivity</label>
           <select name="sd" defaultValue={String(report.sdMult)} className="input">
             {SD_LEVELS.map((s) => (
               <option key={s} value={s}>{s} SD {s === 0.5 ? "(sensitive)" : s === 1 ? "(balanced)" : "(big movers)"}</option>
@@ -128,6 +129,10 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Only bulls where at least one of the nine KEY traits cleared the threshold.">
           <input type="checkbox" name="significant" value="1" defaultChecked={report.significantOnly} />
           Only significant changes
+        </label>
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population. Note: this also re-bases the SD flag — significance is measured against whichever cohort is shown.">
+          <input type="checkbox" name="blondin" value="1" defaultChecked={report.blondin === "1"} />
+          Blondin bulls only
         </label>
         <button type="submit" className="btn-primary">Apply</button>
         <a href="/reports/interim-changes" className="btn-secondary">Reset</a>
@@ -147,15 +152,27 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
             <p className="mb-2 text-xs text-slate-500">
               Showing {fmtNum(report.rows.length)} of {fmtNum(report.compared)} NAAB bulls, each bull&rsquo;s latest proof vs the
               run immediately before it (interim or official). Green = increase, red = decrease.
-              A trait is flagged when its change is <strong>{report.sdMult} SD or more</strong> from how the whole lineup moved on that trait.
+              A trait is flagged when its change is <strong>{report.sdMult} SD or more</strong> from how <strong>{report.cohortLabel}</strong> moved on that trait.
               Only the nine key traits decide &ldquo;significant&rdquo;; other flagged traits still show when you expand a bull.
+              {report.blondin && (
+                <> The &ldquo;Blondin bulls only&rdquo; toggle changes that baseline as well as the rows, so a bull can be
+                flagged here and not on the full lineup (or the reverse) — the flag always means &ldquo;unusual for {report.cohortLabel}&rdquo;.</>
+              )}
             </p>
+            {report.cohortTooSmall && (
+              <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                Only {fmtNum(report.cohortN)} comparable bull{report.cohortN === 1 ? "" : "s"} in {report.cohortLabel} — at least 3 are
+                needed to measure a spread, so no trait can be flagged and every Flags count reads 0. The changes below are still real.
+              </p>
+            )}
             <ProofChangeTable
               rows={report.rows}
               keyTraits={KEY_TRAITS}
               sort={report.sort}
               dir={report.dir}
               params={tableParams}
+              basePath="/reports/interim-changes"
+              cohortLabel={report.cohortLabel}
             />
           </>
         )}

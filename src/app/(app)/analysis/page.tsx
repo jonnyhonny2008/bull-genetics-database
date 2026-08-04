@@ -6,8 +6,8 @@ import { fmtNum } from "@/lib/format";
 import { computeRollback, baselineOf, relativeRating, ratingVerdict, ROLLBACK_TRAIT_LABELS, isOfficialProof, isRollbackRound, type RollbackResult } from "@/lib/rollback";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { LineChart, CompareBars, type LineSeries } from "@/components/TrendCharts";
-import { SireRolePills, SireRoleField, SireSortField } from "@/components/SireFilters";
-import { sireRoleWhere, resolveSort } from "@/lib/sire-class";
+import { SireRolePills, SireRoleField, SireSortField, BlondinToggle } from "@/components/SireFilters";
+import { sireRoleWhere, blondinWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,11 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   if (roleWhere) animalAND.push(roleWhere);
   // When the role filter already pins the active/inactive axis, it wins over the toggle.
   if (!includeInactive && sp.role !== "inactive") animalAND.push({ proofStatus: "active" });
+  // Blondin house bulls (an AnimalRole tag) vs the wider Lactanet population.
+  // One push covers every query on the page: animalWhere and scoredWhere both
+  // build on animalAND, and the nested `animal:` filters reuse animalWhere.
+  const blondin = blondinWhere(sp.blondin);
+  if (blondin) animalAND.push(blondin);
   const animalWhere: Prisma.AnimalWhereInput = { AND: animalAND };
 
   // Both scores are materialised on Animal by prisma/compute-rollback.ts, so this
@@ -59,8 +64,9 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
     prisma.geneticEvaluation.count({ where: { animal: animalWhere } }),
     prisma.animal.count({ where: animalWhere }),
     // Role pill counts: the role IS the axis here, so they ignore the role filter
-    // and the inactive toggle and always count the whole non-archived herd.
-    sireRoleCounts({ archived: false }),
+    // and the inactive toggle and count the whole non-archived herd — narrowed
+    // to the Blondin bulls when that toggle is on, since it sits above them.
+    sireRoleCounts(blondin ? { AND: [{ archived: false }, blondin] } : { archived: false }),
     prisma.animal.findMany({
       where: scoredWhere,
       take: MAX_BULLS,
@@ -279,9 +285,10 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
     const qs = params.toString();
     return qs ? `/analysis?${qs}` : "/analysis";
   };
-  const popLabel = sp.role
+  const popLabel = (sp.role
     ? `${sp.role} sires`
-    : includeInactive ? "all sires (active + inactive)" : "active sires only";
+    : includeInactive ? "all sires (active + inactive)" : "active sires only")
+    + (sp.blondin === "1" ? " · Blondin bulls only" : "");
 
   // Build a charts URL for a specific set of selected sire ids, preserving the
   // trait, alignment basis, role, sort and inactive filters.
@@ -292,6 +299,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
     p.set("trait", chartTrait.code);
     p.set("align", alignBy);
     if (sp.role) p.set("role", sp.role);
+    if (sp.blondin) p.set("blondin", sp.blondin);
     if (sp.sort) p.set("sort", sp.sort);
     if (sp.dir) p.set("dir", sp.dir);
     if (includeInactive) p.set("includeInactive", "1");
@@ -314,6 +322,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
       </div>
 
       <div className="mt-4">
+        <BlondinToggle basePath="/analysis" sp={sp} />
         <SireRolePills basePath="/analysis" sp={sp} counts={roleCounts} />
       </div>
 
@@ -334,6 +343,12 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Inactive sires no longer appear in the most recent round, so they are left out by default.">
           <input type="checkbox" name="includeInactive" value="1" defaultChecked={includeInactive} />
           Include inactive sires
+        </label>
+        {/* Mirrors the pill toggle above, and keeps it alive when this form is
+            submitted — a GET form only sends its own fields. */}
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population.">
+          <input type="checkbox" name="blondin" value="1" defaultChecked={sp.blondin === "1"} />
+          Blondin bulls only
         </label>
         <button type="submit" className="btn-primary">Apply</button>
         <a href={view === "charts" ? "/analysis?view=charts" : "/analysis"} className="btn-secondary">Reset</a>
@@ -384,6 +399,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
                   <input type="hidden" name="view" value="charts" />
                   {selectedIds.length > 0 && <input type="hidden" name="bulls" value={selectedIds.join(",")} />}
                   {sp.role && <input type="hidden" name="role" value={sp.role} />}
+                  {sp.blondin && <input type="hidden" name="blondin" value={sp.blondin} />}
                   {sp.sort && <input type="hidden" name="sort" value={sp.sort} />}
                   {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
                   {includeInactive && <input type="hidden" name="includeInactive" value="1" />}

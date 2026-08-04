@@ -44,6 +44,7 @@ export function proofChangeFilename(report: ProofChangeReport, now: Date = new D
   const generated = now.toISOString().slice(0, 10);
   const bits = [reportName(report), windowLabel(report), `generated ${generated}`];
   if (report.significantOnly) bits.splice(2, 0, "significant only");
+  if (report.blondin === "1") bits.splice(2, 0, "Blondin only");
   // Strip anything a filesystem or Content-Disposition header would choke on.
   return `${bits.join(" - ").replace(/[\\/:*?"<>|]/g, "-")}.xlsx`;
 }

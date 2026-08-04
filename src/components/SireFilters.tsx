@@ -1,8 +1,10 @@
 // Shared lineup filter/sort controls + status badges.
 //
-// Every list in the app (Animals, Genetic Proofs, Proof Trends, Comparison,
-// Milk, Classification) uses these so the four sire roles and the LPI /
-// Conformation / birth-date sort behave identically everywhere.
+// Both lineup lists — Animals (/animals) and Proof Trends · Rollback Resistance
+// (/analysis, whose two tabs are Rankings and Charts & comparison) — use these,
+// so the four sire roles, the Blondin toggle and the LPI / Conformation /
+// birth-date sort behave identically on each. (The old global Genetic Proofs,
+// Milk and Classification lists are gone; they are tabs on the animal profile.)
 //
 // The fields are plain form controls meant to be dropped inside an existing
 // `<form method="get">`, so each page keeps its own filters alongside them.
@@ -88,6 +90,10 @@ export function SireClassBadges({
   );
 }
 
+/** One pill above a list: on = solid brand, off = outlined. */
+const pill = (isOn: boolean) =>
+  `rounded-full px-3 py-1 text-xs font-medium ${isOn ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`;
+
 /**
  * Quick role pills above a list — one click to filter, preserving the page's
  * other query params. `counts` is optional and shows how many match each role.
@@ -107,8 +113,6 @@ export function SireRolePills({
     return qs ? `${basePath}?${qs}` : basePath;
   };
   const active = sp.role ?? "";
-  const pill = (isOn: boolean) =>
-    `rounded-full px-3 py-1 text-xs font-medium ${isOn ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`;
   return (
     <div className="mb-3 flex flex-wrap gap-2">
       <Link href={href("")} className={pill(active === "")}>All</Link>
@@ -118,6 +122,37 @@ export function SireRolePills({
           {counts?.[r.code] != null && <span className="ml-1 opacity-70">{counts[r.code]}</span>}
         </Link>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Blondin-only toggle, styled like the role pills and shown next to them.
+ *
+ * "All bulls" is the default and sets no param at all, so a page with no
+ * `blondin` in the URL queries exactly what it always did. Paging is reset on
+ * either click, and every other query param is carried across.
+ */
+export function BlondinToggle({
+  basePath, sp,
+}: {
+  basePath: string;
+  sp: Record<string, string | undefined>;
+}) {
+  const href = (v: string) => {
+    const params = new URLSearchParams();
+    for (const [k, val] of Object.entries(sp)) if (val && k !== "blondin" && k !== "page") params.set(k, val);
+    if (v) params.set("blondin", v);
+    const qs = params.toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+  };
+  const only = sp.blondin === "1";
+  const hint = "Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population imported from the archive files.";
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Lineup</span>
+      <Link href={href("")} className={pill(!only)} title={hint}>All bulls</Link>
+      <Link href={href("1")} className={pill(only)} title={hint}>Blondin only</Link>
     </div>
   );
 }

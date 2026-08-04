@@ -7,8 +7,10 @@
 //   previous = the most recent official (Apr/Aug/Dec) proof strictly before it
 //
 // SIGNIFICANCE is standard-deviation based, not a raw percentage: a trait is
-// flagged when its change is unusual versus how the whole lineup moved on that
-// trait — |Δ − meanΔ| ≥ N·SD (z-score). This is scale-free (works for LPI,
+// flagged when its change is unusual versus how the REPORTED COHORT moved on
+// that trait — |Δ − meanΔ| ≥ N·SD (z-score). The cohort is whatever the filters
+// selected, so the Blondin toggle re-bases the mean and SD, not just the row
+// set; `cohortLabel` carries that fact to the page. This is scale-free (works for LPI,
 // kg, deviation %, and type RBVs alike), handles negatives/near-zero cleanly,
 // and — because the herd-wide shift sits in the mean — flags the bulls that
 // moved notably rather than everyone. N is the sensitivity (0.5 / 1 / 1.5).
@@ -20,6 +22,7 @@
 
 import { prisma } from "./db";
 import type { Prisma } from "@prisma/client";
+import { blondinWhere } from "./sire-class";
 import { isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap, type TraitDefLite } from "./eval-traits";
 
@@ -241,6 +244,23 @@ export interface ProofChangeReport {
   breed: string;
   significantOnly: boolean;
   sdMult: number;
+  /** Raw `blondin` toggle: "1" = Blondin house bulls only, "" = the whole lineup. */
+  blondin: string;
+  /**
+   * WHICH COHORT DEFINES SIGNIFICANCE — the flag is cohort-relative by design.
+   *
+   * The z-score is (Δ − meanΔ) / SD over the bulls in the report, so the Blondin
+   * toggle does not merely hide rows: it re-bases the mean and SD the flag is
+   * measured against. The same bull, over the same two rounds, can be flagged in
+   * one view and not the other — that is intended (the question "did he move
+   * unusually?" only means something relative to a stated peer group), but it
+   * MUST be stated on the page rather than left implicit.
+   */
+  cohortLabel: string;
+  /** Bulls in that cohort. finalizeBull needs n >= 3 per trait to score at all. */
+  cohortN: number;
+  /** True when the cohort is too small for ANY trait to be flagged (n < 3). */
+  cohortTooSmall: boolean;
   /** Auto "previous" selection: previous-official vs immediately-previous-run. */
   mode: ChangeMode;
   /** Every proof round available across the NAAB bulls, newest first. */
@@ -262,8 +282,16 @@ export async function getProofChangeReport(
   const mode: ChangeMode = opts.mode ?? "official";
   const sdMult = sdFromParam(sp.sd);
   const defMap = await traitDefMap();
+  // Blondin house bulls only, when the toggle is on. Both report pages and both
+  // Excel exports run through here, so this is the only place it is applied.
+  const blondin = (sp.blondin ?? "").trim();
+  const blondinFilter = blondinWhere(blondin);
   const bulls = await prisma.animal.findMany({
-    where: { archived: false, proofRoundCount: { gte: 2 }, identifiers: { some: { active: true, idType: "naab" } } },
+    where: {
+      archived: false, proofRoundCount: { gte: 2 },
+      identifiers: { some: { active: true, idType: "naab" } },
+      ...(blondinFilter ?? {}),
+    },
     select: {
       id: true, primaryName: true, shortName: true,
       breed: { select: { breedName: true } },
@@ -339,9 +367,21 @@ export async function getProofChangeReport(
     });
   }
 
+  // The cohort the z-scores were derived from is exactly `comparedRaw` — the same
+  // set the query-level Blondin filter produced. Surface it so the page can say
+  // so, and so it can warn when the cohort is too thin to flag anything at all
+  // (finalizeBull needs n >= 3 comparable bulls per trait, otherwise z stays null
+  // and every Flags cell silently reads 0 even though bulls did move).
+  const cohortLabel = blondinFilter && (blondin === "1" || blondin === "only")
+    ? "the Blondin lineup"
+    : blondinFilter
+      ? "the non-Blondin lineup"
+      : "the whole lineup";
+
   return {
     rows, totalNaab: withRaw.length, compared: compared.length, significantCount, breeds,
-    sort, dir, q, breed, significantOnly, sdMult, mode,
+    sort, dir, q, breed, significantOnly, sdMult, blondin, mode,
+    cohortLabel, cohortN: comparedRaw.length, cohortTooSmall: comparedRaw.length > 0 && comparedRaw.length < 3,
     periods, from, to, notComparable: withRaw.length - compared.length,
   };
 }

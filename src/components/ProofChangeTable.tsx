@@ -20,7 +20,7 @@ function arrow(d: number | null) {
 }
 
 export function ProofChangeTable({
-  rows, keyTraits, sort, dir, params,
+  rows, keyTraits, sort, dir, params, basePath = "/reports/proof-changes", cohortLabel = "the whole lineup",
 }: {
   rows: ReportRow[];
   keyTraits: { code: string; label: string }[];
@@ -28,6 +28,12 @@ export function ProofChangeTable({
   dir: "asc" | "desc";
   /** Every other active filter, carried through when a header is clicked. */
   params: Record<string, string>;
+  /** The report this table belongs to — sorting must stay on the SAME report.
+   *  The interim report is a different comparison mode, so linking a sorted
+   *  header back to /reports/proof-changes silently changes every delta shown. */
+  basePath?: string;
+  /** Which cohort the z-scores are measured against (the Blondin toggle changes it). */
+  cohortLabel?: string;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -55,7 +61,7 @@ export function ProofChangeTable({
     const active = sort === code;
     p.set("sort", code);
     p.set("dir", active && dir === "desc" ? "asc" : "desc");
-    return `/reports/proof-changes?${p.toString()}`;
+    return `${basePath}?${p.toString()}`;
   };
   const caret = (code: string) => (sort === code ? (dir === "desc" ? " ↓" : " ↑") : "");
   const headCls = (code: string) =>
@@ -138,7 +144,7 @@ export function ProofChangeTable({
                             panel on screen no matter how far the table is
                             scrolled, so its own scrollbar governs it. */}
                         <div className="sticky left-0 px-3 py-2" style={panelW ? { width: panelW } : undefined}>
-                          <BullDetail change={c} />
+                          <BullDetail change={c} cohortLabel={cohortLabel} />
                         </div>
                       </td>
                     </tr>
@@ -158,7 +164,7 @@ export function ProofChangeTable({
  * Nothing truncates — the line sizes to its content and the panel scrolls
  * sideways instead, so a long trait name is never cut off.
  */
-function TraitLine({ t }: { t: TraitChange }) {
+function TraitLine({ t, cohortLabel }: { t: TraitChange; cohortLabel: string }) {
   return (
     <div className={`flex items-baseline gap-2 whitespace-nowrap rounded px-1.5 py-[3px] ${t.flagged ? "bg-amber-50" : t.key ? "bg-brand-50/40" : ""}`}>
       <span className={`w-[68px] shrink-0 text-right text-xs font-semibold tabular-nums ${deltaClass(t.delta)}`}>
@@ -170,7 +176,7 @@ function TraitLine({ t }: { t: TraitChange }) {
       <span className="ml-auto shrink-0 pl-2 text-[10px] tabular-nums text-slate-400" title="previous → latest">
         {fmt(t.previous)}→{fmt(t.latest)}
       </span>
-      <span className={`w-11 shrink-0 text-right text-[10px] tabular-nums ${t.flagged ? "font-semibold text-amber-700" : "text-slate-400"}`} title="SD from how the lineup moved">
+      <span className={`w-11 shrink-0 text-right text-[10px] tabular-nums ${t.flagged ? "font-semibold text-amber-700" : "text-slate-400"}`} title={`SD from how ${cohortLabel} moved`}>
         {t.z == null ? "—" : `${t.z > 0 ? "+" : ""}${t.z}`}
       </span>
       <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-slate-300" title="% change (reference only)">
@@ -180,7 +186,7 @@ function TraitLine({ t }: { t: TraitChange }) {
   );
 }
 
-function BullDetail({ change }: { change: ReportRow["change"] }) {
+function BullDetail({ change, cohortLabel }: { change: ReportRow["change"]; cohortLabel: string }) {
   const keys = change.allChanges.filter((t) => t.key);
   const others = change.allChanges.filter((t) => !t.key);
   return (
@@ -193,7 +199,7 @@ function BullDetail({ change }: { change: ReportRow["change"] }) {
         <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Key traits</div>
         <HScroll label="scroll for cut-off values">
           <div className="grid grid-cols-[repeat(3,max-content)] gap-x-6">
-            {keys.map((t) => <TraitLine key={t.code} t={t} />)}
+            {keys.map((t) => <TraitLine key={t.code} t={t} cohortLabel={cohortLabel} />)}
           </div>
         </HScroll>
       </div>
@@ -204,13 +210,13 @@ function BullDetail({ change }: { change: ReportRow["change"] }) {
         </div>
         <HScroll label="scroll for cut-off values">
           <div className="grid grid-cols-[repeat(3,max-content)] gap-x-6">
-            {others.map((t) => <TraitLine key={t.code} t={t} />)}
+            {others.map((t) => <TraitLine key={t.code} t={t} cohortLabel={cohortLabel} />)}
           </div>
         </HScroll>
       </div>
 
       <div className="text-[10px] text-slate-400">
-        Columns: change · trait · previous→latest · SD from the lineup · % (reference).
+        Columns: change · trait · previous→latest · SD from {cohortLabel} · % (reference).
       </div>
     </div>
   );

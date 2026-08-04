@@ -3,12 +3,12 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { PageHeader, Badge, Table, EmptyState } from "@/components/ui";
 import { AnimalFilters } from "./AnimalFilters";
-import { SireRolePills, SireClassBadges } from "@/components/SireFilters";
+import { SireRolePills, SireClassBadges, BlondinToggle } from "@/components/SireFilters";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { SEXES, can } from "@/lib/constants";
 import { currentUser } from "@/lib/auth";
 import { TRAIT_COLUMNS } from "@/lib/eval-traits";
-import { sireRoleWhere, resolveSort } from "@/lib/sire-class";
+import { sireRoleWhere, blondinWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
 import { getActiveBreeds, getAllSources, getGeneticTraitDefsForFilters } from "@/lib/reference";
 
@@ -57,6 +57,11 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   // proof codes by prisma/classify-sires.ts and stored on Animal.
   const roleWhere = sireRoleWhere(sp.role);
   if (roleWhere) AND.push(roleWhere as Prisma.AnimalWhereInput);
+  // Blondin house bulls (an AnimalRole tag) vs the wider Lactanet population.
+  // Pushed into AND, so the trait-sort branch below and the pill counts both
+  // honour it without a second condition.
+  const blondin = blondinWhere(sp.blondin);
+  if (blondin) AND.push(blondin);
   if (sp.source) AND.push({ OR: [
     { identifiers: { some: { sourceId: sp.source } } }, { evaluations: { some: { sourceId: sp.source } } },
     { milkRecords: { some: { sourceId: sp.source } } }, { classifications: { some: { sourceId: sp.source } } },
@@ -142,6 +147,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
       />
 
       <AnimalFilters breeds={breeds} sources={sources} traitDefs={traitDefs} sp={sp} />
+      <BlondinToggle basePath="/animals" sp={sp} />
       <SireRolePills basePath="/animals" sp={sp} counts={roleCounts} />
 
       {rows.length === 0 ? (

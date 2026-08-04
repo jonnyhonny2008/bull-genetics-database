@@ -21,6 +21,10 @@
 // daughters and reliability 91; code 3 (MACE) = 210 rows, reliability 87.
 // ---------------------------------------------------------------------------
 
+// Type-only import: erased at compile time, so this module stays runtime-free of
+// any dependency the Prisma maintenance scripts (plain tsx) cannot resolve.
+import type { Prisma } from "@prisma/client";
+
 /** Lactanet NOTE 2 — proof activity code + genotype indicator (CSV column 24). */
 export const ACTIVITY_CODES: Record<string, { proven: boolean; genotyped: boolean; label: string }> = {
   "0": { proven: false, genotyped: false, label: "Not yet proven — may have official calving evaluation" },
@@ -115,6 +119,31 @@ export function sireRoleWhere(role: string | null | undefined): Record<string, u
     case "genomic": return { sireType: "genomic" };
     case "active": return { proofStatus: "active" };
     case "inactive": return { proofStatus: "inactive" };
+    default: return null;
+  }
+}
+
+// --- Blondin house bulls ---------------------------------------------------
+// Every animal that predates the Lactanet mass import is a Blondin stud bull.
+// The marker is an AnimalRole row (roleType = "blondin") written once by
+// prisma/tag-blondin-animals.ts — a role rather than a column, so it needs no
+// migration, and because every importer only writes roles for animals it
+// creates, no import can ever add, drop or duplicate it.
+
+export const BLONDIN_ROLE = "blondin";
+
+/**
+ * Prisma `where` fragment for the Blondin toggle (null when the param is absent
+ * or unrecognised, so the default view stays the whole population):
+ *   "1" / "only"    — Blondin house bulls only
+ *   "0" / "exclude" — everything except them, i.e. the wider Lactanet population
+ */
+export function blondinWhere(v: string | null | undefined): Prisma.AnimalWhereInput | null {
+  switch (v) {
+    case "1":
+    case "only": return { roles: { some: { roleType: BLONDIN_ROLE, active: true } } };
+    case "0":
+    case "exclude": return { roles: { none: { roleType: BLONDIN_ROLE, active: true } } };
     default: return null;
   }
 }

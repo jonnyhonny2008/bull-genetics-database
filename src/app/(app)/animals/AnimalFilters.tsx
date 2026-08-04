@@ -121,6 +121,14 @@ export function AnimalFilters({
             <input type="checkbox" name="noProof" value="1" defaultChecked={sp.noProof === "1"} /> No genetic proof
           </label>
         </div>
+        {/* Mirrors the Blondin pill toggle above the list — it also keeps the
+            toggle alive when this form is submitted, since a GET form only
+            sends its own fields. */}
+        <div className="flex items-end gap-2">
+          <label className="flex items-center gap-1 text-xs text-slate-600" title="Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population.">
+            <input type="checkbox" name="blondin" value="1" defaultChecked={sp.blondin === "1"} /> Blondin bulls only
+          </label>
+        </div>
       </div>
       <div className="mt-3 flex gap-2">
         <button className="btn-primary" type="submit">Apply filters</button>

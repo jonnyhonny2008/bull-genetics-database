@@ -31,6 +31,8 @@ const BREEDS = [
   { breedCode: "JE", breedName: "Jersey", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Jersey Canada" },
   { breedCode: "AY", breedName: "Ayrshire", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Ayrshire Canada" },
   { breedCode: "BS", breedName: "Brown Swiss", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Brown Swiss Canada" },
+  { breedCode: "CN", breedName: "Canadienne", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Canadienne Cattle Breeders Association" },
+  { breedCode: "GU", breedName: "Guernsey", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Canadian Guernsey Association" },
   { breedCode: "MS", breedName: "Milking Shorthorn", speciesType: "dairy", breedCategory: "Dairy cattle", registryOrganization: "Canadian Milking Shorthorn Society" },
   { breedCode: "AN", breedName: "Angus", speciesType: "beef", breedCategory: "Beef cattle", registryOrganization: "Canadian Angus Association" },
 ];
