@@ -11,7 +11,7 @@
 
 import { getProofForecastReport } from "../src/lib/proof-forecast";
 import { buildProofForecastWorkbook } from "../src/lib/proof-forecast-xlsx";
-import { getMatingProgramReport } from "../src/lib/mating-program";
+import { getMatingProgramReport, MATING_INDEXES } from "../src/lib/mating-program";
 import { buildMatingProgramWorkbook } from "../src/lib/mating-program-xlsx";
 import { prisma } from "../src/lib/db";
 
@@ -58,6 +58,23 @@ async function main() {
   const mpAny = mp as unknown as Record<string, unknown>;
   const females = (mpAny.females as unknown[]) ?? [];
   check("mating report returns a females array", Array.isArray(females), `${females.length} female(s)`);
+
+  // Every trait the menu offers must actually rank. The menu and the database
+  // query were once maintained as two hand-written lists, and the query fell
+  // three traits behind: Fat %, Protein % and Daughter Fertility were offered,
+  // never read, and the report answered "no eligible bulls" while blaming the
+  // proofs for data it had simply not selected. Only an end-to-end check catches
+  // that, because each half was internally consistent.
+  console.log("\n  --- EVERY RANKABLE TRAIT RETURNS BULLS ---");
+  const dead: string[] = [];
+  for (const i of MATING_INDEXES) {
+    const r = await getMatingProgramReport({ females: femaleReg, index: i.code, topN: "3" });
+    const fem = (r as unknown as { females?: { matches?: unknown[] }[] }).females ?? [];
+    const n = fem.reduce((s, x) => s + (x.matches?.length ?? 0), 0);
+    if (n === 0) dead.push(i.label);
+  }
+  check("no trait on the Rank-on menu returns an empty list",
+    dead.length === 0, dead.length ? `dead: ${dead.join(", ")}` : `all ${MATING_INDEXES.length} rank`);
 
   console.log("\n  --- EXCEL EXPORTS (both) ---");
   const wb1 = await buildProofForecastWorkbook(fc);

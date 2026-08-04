@@ -611,18 +611,19 @@ export async function getMatingProgramReport(
 
   // Shared by the main pool read and the empty-pool fallback below, so the two
   // can never drift into selecting different columns.
+  //
+  // DERIVED from MATING_INDEXES, never hand-listed. A hand-written copy silently
+  // fell three columns behind the menu once already: Fat %, Protein % and
+  // Daughter Fertility were offered to rank on but never read, so every bull
+  // came back with no value and the report said "no eligible bulls" while
+  // blaming the proofs — "296 bulls have no Fat % on the preferred proof" — for
+  // data that was in the database the whole time. Deriving it means adding a
+  // trait to the menu cannot leave the query behind.
   const candidateSelect = {
     animalId: true,
-    lpi: true,
-    proDollar: true,
-    conf: true,
-    mamm: true,
-    milk: true,
-    fat: true,
-    prot: true,
-    scs: true,
+    ...Object.fromEntries(MATING_INDEXES.map((i) => [i.col, true])),
     animal: { select: { primaryName: true, proofStatus: true, sireType: true } },
-  } satisfies Prisma.GeneticEvaluationSelect;
+  } as Prisma.GeneticEvaluationSelect;
 
   const candidateRowsPromise = prisma.geneticEvaluation.findMany({
     where: {
@@ -715,16 +716,11 @@ export async function getMatingProgramReport(
       name: r.animal?.primaryName ?? r.animalId,
       proofStatus: r.animal?.proofStatus ?? null,
       sireType: r.animal?.sireType ?? null,
-      cols: new Map<string, number | null>([
-        ["LPI", r.lpi],
-        ["PRO$", r.proDollar],
-        ["CONF", r.conf],
-        ["MAMM", r.mamm],
-        ["MILK", r.milk],
-        ["FAT", r.fat],
-        ["PROT", r.prot],
-        ["SCS", r.scs],
-      ]),
+      // Derived from MATING_INDEXES for the same reason the select above is:
+      // the two must cover exactly the traits the menu offers.
+      cols: new Map<string, number | null>(
+        MATING_INDEXES.map((i) => [i.code, (r as unknown as Record<string, number | null>)[i.col] ?? null]),
+      ),
     });
   }
 
