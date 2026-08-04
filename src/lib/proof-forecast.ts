@@ -61,6 +61,10 @@ import { isRollbackRound, isOfficialProof } from "./rollback";
 import { unpackTraits, traitDefMap } from "./eval-traits";
 import { breedCodeOf, projectedShift, fallbackShift, hasPublished, LATEST_PUBLISHED_YEAR } from "./base-change";
 import { KEY_TRAITS, KEY_TRAIT_CODES, periodKey, traitStdStats, type ProofPeriod } from "./proof-change";
+import {
+  buildCorpus, forecastTrait, stepsFor, cohortFacts, quantileOf, QUANTILES,
+  type AnalogueBull, type AnalogueTraitForecast, type Corpus,
+} from "./proof-analogue";
 
 export { KEY_TRAITS } from "./proof-change";
 
@@ -149,10 +153,35 @@ export interface TraitForecast {
   lo: number | null;
   hi: number | null;
   /** How the number was reached — shown so a user can audit any projection. */
-  basis: "trend" | "hold" | "regression" | "base change";
+  basis: "trend" | "hold" | "regression" | "base change" | "analogue" | "cohort";
   /** Observed steps behind the bull's trend term. */
   steps: number;
+
+  // --- The predictive distribution ----------------------------------------
+  // Direction is not forecastable; MOVEMENT is. These are what the report
+  // actually leads with, and they come from the bulls who were at this bull's
+  // career stage — see proof-analogue.ts.
+  /** Mean absolute move among his analogues: how far he is likely to move. */
+  expectedMove: number | null;
+  /** Share of his analogues whose value did not change at all. */
+  zeroShare: number | null;
+  /** A move bigger than this is "material" — the cohort's median move size. */
+  material: number | null;
+  /** Probability of a material move up / down, and of holding within it. */
+  pUp: number | null;
+  pDown: number | null;
+  pSteady: number | null;
+  /** Full distribution at QUANTILE_LEVELS, for charting the fan. */
+  quantiles: number[] | null;
+  /** How many analogues stood behind it (K, or fewer near the fallback). */
+  neighbours: number | null;
 }
+
+/** The probability levels behind every `quantiles` array. */
+export const QUANTILE_LEVELS = QUANTILES;
+
+/** How exposed a bull is to movement, relative to the rest of the lineup. */
+export type ExposureBand = "steady" | "typical" | "exposed";
 
 export interface BullForecast {
   found: boolean;
@@ -167,6 +196,15 @@ export interface BullForecast {
   direction: "up" | "down" | "hold";
   summary: string;
   drivers: string[];
+
+  // --- Movement exposure ---------------------------------------------------
+  /** Mean absolute LPI move among his analogues — the headline "how far". */
+  expectedLpiMove: number | null;
+  /** Where that sits in the reported lineup, 0 (steadiest) to 100 (most exposed). */
+  exposure: number | null;
+  exposureBand: ExposureBand | null;
+  /** Chance of a material LPI move in either direction. */
+  pLpiMove: number | null;
 }
 
 export interface ForecastRow {
@@ -188,6 +226,19 @@ export interface BacktestTrait {
   naiveMae: number;    // mean absolute error of "assume no change"
   skill: number;       // % better than naive (negative = worse)
   coverage: number;    // % of actuals that fell inside the 80% band
+  /**
+   * The measure that matters. CRPS scores the whole predicted RANGE — it
+   * penalises a band both for missing and for being needlessly wide, so nothing
+   * can score well by hedging. `rangeSkill` is the % improvement over the
+   * cohort-wide band this report used to publish.
+   */
+  crps: number;
+  cohortCrps: number;
+  rangeSkill: number;
+  /** Predictions behind the range figures (more rounds than the point figures). */
+  rangeN: number;
+  /** Share of the tested rounds where the value did not change at all. */
+  zeroShare: number;
 }
 
 export interface Backtest {
@@ -198,6 +249,10 @@ export interface Backtest {
   /** Weighted overall skill across the key traits. */
   overallSkill: number | null;
   overallCoverage: number | null;
+  /** Weighted % improvement of the analogue range over the cohort-wide range. */
+  overallRangeSkill: number | null;
+  /** How many recent rounds per bull the range figures were measured over. */
+  rangeRounds: number;
 }
 
 export interface TrendPoint {
@@ -227,6 +282,20 @@ export interface ForecastReport {
   risers: number;
   fallers: number;
   avgLpiDelta: number | null;
+
+  // --- What the report actually leads with ---------------------------------
+  /**
+   * How the lineup behaves on this kind of round, per key trait: how often a
+   * bull moves at all, and by how much. This is the forecastable part, and it
+   * is what replaces a column of zeroes.
+   */
+  movement: { code: string; label: string; movedShare: number; typicalMove: number; material: number; n: number }[];
+  /** Bulls whose chance of a material LPI move exceeds one in three. */
+  likelyToMove: number;
+  /** Median expected LPI move across the reported lineup. */
+  typicalLpiMove: number | null;
+  /** The most movement-exposed bulls, already sorted. */
+  mostExposed: { id: string; name: string; naab: string | null; expectedMove: number; pMove: number }[];
   // filters / state
   /** Retained for URL compatibility; this report always targets the next round. */
   target: string;
@@ -250,6 +319,33 @@ interface EvalLite {
   evaluationDate: Date;
   traitsJson: string | null;
   reliabilityOverall: number | null;
+  daughters: number | null;
+  sireType: string | null;
+}
+
+/** A decoded bull, as the report works with it internally. */
+interface DecodedBull {
+  b: { id: string; primaryName: string; shortName: string | null; birthDate: Date | null };
+  rounds: {
+    date: Date; run: string | null; reliability: number | null;
+    daughters: number | null; sireType: string | null; traits: Map<string, number>;
+  }[];
+}
+
+/** Reshape the report's decoded bulls into what the analogue model consumes. */
+function toAnalogueBulls(decoded: DecodedBull[]): AnalogueBull[] {
+  return decoded.map((x) => ({
+    id: x.b.id,
+    birthTime: x.b.birthDate ? x.b.birthDate.getTime() : null,
+    rounds: x.rounds.map((r) => ({
+      time: r.date.getTime(),
+      kind: roundKind(r.date),
+      rel: r.reliability,
+      daughters: r.daughters,
+      sireType: r.sireType,
+      traits: r.traits,
+    })),
+  }));
 }
 
 /** One trait's observed history for a bull: value per round, oldest first. */
@@ -553,7 +649,7 @@ function sinceWindow(latest: Date, months: number | null): Date | undefined {
   return new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() - months, 1));
 }
 
-const SORTABLE = new Set(["lpi", "conf", "name", "confidence", ...KEY_TRAIT_CODES.map((c) => c.toLowerCase())]);
+const SORTABLE = new Set(["exposure", "lpi", "conf", "name", "confidence", ...KEY_TRAIT_CODES.map((c) => c.toLowerCase())]);
 
 export async function getProofForecastReport(sp: Record<string, string | undefined>): Promise<ForecastReport> {
   const defMap = await traitDefMap();
@@ -567,10 +663,17 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       ...(blondinFilter ?? {}),
     },
     select: {
-      id: true, primaryName: true, shortName: true,
+      id: true, primaryName: true, shortName: true, birthDate: true,
       breed: { select: { breedName: true } },
       identifiers: { where: { active: true }, select: { idType: true, idValue: true, isPrimary: true } },
-      evaluations: { orderBy: { evaluationDate: "asc" }, select: { proofRun: true, evaluationDate: true, traitsJson: true, reliabilityOverall: true } },
+      evaluations: {
+        orderBy: { evaluationDate: "asc" },
+        // daughters / sireType feed the analogue model's career-stage matching.
+        select: {
+          proofRun: true, evaluationDate: true, traitsJson: true, reliabilityOverall: true,
+          daughters: true, sireType: true,
+        },
+      },
     },
   } satisfies Prisma.AnimalFindManyArgs);
 
@@ -581,6 +684,8 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       date: e.evaluationDate,
       run: e.proofRun,
       reliability: e.reliabilityOverall,
+      daughters: e.daughters,
+      sireType: e.sireType,
       traits: new Map(unpackTraits(e.traitsJson, defMap).filter((t) => t.numericValue != null).map((t) => [t.traitCode, t.numericValue as number])),
     })),
   })).filter((x) => x.rounds.length >= 2);
@@ -620,6 +725,13 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
   const latestDate = allDates.length ? allDates.reduce((a, b) => (a > b ? a : b)) : new Date();
   const stats = buildTraitStats(decoded, codes, sinceWindow(latestDate, DEFAULT_PARAMS.recentMonths));
 
+  // The analogue corpus: every (bull, trait, round) on file, so each bull can be
+  // matched against the bulls who were where he is now. Built once per report.
+  const analogueBulls = toAnalogueBulls(decoded as DecodedBull[]);
+  const corpus = buildCorpus(analogueBulls, KEY_TRAIT_CODES);
+  const analogueById = new Map(analogueBulls.map((b) => [b.id, b]));
+  const targetTime = target.getTime();
+
   // --- Project every bull ---
   const targetYear = target.getUTCFullYear();
   const rows: ForecastRow[] = decoded.map((x) => {
@@ -631,6 +743,13 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     // Published base changes are per breed, so resolve the bull's breed once.
     const breedCode = breedCodeOf(x.b.breed?.breedName ?? null);
     const forecasts: TraitForecast[] = [];
+
+    // The analogue model covers the nine key traits (it needs a trait's own
+    // history across the whole lineup to find analogues at all). Everything
+    // else — the linear/type profile — keeps the cohort band.
+    const ab = analogueById.get(x.b.id);
+    const steps = ab ? stepsFor(corpus, ab) : null;
+
     for (const code of codes) {
       const obs = seriesOf(x.rounds, code);
       if (obs.length === 0) continue;
@@ -643,13 +762,35 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       if (!p) continue;
       const def = defMap.get(code);
       const current = obs[obs.length - 1].value;
+
+      // On a non-April round the band comes from this bull's analogues, which
+      // measured 2.5% sharper than the cohort band it replaces. An April is a
+      // published base change and keeps its own path.
+      const an: AnalogueTraitForecast | null =
+        !targetIsApril && ab && steps && KEY_TRAIT_CODES.includes(code)
+          ? forecastTrait(corpus, code, ab, targetKind, targetTime, { stepsCache: steps })
+          : null;
+
       forecasts.push({
         code,
         name: KEY_TRAITS.find((k) => k.code === code)?.label ?? def?.name ?? code,
         category: def?.category ?? null,
         key: KEY_TRAIT_CODES.includes(code),
-        current, predicted: p.predicted, delta: round2(p.predicted - current),
-        lo: p.lo, hi: p.hi, basis: p.basis, steps: p.steps,
+        current,
+        predicted: p.predicted,
+        delta: round2(p.predicted - current),
+        lo: an ? round2(an.lo) : p.lo,
+        hi: an ? round2(an.hi) : p.hi,
+        basis: an ? an.basis : p.basis,
+        steps: p.steps,
+        expectedMove: an ? round2(an.expectedMove) : null,
+        zeroShare: an ? an.zeroShare : null,
+        material: an ? an.material : null,
+        pUp: an ? an.pUp : null,
+        pDown: an ? an.pDown : null,
+        pSteady: an ? an.pSteady : null,
+        quantiles: an ? an.quantiles.map(round2) : null,
+        neighbours: an ? an.neighbours : null,
       });
     }
     const byCode = new Map(forecasts.map((f) => [f.code, f]));
@@ -659,7 +800,8 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
       if (a.key && b.key) return KEY_TRAIT_CODES.indexOf(a.code) - KEY_TRAIT_CODES.indexOf(b.code);
       return (a.category ?? "").localeCompare(b.category ?? "") || a.name.localeCompare(b.name);
     });
-    const lpiDelta = byCode.get("LPI")?.delta ?? null;
+    const lpiKey = byCode.get("LPI");
+    const lpiDelta = lpiKey?.delta ?? null;
     const confidence = confidenceOf(x.rounds.length, rel, targetIsApril);
 
     const drivers: string[] = [];
@@ -670,7 +812,13 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
         : `April base change ahead — ${targetYear} not published yet, using the ${LATEST_PUBLISHED_YEAR} table (${breedCode})`,
       );
     } else {
-      drivers.push("ordinary round — no base change; best estimate is the current proof");
+      const lpiAn = byCode.get("LPI");
+      drivers.push(
+        lpiAn?.neighbours
+          ? `matched against ${lpiAn.neighbours} bulls at the same career stage`
+          : "ordinary round — no base change; best estimate is the current proof",
+      );
+      drivers.push("direction is not forecastable — the range is the forecast");
     }
     // Reliability GROWTH is what predicts movement — the level barely does.
     if (relGrowth != null && relGrowth > 0.03) drivers.push("reliability climbing fast — expect a bigger move");
@@ -688,12 +836,79 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
         keyForecasts, allForecasts, lpiDelta,
         direction: lpiDelta == null || Math.abs(lpiDelta) < 1 ? "hold" : lpiDelta > 0 ? "up" : "down",
         summary: buildSummary(keyForecasts), drivers,
+        expectedLpiMove: lpiKey?.expectedMove ?? null,
+        pLpiMove: lpiKey && lpiKey.pUp != null && lpiKey.pDown != null ? round2(lpiKey.pUp + lpiKey.pDown) : null,
+        // Filled in below, once the whole lineup is known.
+        exposure: null,
+        exposureBand: null,
       },
     };
   });
 
+  // Exposure is relative: "likely to move more than the rest of this lineup".
+  // It can only be worked out once every bull has been projected, so it is a
+  // second pass rather than part of the map above.
+  const exposures = rows
+    .map((r) => r.forecast.expectedLpiMove)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b);
+  for (const r of rows) {
+    const e = r.forecast.expectedLpiMove;
+    if (e == null || exposures.length < 4) continue;
+    const below = exposures.filter((v) => v < e).length;
+    const pct = Math.round((below / (exposures.length - 1)) * 100);
+    r.forecast.exposure = Math.max(0, Math.min(100, pct));
+    r.forecast.exposureBand = pct >= 75 ? "exposed" : pct <= 25 ? "steady" : "typical";
+  }
+
   // --- Backtest: re-predict the most recent round from history only ---
   const backtest = runBacktest(decoded, codes);
+  // …and score the RANGE, which is the part the model genuinely forecasts.
+  if (!targetIsApril) {
+    // Key on everything that could change the answer: which bulls, how many
+    // rounds, and the newest round on file. An import moves at least one.
+    const cacheKey = [
+      blondin,
+      analogueBulls.length,
+      analogueBulls.reduce((s, b) => s + b.rounds.length, 0),
+      latestDate.getTime(),
+    ].join("|");
+    const range = cachedRangeBacktest(analogueBulls, corpus, cacheKey);
+    let wSkill = 0, wN = 0;
+    for (const t of backtest.traits) {
+      const r = range.get(t.code);
+      if (!r) continue;
+      t.crps = Math.round(r.crps * 10000) / 10000;
+      t.cohortCrps = Math.round(r.cohortCrps * 10000) / 10000;
+      t.rangeSkill = Math.round(r.rangeSkill * 10) / 10;
+      t.coverage = Math.round(r.coverage * 10) / 10;
+      t.zeroShare = Math.round(r.zeroShare * 10) / 10;
+      t.rangeN = r.n;
+      wSkill += r.rangeSkill * r.n; wN += r.n;
+    }
+    backtest.overallRangeSkill = wN ? Math.round((wSkill / wN) * 10) / 10 : null;
+    const covN = backtest.traits.filter((t) => t.rangeN > 0);
+    if (covN.length) {
+      backtest.overallCoverage = Math.round(
+        (covN.reduce((s, t) => s + t.coverage * t.rangeN, 0) / covN.reduce((s, t) => s + t.rangeN, 0)) * 10,
+      ) / 10;
+    }
+  }
+
+  // --- How the lineup behaves on this kind of round ---
+  // The forecastable part, and what the report leads with instead of a column
+  // of zeroes: how often a bull moves at all, and by how much.
+  const movement = KEY_TRAITS.map((t) => {
+    const f = cohortFacts(corpus, t.code, targetKind);
+    if (!f) return null;
+    return {
+      code: t.code, label: t.label,
+      movedShare: Math.round((1 - f.zeroShare) * 1000) / 10,
+      typicalMove: Math.round(f.typicalMove * 100) / 100,
+      material: Math.round(f.material * 100) / 100,
+      n: f.n,
+    };
+  }).filter((m): m is NonNullable<typeof m> => m != null);
 
   // --- Lineup trend for the chart (average of the charted trait per round) ---
   const chartCode = (sp.ctrait ?? "LPI").toUpperCase();
@@ -732,15 +947,28 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
   if (minConfidence === "high") filtered = filtered.filter((r) => r.forecast.confidence === "high");
   else if (minConfidence === "medium") filtered = filtered.filter((r) => r.forecast.confidence !== "low");
 
-  const sort = SORTABLE.has((sp.sort ?? "").toLowerCase()) ? (sp.sort as string).toLowerCase() : "lpi";
+  // Default to exposure. Sorting by projected change was the old default and is
+  // meaningless now: outside an April every projected change is zero, because
+  // the direction of a move is not forecastable. "Who is most likely to move"
+  // is both answerable and the question people actually have.
+  const sort = SORTABLE.has((sp.sort ?? "").toLowerCase())
+    ? (sp.sort as string).toLowerCase()
+    : (targetIsApril ? "lpi" : "exposure");
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const rank = { high: 3, medium: 2, low: 1 } as const;
   if (sort === "name") {
     filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name) * (dir === "asc" ? 1 : -1));
   } else {
     const val = (r: ForecastRow): number | null =>
-      sort === "confidence" ? rank[r.forecast.confidence]
-      : r.forecast.allForecasts.find((f) => f.code === sort.toUpperCase())?.delta ?? null;
+      sort === "exposure" ? r.forecast.expectedLpiMove
+      : sort === "confidence" ? rank[r.forecast.confidence]
+      // On a non-April round the delta is zero for everyone, so a trait column
+      // sorts by how far that trait is likely to move instead.
+      : (() => {
+        const f = r.forecast.allForecasts.find((t) => t.code === sort.toUpperCase());
+        if (!f) return null;
+        return targetIsApril ? f.delta : f.expectedMove ?? f.delta;
+      })();
     filtered = [...filtered].sort((a, b) => {
       const av = val(a), bv = val(b);
       if (av == null && bv == null) return 0;
@@ -786,6 +1014,20 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
     risers: rows.filter((r) => r.forecast.direction === "up").length,
     fallers: rows.filter((r) => r.forecast.direction === "down").length,
     avgLpiDelta: lpiDeltas.length ? Math.round((lpiDeltas.reduce((s, v) => s + v, 0) / lpiDeltas.length) * 10) / 10 : null,
+    movement,
+    likelyToMove: rows.filter((r) => (r.forecast.pLpiMove ?? 0) >= 1 / 3).length,
+    typicalLpiMove: exposures.length
+      ? Math.round(quantileOf(exposures, 0.5) * 10) / 10
+      : null,
+    mostExposed: [...rows]
+      .filter((r) => r.forecast.expectedLpiMove != null)
+      .sort((a, b) => (b.forecast.expectedLpiMove ?? 0) - (a.forecast.expectedLpiMove ?? 0))
+      .slice(0, 5)
+      .map((r) => ({
+        id: r.id, name: r.name, naab: r.naab,
+        expectedMove: Math.round((r.forecast.expectedLpiMove ?? 0) * 10) / 10,
+        pMove: Math.round((r.forecast.pLpiMove ?? 0) * 100),
+      })),
     target: "",
     targetKind,
     q, breed, sort, dir, blondin, cohortLabel, cohortN: rows.length, minConfidence,
@@ -793,11 +1035,27 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
   };
 }
 
+/**
+ * What to say about a bull when the direction of his next round is unknowable.
+ *
+ * The old wording here was "No material change projected", which was true of the
+ * point estimate and badly misleading: on an official round 84% of bulls move on
+ * LPI, by 14 points on average. The honest summary is how far he is likely to
+ * move and how the odds sit, which is the part that IS forecastable.
+ */
 function buildSummary(keys: TraitForecast[]): string {
-  const moved = keys.filter((c) => c.delta != null && Math.abs(c.delta) > 0)
+  // Where an April base change is being applied there IS a directional number.
+  const shifted = keys.filter((c) => c.delta != null && Math.abs(c.delta) > 0)
     .sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0)).slice(0, 3)
     .map((c) => `${c.name} ${c.delta! > 0 ? "+" : ""}${c.delta}`);
-  return moved.length ? moved.join(", ") : "No material change projected";
+  if (shifted.length) return shifted.join(", ");
+
+  const lpi = keys.find((c) => c.code === "LPI");
+  if (lpi?.expectedMove != null && lpi.pUp != null && lpi.pDown != null) {
+    const move = Math.round(lpi.pUp * 100 + lpi.pDown * 100);
+    return `LPI ${lpi.lo}–${lpi.hi} · typically ±${Math.round(lpi.expectedMove)} · ${move}% chance of a material move`;
+  }
+  return "Range only — direction not forecastable";
 }
 
 /**
@@ -815,7 +1073,7 @@ export function runBacktest(
   // Need 3 rounds: at least 2 to learn from, 1 to predict.
   const usable = decoded.filter((x) => x.rounds.length >= 3);
   if (usable.length < MIN_COHORT_OBS) {
-    return { ran: false, bulls: usable.length, roundLabel: null, traits: [], overallSkill: null, overallCoverage: null };
+    return { ran: false, bulls: usable.length, roundLabel: null, traits: [], overallSkill: null, overallCoverage: null, overallRangeSkill: null, rangeRounds: BACKTEST_ROUNDS };
   }
 
   // Train on history only — the held-out round must not inform the stats.
@@ -862,6 +1120,9 @@ export function runBacktest(
       naiveMae: Math.round(naiveMae * 100) / 100,
       skill: naiveMae > 0 ? Math.round(((naiveMae - mae) / naiveMae) * 1000) / 10 : 0,
       coverage: Math.round((a.hit / a.err.length) * 1000) / 10,
+      // Filled in by the range backtest, which scores what the model really
+      // predicts. Left at zero when it cannot run.
+      crps: 0, cohortCrps: 0, rangeSkill: 0, rangeN: 0, zeroShare: 0,
     });
   }
 
@@ -873,5 +1134,135 @@ export function runBacktest(
     traits,
     overallSkill: totalN ? Math.round((traits.reduce((s, t) => s + t.skill * t.n, 0) / totalN) * 10) / 10 : null,
     overallCoverage: totalN ? Math.round((traits.reduce((s, t) => s + t.coverage * t.n, 0) / totalN) * 10) / 10 : null,
+    overallRangeSkill: null,
+    rangeRounds: BACKTEST_ROUNDS,
   };
+}
+
+/**
+ * Rounds held out per bull when measuring the range. One round across 138 bulls
+ * gives a per-trait sample too small to read — traits that barely move swing
+ * several percent on noise alone. Six rounds is enough to be stable without
+ * making the page wait.
+ */
+const BACKTEST_ROUNDS = 6;
+
+/** Mean quantile (pinball) loss — CRPS, approximated on the published levels. */
+function crpsOf(actual: number, quantiles: number[]): number {
+  let s = 0;
+  for (let i = 0; i < QUANTILES.length; i++) {
+    const q = QUANTILES[i], pred = quantiles[i];
+    s += actual >= pred ? q * (actual - pred) : (1 - q) * (pred - actual);
+  }
+  return s / QUANTILES.length;
+}
+
+/**
+ * Score the RANGE, which is what this model actually forecasts.
+ *
+ * Every bull's most recent round is held out and predicted from the rounds
+ * before it, through the same code path the live report uses. The comparator is
+ * the cohort-wide band this report used to publish, built from the same earlier
+ * rounds — so the number answers "is the analogue band better than what we had".
+ *
+ * CRPS is used rather than coverage because coverage alone rewards a band for
+ * being wide. CRPS penalises both missing and hedging.
+ */
+function runRangeBacktest(
+  bulls: AnalogueBull[],
+  corpus: Corpus,
+): Map<string, { crps: number; cohortCrps: number; rangeSkill: number; coverage: number; zeroShare: number; n: number }> {
+  const out = new Map<string, { crps: number; cohortCrps: number; rangeSkill: number; coverage: number; zeroShare: number; n: number }>();
+
+  // Every observed move, with its time and kind, so the comparator can be built
+  // from strictly earlier rounds only.
+  const movesByTrait = new Map<string, { time: number; kind: RoundKind; move: number }[]>();
+  for (const code of KEY_TRAIT_CODES) {
+    const arr: { time: number; kind: RoundKind; move: number }[] = [];
+    for (const b of bulls) {
+      for (let i = 1; i < b.rounds.length; i++) {
+        if (b.rounds[i].kind === "april") continue;
+        const p = b.rounds[i - 1].traits.get(code), q = b.rounds[i].traits.get(code);
+        if (p != null && q != null) arr.push({ time: b.rounds[i].time, kind: b.rounds[i].kind, move: q - p });
+      }
+    }
+    movesByTrait.set(code, arr);
+  }
+
+  // The comparator depends only on (trait, round, kind) — never on the bull —
+  // and every bull's held-out rounds land on the same handful of dates, so each
+  // one is built once instead of once per bull.
+  const cohortQs = new Map<string, number[] | null>();
+  const cohortAt = (code: string, time: number, kind: RoundKind): number[] | null => {
+    const key = `${code}|${time}|${kind}`;
+    const cached = cohortQs.get(key);
+    if (cached !== undefined) return cached;
+    const all = movesByTrait.get(code) ?? [];
+    const earlier = all.filter((m) => m.time < time && m.kind === kind).map((m) => m.move).sort((x, y) => x - y);
+    const v = earlier.length < MIN_COHORT_OBS ? null : QUANTILES.map((q) => quantileOf(earlier, q));
+    cohortQs.set(key, v);
+    return v;
+  };
+
+  const acc = new Map<string, { a: number; c: number; hit: number; zero: number; n: number }>();
+  for (const code of KEY_TRAIT_CODES) acc.set(code, { a: 0, c: 0, hit: 0, zero: 0, n: 0 });
+
+  // Bulls outer, traits inner: a bull's step series is shared by all nine traits,
+  // so it is built once per bull rather than once per (bull, round, trait).
+  for (const b of bulls) {
+    // Hold out the last few rounds rather than only the newest: one round across
+    // 138 bulls is too small a sample for a per-trait figure to be stable.
+    if (b.rounds.length < 3) continue;
+    const steps = stepsFor(corpus, b);
+    const from = Math.max(1, b.rounds.length - BACKTEST_ROUNDS);
+    for (let i = from; i < b.rounds.length; i++) {
+      const cur = b.rounds[i];
+      if (cur.kind === "april") continue;
+      for (const code of KEY_TRAIT_CODES) {
+        const last = b.rounds[i - 1].traits.get(code);
+        const actual = cur.traits.get(code);
+        if (last == null || actual == null) continue;
+
+        const f = forecastTrait(corpus, code, b, cur.kind, cur.time, { stepsCache: steps, historyLength: i });
+        if (!f) continue;
+        const cq = cohortAt(code, cur.time, cur.kind);
+        if (!cq) continue;
+
+        const s = acc.get(code)!;
+        s.a += crpsOf(actual, f.quantiles);
+        s.c += crpsOf(actual, cq.map((v) => last + v));
+        if (actual >= f.lo && actual <= f.hi) s.hit++;
+        if (actual === last) s.zero++;
+        s.n++;
+      }
+    }
+  }
+
+  for (const [code, s] of acc) {
+    if (!s.n) continue;
+    const a = s.a / s.n, c = s.c / s.n;
+    out.set(code, {
+      crps: a, cohortCrps: c,
+      rangeSkill: c > 0 ? ((c - a) / c) * 100 : 0,
+      coverage: (s.hit / s.n) * 100,
+      zeroShare: (s.zero / s.n) * 100,
+      n: s.n,
+    });
+  }
+  return out;
+}
+
+/**
+ * The range backtest depends only on which bulls and rounds are on file, never
+ * on the report's filters or sort — and it is by far the most expensive part of
+ * the page. Memoise it so that sorting, filtering and paging are instant, and
+ * invalidate whenever the underlying data changes.
+ */
+let rangeCache: { key: string; value: ReturnType<typeof runRangeBacktest> } | null = null;
+
+function cachedRangeBacktest(bulls: AnalogueBull[], corpus: Corpus, key: string) {
+  if (rangeCache && rangeCache.key === key) return rangeCache.value;
+  const value = runRangeBacktest(bulls, corpus);
+  rangeCache = { key, value };
+  return value;
 }

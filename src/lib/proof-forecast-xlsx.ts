@@ -8,6 +8,10 @@ import { KEY_TRAITS, type ForecastReport, type TraitForecast } from "./proof-for
 const GREEN = { fill: "FFE7F6EC", font: "FF15803D" };
 const RED = { fill: "FFFDE7E7", font: "FFB91C1C" };
 
+/** Sheet 1 layout: fixed leading columns, then a block of columns per trait. */
+const LEAD_COLS = 11;
+const PER_TRAIT = 7;
+
 function paint(cell: ExcelJS.Cell, delta: number | null) {
   if (delta == null || delta === 0) return;
   const c = delta > 0 ? GREEN : RED;
@@ -37,9 +41,12 @@ export async function buildProofForecastWorkbook(report: ForecastReport): Promis
 
   // --- Sheet 1: key traits, one row per bull ---
   const s1 = wb.addWorksheet("Projections");
-  const head: string[] = ["Bull", "NAAB", "Reg", "Breed", "Rounds on file", "Reliability", "Confidence", "From round", "Projected round"];
-  for (const t of KEY_TRAITS) head.push(`${t.label} now`, `${t.label} projected`, `${t.label} Δ`, `${t.label} low`, `${t.label} high`);
-  head.push("What moves most", "Drivers");
+  const head: string[] = ["Bull", "NAAB", "Reg", "Breed", "Rounds on file", "Reliability", "Confidence", "From round", "Projected round", "Exposure", "Expected LPI move"];
+  // Per trait: where he is, the range he could land in, how far he typically
+  // moves, and the odds. The Δ column is retained because an April base change
+  // genuinely does have a direction.
+  for (const t of KEY_TRAITS) head.push(`${t.label} now`, `${t.label} Δ`, `${t.label} low`, `${t.label} high`, `${t.label} ± typical`, `${t.label} P(up)`, `${t.label} P(down)`);
+  head.push("Summary", "Drivers");
   s1.addRow(head);
   s1.getRow(1).font = { bold: true };
   s1.getRow(1).alignment = { vertical: "middle", wrapText: true };
@@ -51,45 +58,69 @@ export async function buildProofForecastWorkbook(report: ForecastReport): Promis
       r.name, r.naab ?? "", r.reg ?? "", r.breed ?? "",
       f.roundsOnFile, f.reliability != null ? Math.round(f.reliability * 100) / 100 : null,
       f.confidence, f.fromRun ?? report.latestLabel ?? "", report.targetLabel,
+      f.exposureBand ?? "", f.expectedLpiMove ?? null,
     ];
     for (const t of KEY_TRAITS) {
       const k = byCode.get(t.code);
-      cells.push(k?.current ?? null, k?.predicted ?? null, k?.delta ?? null, k?.lo ?? null, k?.hi ?? null);
+      cells.push(
+        k?.current ?? null, k?.delta ?? null, k?.lo ?? null, k?.hi ?? null,
+        k?.expectedMove ?? null,
+        k?.pUp != null ? Math.round(k.pUp * 100) / 100 : null,
+        k?.pDown != null ? Math.round(k.pDown * 100) / 100 : null,
+      );
     }
     cells.push(f.summary, f.drivers.join("; "));
     const row = s1.addRow(cells);
     KEY_TRAITS.forEach((t, i) => {
       const k = byCode.get(t.code);
-      paint(row.getCell(9 + i * 5 + 3), k?.delta ?? null); // 9 lead cols; 5 per trait, Δ is the 3rd
+      paint(row.getCell(LEAD_COLS + i * PER_TRAIT + 2), k?.delta ?? null); // Δ is the 2nd of each trait block
     });
   }
-  s1.columns.forEach((col, i) => { col.width = i < 9 ? 15 : 11; });
+  s1.columns.forEach((col, i) => { col.width = i < LEAD_COLS ? 15 : 11; });
   s1.getColumn(head.length - 1).width = 38;
   s1.getColumn(head.length).width = 38;
   s1.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
 
   // --- Sheet 2: the full projected profile, every trait ---
-  const s2 = wb.addWorksheet("Full projected profile");
-  s2.addRow(["Bull", "NAAB", "Trait", "Category", "Key trait", "Current", "Projected", "Change", "Low", "High", "Basis", "Steps used"]);
+  const s2 = wb.addWorksheet("Full profile and odds");
+  s2.addRow(["Bull", "NAAB", "Trait", "Category", "Key trait", "Current", "Change", "Low", "High", "Typical move", "P(up)", "P(holds)", "P(down)", "Analogues", "Basis"]);
   s2.getRow(1).font = { bold: true };
   for (const r of report.rows) {
     for (const t of r.forecast.allForecasts as TraitForecast[]) {
-      const row = s2.addRow([r.name, r.naab ?? "", t.name, t.category ?? "", t.key ? "yes" : "", t.current, t.predicted, t.delta, t.lo, t.hi, t.basis, t.steps]);
-      paint(row.getCell(8), t.delta);
+      const row = s2.addRow([
+        r.name, r.naab ?? "", t.name, t.category ?? "", t.key ? "yes" : "",
+        t.current, t.delta, t.lo, t.hi, t.expectedMove,
+        t.pUp != null ? Math.round(t.pUp * 100) / 100 : null,
+        t.pSteady != null ? Math.round(t.pSteady * 100) / 100 : null,
+        t.pDown != null ? Math.round(t.pDown * 100) / 100 : null,
+        t.neighbours, t.basis,
+      ]);
+      paint(row.getCell(7), t.delta);
     }
   }
   s2.columns.forEach((col, i) => { col.width = i === 0 ? 22 : i === 2 ? 26 : i === 3 ? 14 : 11; });
   s2.views = [{ state: "frozen", ySplit: 1 }];
 
-  // --- Sheet 3: measured accuracy, so the numbers are never read as fact ---
-  const s3 = wb.addWorksheet("Accuracy (backtest)");
-  if (report.backtest.ran) {
-    s3.addRow([`Held out each bull's ${report.backtest.roundLabel} round and predicted it from earlier rounds only.`]);
-    s3.addRow([`${report.backtest.bulls} bulls tested. Overall skill vs assuming no change: ${report.backtest.overallSkill}%. Range coverage: ${report.backtest.overallCoverage}% (target 80%).`]);
+  // --- Sheet 3: how the lineup moves, and how accurate this is ---
+  const s3 = wb.addWorksheet("Accuracy and movement");
+  s3.addRow([`Direction is not forecastable: the projected value equals the current value on every non-April round.`]);
+  s3.addRow([`The forecast is the RANGE and the odds. What follows is how well that range does, measured against real rounds.`]);
+  s3.addRow([]);
+  if (report.movement.length) {
+    s3.addRow([`How this lineup behaves on a ${report.targetKind} round like ${report.targetLabel}`]);
+    s3.addRow(["Trait", "Bulls that move %", "Typical move", "Material move", "Rounds measured"]);
+    s3.getRow(5).font = { bold: true };
+    for (const m of report.movement) s3.addRow([m.label, m.movedShare, m.typicalMove, m.material, m.n]);
     s3.addRow([]);
-    s3.addRow(["Trait", "Bulls", "Avg error", "Error if unchanged", "Skill %", "Coverage %"]);
-    s3.getRow(4).font = { bold: true };
-    for (const t of report.backtest.traits) s3.addRow([t.label, t.n, t.mae, t.naiveMae, t.skill, t.coverage]);
+  }
+  if (report.backtest.ran) {
+    s3.addRow([`Held back the last ${report.backtest.rangeRounds} rounds, one at a time, and re-forecast each from earlier rounds only.`]);
+    s3.addRow([`${report.backtest.bulls} bulls tested. The range scored ${report.backtest.overallRangeSkill}% better (CRPS) than the single lineup-wide range this replaces.`]);
+    s3.addRow(["Trait", "Forecasts", "Range score (CRPS)", "Old model", "Sharper by %", "Didn't move %"]);
+    s3.getRow(s3.rowCount).font = { bold: true };
+    for (const t of report.backtest.traits.filter((x) => x.rangeN > 0)) {
+      s3.addRow([t.label, t.rangeN, t.crps, t.cohortCrps, t.rangeSkill, t.zeroShare]);
+    }
   } else {
     s3.addRow(["Not enough bulls with three or more rounds to measure accuracy yet."]);
   }
