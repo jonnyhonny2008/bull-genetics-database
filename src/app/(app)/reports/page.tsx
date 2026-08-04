@@ -29,6 +29,13 @@ const REPORTS = [
     blurb: "The same trait-by-trait movement, but between each bull's latest proof and the run immediately before it — interim to interim, spanning official proofs too. Ranks by the biggest changes, flags unusual movers, and exports to Excel.",
     ready: true,
   },
+  {
+    href: "/reports/mating-program",
+    title: "Mating Program",
+    tag: "Mating",
+    blurb: "Paste up to 50 females and get each one ranked against the bull lineup by the projected parent average of the calf. Any bull sharing a registered ancestor with her inside three generations is excluded and listed with the shared ancestor named, and bulls whose pedigree is too thin to screen are withheld rather than recommended.",
+    ready: true,
+  },
 ];
 
 export default function ReportsPage() {

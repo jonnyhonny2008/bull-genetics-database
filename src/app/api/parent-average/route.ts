@@ -3,7 +3,8 @@ import { getSessionUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import {
-  resolveParentForPA, computeParentAverage, type PAParent, type PAResult, type PAAncestor,
+  resolveParentForPA, computeParentAverage, loadPAAliasCorpus,
+  type PAParent, type PAResult, type PAAncestor,
 } from "@/lib/parent-average";
 import { ingestLactanetReg } from "@/lib/lactanet-ingest";
 import type { LinearGroup } from "@/components/LinearGraph";
@@ -83,9 +84,13 @@ export async function POST(request: Request) {
   const dam = await resolveParentForPA(damReg);
   const sires = await Promise.all(sireRegs.map((r) => resolveParentForPA(r)));
 
+  // One small identifier query, so the relatedness screen recognises an animal
+  // held under both a Canadian registration and a NAAB code as one animal.
+  const corpus = await loadPAAliasCorpus();
+
   const matings: PAMating[] = [];
   for (const sire of sires) {
-    const result = computeParentAverage(sire, dam);
+    const result = computeParentAverage(sire, dam, corpus);
     const paByCode = new Map<string, number>(result.pa.map((r) => [r.code, r.pa]));
     matings.push({
       sire: result.sire,

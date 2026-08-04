@@ -12,12 +12,17 @@ interface ParentMeta {
   traitCount: number; error?: string;
 }
 interface PARow { code: string; name: string; category: string | null; sire: number; dam: number; pa: number; }
-interface Shared { reg: string; name: string | null; sirePath: string; damPath: string; sireGen: number; damGen: number; }
+interface Shared { reg: string; name: string | null; sirePath: string; damPath: string; sireGen: number; damGen: number; depth?: number; label?: string; }
+interface Relatedness {
+  tier: "excluded" | "clear" | "unknown" | "no-pedigree";
+  depth: number; confidence: number; sireSlots: number; damSlots: number; note: string;
+}
 interface Ancestor { generation: number; side: "sire" | "dam"; reg: string | null; name: string | null; }
 interface PAResult {
   ok: boolean; reason?: string; sire: ParentMeta; dam: ParentMeta;
   pa: PARow[]; descriptive: { code: string; name: string; sire: string; dam: string }[];
-  unavailable: { code: string; name: string; availableFor: string }[]; shared: Shared[]; notes: string[];
+  unavailable: { code: string; name: string; availableFor: string }[]; shared: Shared[];
+  relatedness?: Relatedness; notes: string[];
 }
 interface Mating { sire: ParentMeta; result: PAResult; linearGroups: LinearGroup[]; sireAncestors: Ancestor[]; damAncestors: Ancestor[]; }
 interface PAResponse { ok: boolean; error?: string; dam: ParentMeta | null; matings: Mating[]; }
@@ -230,9 +235,14 @@ function SingleCard({ m, dam }: { m: Mating; dam: ParentMeta }) {
 
       {/* shared relatives */}
       <div>
-        <div className="mb-1 text-sm font-semibold text-slate-700">Shared relatives (nearest 3 generations)</div>
+        <div className="mb-1 text-sm font-semibold text-slate-700">
+          Shared relatives (nearest {result.relatedness?.depth ?? 3} generations of each parent)
+        </div>
         {result.shared.length === 0 ? (
-          <p className="text-xs text-emerald-700">None — no common ancestor within 3 generations (an outcross at this depth).</p>
+          // "Nothing found" and "we could not look" must never read the same.
+          <p className={`text-xs ${result.relatedness?.tier === "clear" ? "text-emerald-700" : "text-amber-700"}`}>
+            {result.relatedness?.note ?? "None found — but the depth of this check could not be established."}
+          </p>
         ) : (
           <ul className="space-y-1 text-xs">
             {result.shared.map((s) => (
