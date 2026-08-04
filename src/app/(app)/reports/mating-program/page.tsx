@@ -4,7 +4,7 @@ import { can } from "@/lib/constants";
 import { PageHeader, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { getMatingProgramReport, MATING_INDEXES } from "@/lib/mating-program";
-import { blendLabel, MAX_SELECTED_TRAITS, MAX_WEIGHT, MIN_WEIGHT, WEIGHT_STEP } from "@/lib/mating-score";
+import { BALANCE_STEP, blendLabel, MAX_BALANCE, MAX_SELECTED_TRAITS, MAX_WEIGHT, MIN_BALANCE, MIN_WEIGHT, WEIGHT_STEP } from "@/lib/mating-score";
 import { MatingProgramResults } from "@/components/MatingProgramResults";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +58,7 @@ export default async function MatingProgramReportPage({
   // Preserve the current run on the Excel export link.
   const exportParams = new URLSearchParams();
   for (const k of [
-    "females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly",
+    "females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly", "crossBreed", "balance",
     // Every trait slot travels too, or the export would silently be a different
     // ranking from the one on screen.
     ...TRAIT_SLOTS.flatMap((s) => [s.code, s.weight]),
@@ -229,6 +229,36 @@ export default async function MatingProgramReportPage({
             average and every 5 points is one standard deviation. A bull missing any trait in the blend is left out
             rather than scored on the rest.
           </p>
+
+          {/* Balance — the no-holes dial. Only bites on a blend, because with a
+              single trait a bull's worst trait IS his only trait. */}
+          {params.selected.length > 1 && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <label className="label" htmlFor="balance">
+                Penalty for a weakness — {Math.round(params.balance * 100)}%
+              </label>
+              <input
+                id="balance"
+                name="balance"
+                type="range"
+                min={MIN_BALANCE}
+                max={MAX_BALANCE}
+                step={BALANCE_STEP}
+                defaultValue={params.balance}
+                className="w-full max-w-md"
+              />
+              <div className="flex max-w-md justify-between text-[10px] text-slate-400">
+                <span>0 — average the traits</span>
+                <span>100 — rank on the weakest</span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                A plain average lets a bull buy off a hole: <strong>+3 SD on one trait and −1 on another</strong> scores
+                the same as <strong>+1 on both</strong>, and those are not the same animal. This dial mixes the average
+                with the bull&rsquo;s <strong>worst</strong> selected trait, so a weakness costs him something no amount
+                of excess elsewhere fully pays back — a balanced bull with no holes ranks ahead of a spiky one.
+              </p>
+            </div>
+          )}
         </fieldset>
 
         <div className="flex flex-wrap items-end gap-3">
@@ -301,6 +331,13 @@ export default async function MatingProgramReportPage({
           >
             <input type="checkbox" name="naabOnly" value="1" defaultChecked={params.naabOnly} />
             NAAB code only
+          </label>
+          <label
+            className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"
+            title="Off by default: a bull is only offered for a female of his own breed. Tick this to allow deliberate crossbreeding."
+          >
+            <input type="checkbox" name="crossBreed" value="1" defaultChecked={params.crossBreed} />
+            Allow other breeds
           </label>
           <button type="submit" className="btn-primary">Generate</button>
           <a href="/reports/mating-program" className="btn-secondary">Reset</a>

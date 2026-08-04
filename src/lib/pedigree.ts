@@ -139,6 +139,26 @@ export function pedigreeNotesFromFamilyTree(
   return parts.length ? `${label}: ${parts.join(" · ")}` : null;
 }
 
+/**
+ * The breed code carried by a registration number.
+ *
+ * The Interbull-style identifier is BBCCCS######## — breed, country, sex,
+ * number — so `HOCANF121135242` is a Canadian Holstein female and
+ * `JECANM111353298` a Canadian Jersey male. Reading the breed off the
+ * registration rather than the breed table matters because a female pasted into
+ * the mating program may never become an Animal row at all: she is resolved live
+ * and discarded, so a breed foreign key would not exist for her.
+ *
+ * Deliberately a local regex rather than lactanet-web's parseReg, which is
+ * `server-only` and would make every module that touches breed unusable in a
+ * unit test.
+ */
+export function breedFromReg(reg: string | null | undefined): string | null {
+  if (!reg) return null;
+  const m = /^([A-Z]{2})[A-Z0-9]{3}[MF]\d+$/.exec(reg.trim().toUpperCase().replace(/\s+/g, ""));
+  return m ? m[1] : null;
+}
+
 export type AncestorEval = Partial<Record<string, number | null>>;
 
 /** A parsed ancestor plus whatever we resolved about it from our own database. */

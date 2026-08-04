@@ -51,6 +51,7 @@ import {
   type PATrait,
 } from "./parent-average";
 import { blondinWhere } from "./sire-class";
+import { breedFromReg } from "./pedigree";
 import {
   LOWER_IS_BETTER,
   MATING_INDEXES,
@@ -60,6 +61,7 @@ import {
   describeSelection,
   parentAverage,
   parseTraitSelection,
+  clampBalance,
   poolTraitStats,
   MATING_DISPLAY_TRAITS,
   rankIsComposite,
@@ -154,6 +156,24 @@ export interface MatingParams {
   floor: number;
   /** Restrict the pool to bulls carrying an active NAAB stud code (marketed semen). */
   naabOnly: boolean;
+  /**
+   * Allow a bull of a different breed than the female.
+   *
+   * OFF by default, because a same-breed mating is what is wanted virtually
+   * every time and the lineup holds Jersey, Ayrshire and Brown Swiss bulls
+   * alongside the Holsteins — before this existed, a Holstein cow could be
+   * handed a Jersey sire at the top of her list with nothing on screen to say
+   * so. It is a toggle rather than a hard rule because deliberate crossbreeding
+   * is a real programme, and silently making it impossible would be its own
+   * kind of wrong.
+   */
+  crossBreed: boolean;
+  /**
+   * How much a WEAKNESS counts against a bull, 0-1. See DEFAULT_BALANCE in
+   * mating-score.ts: the stud breeds for an animal with no holes, so the blend
+   * leans partly on the bull's worst selected trait rather than his average.
+   */
+  balance: number;
   /** True when `pool` came from the request rather than the default. */
   poolExplicit: boolean;
 }
@@ -372,6 +392,14 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   const naabRaw = sp.naabOnly ?? sp.naab;
   const naabOnly = naabRaw === "1" || naabRaw === "true";
 
+  // Same breed unless explicitly asked otherwise — see MatingParams.crossBreed.
+  const crossRaw = sp.crossBreed ?? sp.cross;
+  const crossBreed = crossRaw === "1" || crossRaw === "true";
+
+  // How hard a hole counts against a bull. Clamped, so a hand-edited URL cannot
+  // push it outside the dial.
+  const balance = clampBalance(sp.balance != null && sp.balance !== "" ? Number(sp.balance) : undefined);
+
   // The floor is CLAMPED AT THE DEFAULT, not at zero. 0.75 is the whole reason
   // the paternally blind cohort (0.583 — own pedigree line only, the sire's own
   // parents unknown) is withheld instead of recommended; a hand-edited ?floor=0
@@ -417,7 +445,7 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   }
 
   return {
-    params: { females, index, selected, topN, maxGen, pool, includeInactive, floor, naabOnly, poolExplicit },
+    params: { females, index, selected, topN, maxGen, pool, includeInactive, floor, naabOnly, crossBreed, balance, poolExplicit },
     candidates,
     unparseable,
     overflow,
@@ -473,8 +501,22 @@ interface Candidate {
   name: string;
   proofStatus: string | null;
   sireType: string | null;
+  /** Breed code (HO/JE/AY/BS/MS/AN) — the mating must not cross breeds by accident. */
+  breedCode: string | null;
   /** Indexed column values, keyed by MATING_INDEXES code. */
   cols: Map<string, number | null>;
+}
+
+/**
+ * The breed of an animal, preferring the registration over the breed table.
+ *
+ * A Canadian registration is BBCCCS######## — breed, country, sex, number — so
+ * the first two letters ARE the breed and travel with the animal whether we hold
+ * him or looked him up live seconds ago. The breed table is the fallback, since
+ * a female pasted by the user may never become an Animal row at all.
+ */
+function breedOf(reg: string | null | undefined, fallback: string | null | undefined): string | null {
+  return breedFromReg(reg) ?? (fallback ? fallback.toUpperCase() : null);
 }
 
 /**
@@ -622,7 +664,14 @@ export async function getMatingProgramReport(
   const candidateSelect = {
     animalId: true,
     ...Object.fromEntries(MATING_INDEXES.map((i) => [i.col, true])),
-    animal: { select: { primaryName: true, proofStatus: true, sireType: true } },
+    animal: {
+      select: {
+        primaryName: true, proofStatus: true, sireType: true,
+        breed: { select: { breedCode: true } },
+        // His own registration, so a bull with no breed row still resolves.
+        identifiers: { where: { active: true, isPrimary: true }, select: { idValue: true }, take: 1 },
+      },
+    },
   } as Prisma.GeneticEvaluationSelect;
 
   const candidateRowsPromise = prisma.geneticEvaluation.findMany({
@@ -645,6 +694,8 @@ export async function getMatingProgramReport(
           id: true,
           primaryName: true,
           sex: true,
+          // Fallback for the breed gate when her registration will not parse.
+          breed: { select: { breedCode: true } },
           identifiers: {
             where: { active: true },
             orderBy: [{ isPrimary: "desc" }],
@@ -716,6 +767,15 @@ export async function getMatingProgramReport(
       name: r.animal?.primaryName ?? r.animalId,
       proofStatus: r.animal?.proofStatus ?? null,
       sireType: r.animal?.sireType ?? null,
+      // The select is built from MATING_INDEXES, so Prisma cannot infer the row
+      // shape and these two nested fields need naming explicitly.
+      breedCode: (() => {
+        const a = r.animal as unknown as {
+          breed?: { breedCode: string | null } | null;
+          identifiers?: { idValue: string }[];
+        } | null;
+        return breedOf(a?.identifiers?.[0]?.idValue, a?.breed?.breedCode);
+      })(),
       // Derived from MATING_INDEXES for the same reason the select above is:
       // the two must cover exactly the traits the menu offers.
       cols: new Map<string, number | null>(
@@ -788,7 +848,7 @@ export async function getMatingProgramReport(
   const stats: Map<string, TraitStats> = multi ? poolTraitStats(selected, candidates) : new Map();
   const compositeByBull = new Map<string, CompositeScore>();
   if (multi) {
-    for (const c of candidates) compositeByBull.set(c.animalId, compositeScore(c.cols, selected, stats));
+    for (const c of candidates) compositeByBull.set(c.animalId, compositeScore(c.cols, selected, stats, params.balance));
     // Only worth explaining when there is a pool to explain. An empty pool has
     // already said so above; "only 0 bulls have an LPI" would just be noise on
     // top of it.
@@ -1046,7 +1106,28 @@ export async function getMatingProgramReport(
     const unverified: Ranked[] = [];
     const excluded: MatingFemale["excluded"] = [];
 
-    for (const c of candidates) {
+    // --- breed gate ---------------------------------------------------------
+    // Her breed comes from her registration, which travels with her whether we
+    // hold her or resolved her live. Bulls of another breed are dropped BEFORE
+    // ranking rather than being ranked and then hidden, so the Match score is
+    // standardised across the pool she is actually being offered.
+    const cowBreed = breedOf(base.reg, row?.breed?.breedCode);
+    const breedPool = params.crossBreed || !cowBreed
+      ? candidates
+      : candidates.filter((c) => !c.breedCode || c.breedCode === cowBreed);
+    const breedSkipped = candidates.length - breedPool.length;
+    if (breedSkipped > 0) {
+      notes.push(
+        `${breedSkipped} bull${breedSkipped === 1 ? "" : "s"} of another breed ${breedSkipped === 1 ? "was" : "were"} not considered — she is ${cowBreed}. Tick "allow other breeds" to include them.`,
+      );
+    }
+    if (!cowBreed && !params.crossBreed) {
+      notes.push(
+        `Could not read a breed from ${base.reg}, so bulls of every breed were considered. Check the registration if this female should be limited to one breed.`,
+      );
+    }
+
+    for (const c of breedPool) {
       const bullSet = bullSets.get(c.animalId)!;
       // Projected calf value per selected trait — the displayed figures.
       const preValues = selected.map((s, i) => parentAverage(c.cols.get(s.code) ?? null, damValues[i]));

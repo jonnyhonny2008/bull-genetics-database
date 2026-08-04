@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePedigreeNotes, pedigreeNotesFromFamilyTree } from "./pedigree";
+import { breedFromReg, parsePedigreeNotes, pedigreeNotesFromFamilyTree } from "./pedigree";
 
 /** A scraped family tree in the shape Lactanet profiles arrive in. */
 const TREE = [
@@ -78,4 +78,31 @@ test("a missing name is written as the parser's placeholder", () => {
 test("the label is carried through so the source stays visible", () => {
   const notes = pedigreeNotesFromFamilyTree(TREE, "Pedigree (from proof)")!;
   assert.ok(notes.startsWith("Pedigree (from proof): SIRE:"), notes.slice(0, 40));
+});
+
+// --- breedFromReg ----------------------------------------------------------
+// The mating program refuses to cross breeds by default, and this is where the
+// breed comes from for a female who may never be an Animal row at all.
+
+test("breedFromReg reads the breed off a registration", () => {
+  assert.equal(breedFromReg("HOCANF121135242"), "HO"); // Canadian Holstein female
+  assert.equal(breedFromReg("JECANM111353298"), "JE"); // Canadian Jersey male
+  assert.equal(breedFromReg("AYUSAM100722079"), "AY"); // US Ayrshire male
+  assert.equal(breedFromReg("HO840M3128769279"), "HO"); // US numeric country code
+});
+
+test("breedFromReg tolerates spacing and case", () => {
+  assert.equal(breedFromReg("hocanf121135242"), "HO");
+  assert.equal(breedFromReg(" HOCANM 120345247 "), "HO");
+});
+
+test("breedFromReg returns null rather than guessing", () => {
+  // A NAAB code is not a registration — reading "79" off it as a breed and then
+  // filtering the pool on it would silently empty the report.
+  assert.equal(breedFromReg("799HO00128"), null);
+  assert.equal(breedFromReg(""), null);
+  assert.equal(breedFromReg(null), null);
+  assert.equal(breedFromReg(undefined), null);
+  assert.equal(breedFromReg("NOTAREG"), null);
+  assert.equal(breedFromReg("HOCANX121135242"), null); // sex must be M or F
 });

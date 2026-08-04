@@ -62,17 +62,36 @@ export interface MatingIndex {
  * evaluations carry them, so ranking on either would silently drop half the
  * lineup — the user would see a shorter list and no explanation.
  */
+/**
+ * The Rank-on menu, in KEY_TRAITS order.
+ *
+ * The order is the nine traits the Proof Change, Interim Change and Proof
+ * Forecast reports already treat as the important ones, so a breeder meets the
+ * same list in the same sequence everywhere in the application and does not have
+ * to re-find Conformation in a differently-sorted dropdown. The extras that are
+ * useful to mate on but are not on that list — Pro$, Mammary, SCS — follow
+ * afterwards rather than being interleaved.
+ *
+ * MILKING SPEED is the one key trait missing, and it cannot be added here: it
+ * has no indexed column on GeneticEvaluation (see TRAIT_COLUMNS in
+ * eval-traits.ts) and lives only inside traitsJson. Ranking on it would mean
+ * reading and unpacking that blob for the whole pool on every run — the exact
+ * cost the query plan in mating-program.ts exists to avoid. Adding a column for
+ * it is a migration, not a menu change.
+ */
 export const MATING_INDEXES: MatingIndex[] = [
-  { code: "LPI", label: "LPI", col: "lpi" },
-  { code: "PRO$", label: "Pro$", col: "proDollar" },
+  // KEY_TRAITS order, minus Milking Speed (no indexed column).
   { code: "CONF", label: "Conformation", col: "conf" },
-  { code: "MAMM", label: "Mammary", col: "mamm" },
+  { code: "LPI", label: "LPI", col: "lpi" },
   { code: "MILK", label: "Milk", col: "milk" },
   { code: "FAT", label: "Fat", col: "fat" },
   { code: "FATPCT", label: "Fat %", col: "fatPct" },
   { code: "PROT", label: "Protein", col: "prot" },
   { code: "PROTPCT", label: "Protein %", col: "protPct" },
   { code: "DF", label: "Daughter Fertility", col: "df" },
+  // Useful to mate on, but not among the reports' key traits.
+  { code: "PRO$", label: "Pro$", col: "proDollar" },
+  { code: "MAMM", label: "Mammary", col: "mamm" },
   { code: "SCS", label: "SCS", col: "scs" },
 ];
 
@@ -142,6 +161,34 @@ export const WEIGHT_STEP = "any";
 /** The base-100 scale, shared with Rollback Resistance. */
 export const SCORE_BASE = 100;
 export const SCORE_SD_POINTS = 5;
+
+// --- balance: how much a weakness counts against a bull ---------------------
+
+/**
+ * How far the blend leans on a bull's WORST selected trait rather than his
+ * average across them:
+ *
+ *     composite = (1 − balance) × weightedMean(z) + balance × min(z)
+ *
+ * 0 is a plain weighted mean — a bull's excess in one trait fully pays for a
+ * hole in another. 1 ranks purely on the weakest trait, so nothing but the fault
+ * matters.
+ *
+ * The default is deliberately NOT 0. Blondin breeds for a balanced animal with
+ * no holes: high components, good milk, good type, no major weakness — an ideal
+ * bull sits near 1000 kg milk, +0.35% fat, +0.25% protein and 14–15 for type,
+ * and is only ideal if nothing is missing. A plain mean cannot express that,
+ * and defaulting to it would quietly rank the spiky bull first on a report
+ * written for a stud that does not want him.
+ *
+ * A third is enough to move a genuinely unbalanced bull down the list without
+ * turning the ranking into a pure minimum, which would ignore merit entirely.
+ */
+export const DEFAULT_BALANCE = 0.35;
+export const MIN_BALANCE = 0;
+export const MAX_BALANCE = 1;
+/** String for the same reason BLEND_STEP is — see the note there. */
+export const BALANCE_STEP = "0.05";
 
 // --- corrective mating: the merit/correction dial ---------------------------
 
@@ -397,24 +444,52 @@ export function compositeScore(
   cols: Map<string, number | null>,
   selected: SelectedTrait[],
   stats: Map<string, TraitStats>,
+  balance: number = DEFAULT_BALANCE,
 ): CompositeScore {
   const missing = selected.filter((s) => cols.get(s.code) == null).map((s) => s.code);
   if (missing.length) return { composite: null, matchScore: null, missing };
 
   let num = 0;
   let den = 0;
+  let worst = Infinity;
   for (const s of selected) {
     const st = stats.get(s.code);
     if (!st || !st.usable) continue;
     const value = cols.get(s.code)!;
-    const z = (value - st.mean) / st.sd;
-    num += s.weight * (s.higherIsBetter ? z : -z);
+    const raw = (value - st.mean) / st.sd;
+    const z = s.higherIsBetter ? raw : -raw;
+    num += s.weight * z;
     den += s.weight;
+    if (z < worst) worst = z;
   }
   if (den === 0) return UNSCORED; // nothing in the blend could be standardised
 
-  const composite = num / den;
+  // --- balance: the no-holes term -----------------------------------------
+  // A weighted MEAN cannot express "no holes". It scores a bull at +3 sd on one
+  // trait and −1 sd on another exactly the same as a bull at +1 sd on both, and
+  // those are not the same animal: the first has a fault to breed away from, the
+  // second is the balanced bull the programme is actually after.
+  //
+  // So the mean is blended with the bull's WORST selected trait. At balance 0
+  // this is the plain weighted mean; at 1 a bull is ranked purely on his weakest
+  // trait. In between, a hole costs him something no amount of excess elsewhere
+  // fully buys back — which is the whole point.
+  //
+  // `worst` is the same directional z the mean is built from, so a low SCS
+  // (better) is a HIGH z here and never reads as a weakness.
+  //
+  // With one trait selected, worst === mean and this term does nothing at all —
+  // single-trait runs are mathematically unchanged.
+  const b = clampBalance(balance);
+  const mean = num / den;
+  const composite = (1 - b) * mean + b * worst;
   return { composite, matchScore: matchScoreOf(composite), missing: [] };
+}
+
+/** Keep the dial inside its range whatever a hand-edited URL supplies. */
+export function clampBalance(v: number | null | undefined): number {
+  if (v == null || !Number.isFinite(v)) return DEFAULT_BALANCE;
+  return Math.min(MAX_BALANCE, Math.max(MIN_BALANCE, v));
 }
 
 /**

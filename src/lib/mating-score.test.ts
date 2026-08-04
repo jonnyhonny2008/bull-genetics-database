@@ -10,7 +10,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  BALANCE_STEP,
+  DEFAULT_BALANCE,
+  MAX_BALANCE,
+  MIN_BALANCE,
   MATCH_SCORE_DIGITS,
+  clampBalance,
   MAX_SELECTED_TRAITS,
   MAX_WEIGHT,
   MIN_WEIGHT,
@@ -46,10 +51,11 @@ function scoreIn(
   poolRows: Record<string, number | null>[],
   spec: string,
   target: Record<string, number | null>,
+  balance = 0,
 ) {
   const selected = sel(spec);
   const stats = poolTraitStats(selected, pool(poolRows));
-  return compositeScore(bull(target), selected, stats);
+  return compositeScore(bull(target), selected, stats, balance);
 }
 
 const close = (a: number, b: number, tol = 1e-9) =>
@@ -104,11 +110,13 @@ test("weights actually move the order", () => {
   const A = { LPI: 3200, CONF: 6 }; // strong LPI, weak type
   const B = { LPI: 3060, CONF: 18 }; // modest LPI, strong type
 
-  const top = (spec: string) => {
+  // balance 0 isolates what this test is about — that the WEIGHTS move the
+  // order. The balance term is a separate mechanic with its own tests below.
+  const top = (spec: string, balance = 0) => {
     const selected = sel(spec);
     const stats = poolTraitStats(selected, pool(rows));
-    const sa = compositeScore(bull(A), selected, stats);
-    const sb = compositeScore(bull(B), selected, stats);
+    const sa = compositeScore(bull(A), selected, stats, balance);
+    const sb = compositeScore(bull(B), selected, stats, balance);
     return compareByScore(sa.composite, sb.composite) <= 0 ? "A" : "B";
   };
 
@@ -391,4 +399,89 @@ test("the blend is explained in words a breeder can act on", () => {
 
   // A single-trait run standardises nothing, so it explains nothing.
   assert.deepEqual(describeSelection(sel("LPI"), new Map(), 3), []);
+});
+
+// --- balance: the no-holes term ---------------------------------------------
+//
+// Blondin breeds for an animal with no holes — high components, good milk, good
+// type, no major weakness. A weighted mean cannot express that, so the composite
+// leans partly on the bull's WORST selected trait. These tests pin that
+// behaviour, because it is the difference between the report recommending the
+// balanced bull and the spiky one.
+
+/** Strong LPI with a real hole in type, against a balanced bull. */
+const SPIKY = { LPI: 3200, CONF: 6 };
+const BALANCED = { LPI: 3060, CONF: 18 };
+const BAL_POOL = [
+  { LPI: 2900, CONF: 5 },
+  { LPI: 3000, CONF: 10 },
+  { LPI: 3100, CONF: 15 },
+];
+
+const winner = (spec: string, balance: number) => {
+  const selected = sel(spec);
+  const stats = poolTraitStats(selected, pool(BAL_POOL));
+  const a = compositeScore(bull(SPIKY), selected, stats, balance);
+  const b = compositeScore(bull(BALANCED), selected, stats, balance);
+  return compareByScore(a.composite, b.composite) <= 0 ? "spiky" : "balanced";
+};
+
+test("balance 0 is the plain weighted mean — a hole is fully bought off", () => {
+  // Weighting LPI four to one lets the spiky bull's strength pay for his fault.
+  assert.equal(winner("LPI:4,CONF:1", 0), "spiky");
+});
+
+test("at the default balance a hole is NOT bought off by excess elsewhere", () => {
+  // Same 4:1 weighting, but now the weak Conformation costs him the top spot.
+  // This is the behaviour the stud actually wants and the reason the default
+  // is not zero.
+  assert.equal(winner("LPI:4,CONF:1", DEFAULT_BALANCE), "balanced");
+});
+
+test("balance 1 ranks on the weakest trait alone", () => {
+  const selected = sel("LPI,CONF");
+  const stats = poolTraitStats(selected, pool(BAL_POOL));
+  const s = compositeScore(bull(SPIKY), selected, stats, 1).composite!;
+  // SPIKY's worst trait is CONF 6 against a pool of mean 10 — below average.
+  assert.ok(s < 0, `expected the weakest trait to drive a negative score, got ${s}`);
+  assert.equal(winner("LPI,CONF", 1), "balanced");
+});
+
+test("balance does nothing at all to a single-trait run", () => {
+  // worst === mean when there is one trait, so every dial setting must agree.
+  const none = scoreIn(BAL_POOL, "LPI", SPIKY, 0).composite!;
+  const some = scoreIn(BAL_POOL, "LPI", SPIKY, DEFAULT_BALANCE).composite!;
+  const full = scoreIn(BAL_POOL, "LPI", SPIKY, 1).composite!;
+  close(none, some);
+  close(none, full);
+});
+
+test("balance never rewards a hole — more balance cannot raise a spiky bull", () => {
+  const selected = sel("LPI:4,CONF:1");
+  const stats = poolTraitStats(selected, pool(BAL_POOL));
+  let prev = Infinity;
+  for (const b of [0, 0.25, 0.5, 0.75, 1]) {
+    const s = compositeScore(bull(SPIKY), selected, stats, b).composite!;
+    assert.ok(s <= prev + 1e-12, `balance ${b} raised the spiky bull's score`);
+    prev = s;
+  }
+});
+
+test("SCS is not mistaken for a weakness — direction is applied first", () => {
+  // A LOW cell count is the better animal. If `worst` used the raw z instead of
+  // the directional one, the best udder-health bull in the pool would be scored
+  // as though he had a hole.
+  const rows = [{ SCS: 2.8, CONF: 10 }, { SCS: 3.0, CONF: 10 }, { SCS: 3.2, CONF: 10 }];
+  const lowCell = { SCS: 2.8, CONF: 15 };
+  const s = scoreIn(rows, "SCS,CONF", lowCell, 1).composite!;
+  assert.ok(s > 0, `a low-SCS, high-type bull must not read as having a hole (got ${s})`);
+});
+
+test("clampBalance keeps a hand-edited URL inside the dial", () => {
+  assert.equal(clampBalance(-5), MIN_BALANCE);
+  assert.equal(clampBalance(99), MAX_BALANCE);
+  assert.equal(clampBalance(0.4), 0.4);
+  assert.equal(clampBalance(null), DEFAULT_BALANCE);
+  assert.equal(clampBalance(undefined), DEFAULT_BALANCE);
+  assert.equal(clampBalance(Number.NaN), DEFAULT_BALANCE);
 });
