@@ -196,6 +196,43 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   "REAR LEGS SIDE VIEW - SIGN": ["REAR LEG SIDE VIEW - SIGN"],
   "REAR LEGS SIDE VIEW ALPHA": ["REAR LEG SIDE VIEW ALPHA"],
   "REAR LEGS REAR VIEW": ["REAR LEG REAR VIEW"],
+
+  // --- The "gealltraits" file layout (official + _unoff) --------------------
+  // Lactanet ships two different layouts. The DETAIL layout (bare "0799YYMM…"
+  // and priv files) uses the verbose "EBV MILK KG" / "LP RATING" names above.
+  // The GEALLTRAITS layout (gealltraits_bulls… official and _unoff interim)
+  // names the SAME measurements plainly — production as MILK/FAT/PROTEIN and each
+  // functional trait as its bare code. Same header for both official and unoff,
+  // so this fixes interim gealltraits files too. Verified against the real files:
+  // e.g. SWEETVIEW GRINCH P, April 2026 official → MILK -232, FAT -4, CONF 17.
+  //
+  // NOT aliased on purpose: "AVERAGE FINAL SCORE" (AFS). The gealltraits layout
+  // has no Average Final Score — its "AFS" column is AGE AT FIRST SERVICE, a
+  // different measurement — so AFS stays absent there rather than being filled
+  // with the wrong number.
+  "EBV MILK KG": ["MILK"],
+  "EBV FAT KG": ["FAT"],
+  "EBV PROTEIN KG": ["PROTEIN"],
+  "EBV FAT PERCENT": ["FAT PERCENT"],
+  "EBV PROTEIN PERCENT": ["PROTEIN PERCENT"],
+  "EBV CONFORMATION": ["CONFORMATION"],
+  "LP RATING": ["LP"],
+  "SCS RATING": ["SCS"],
+  "CA RATING": ["CA"],
+  "DCA RATING": ["DCA"],
+  "HL RATING": ["HL"],
+  "MSP RATING": ["MSP"],
+  "MT RATING": ["MT"],
+  "DF RATING": ["DF"],
+  "BCS RATING": ["BCS"],
+  "MR RATING": ["MR"],
+  "MDR RATING": ["MDR"],
+  "HH RATING": ["HH"],
+  "FE RATING": ["FE"],
+  "ME RATING": ["ME"],
+  "BMR RATING": ["BMR"],
+  "CO RATING": ["CO"],
+  "CH RATING": ["CH"],
 };
 
 /**
