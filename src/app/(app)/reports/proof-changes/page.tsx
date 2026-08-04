@@ -21,7 +21,9 @@ export default async function ProofChangesReportPage({ searchParams }: { searchP
     const v = searchParams[k];
     if (v) exportParams.set(k, v);
   }
-  const exportHref = `/reports/proof-changes/export${exportParams.toString() ? `?${exportParams}` : ""}`;
+  const exportQs = exportParams.toString();
+  const exportHref = `/reports/proof-changes/export${exportQs ? `?${exportQs}` : ""}`;
+  const htmlHref = `/reports/proof-changes/export?${exportQs ? `${exportQs}&` : ""}format=html`;
 
   // Every active filter EXCEPT sort/dir — the sortable column headers append
   // their own, so clicking one keeps the rest of the report state intact.
@@ -47,7 +49,12 @@ export default async function ProofChangesReportPage({ searchParams }: { searchP
             ? `Comparing ${report.periods.find((p) => p.key === report.from)?.label ?? "each bull's previous official"} → ${report.periods.find((p) => p.key === report.to)?.label ?? "each bull's latest proof"}, for bulls with a NAAB code.`
             : "Each bull's latest proof vs the previous official (April / August / December) round, for bulls with a NAAB code."
         }
-        actions={<a href={exportHref} className="btn-primary">⬇ Export to Excel</a>}
+        actions={
+          <div className="flex gap-2">
+            <a href={exportHref} className="btn-primary">⬇ Excel</a>
+            <a href={htmlHref} className="btn-secondary" title="A single self-contained file you can email — opens in any browser, no login needed">⬇ HTML</a>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
