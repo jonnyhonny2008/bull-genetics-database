@@ -65,7 +65,11 @@ async function main() {
 
     if (sample) {
       console.log(`  EXAMPLE: ${sample.registeredName} (${sample.registrationNumber})`);
-      console.log(`     naab=${sample.naabCode} breed=${sample.breedCode} born=${sample.birthDate} run=${sample.proofRun}`);
+      // Breed is deliberately read off the registration prefix rather than a
+      // parser field: this diagnostic must compile against whatever shape
+      // ParsedBull currently has, and it long outlived the field it used to log.
+      const breed = sample.registrationNumber.slice(0, 2).toUpperCase();
+      console.log(`     naab=${sample.naabCode} breed=${breed} born=${sample.birthDate} run=${sample.proofRun}`);
       const show = ["LPI", "PRO$", "MILK", "FAT", "PROT", "CONF", "MAMM", "FL"];
       const vals = show
         .map((c) => { const t = sample!.traits.find((x) => x.traitCode === c); return t ? `${c}=${t.numericValue}` : `${c}=–`; })
