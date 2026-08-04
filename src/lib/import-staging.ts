@@ -171,13 +171,18 @@ export async function approveImportReview(reviewId: string, user: SessionUser | 
       // approve we replace it, so the round isn't double-counted.
       const promoted = await prisma.geneticEvaluation.findMany({
         where: { evaluationId: { in: evalIds } },
-        select: { evaluationId: true, animalId: true, evaluationDate: true, sourceId: true },
+        select: { evaluationId: true, animalId: true, evaluationDate: true, sourceId: true, runKind: true },
       });
       for (const p of promoted) {
         await prisma.geneticEvaluation.deleteMany({
           // Exclude ALL just-promoted ids (notIn evalIds), so the batch can never
           // delete one of its own newly-approved rows.
-          where: { animalId: p.animalId, evaluationDate: p.evaluationDate, sourceId: p.sourceId, approvalStatus: "approved", evaluationId: { notIn: evalIds } },
+          //
+          // runKind is part of the match. The official and interim files for a
+          // round share an evaluationDate, so without it approving an interim
+          // upload would delete that round's OFFICIAL proof as a superseded
+          // duplicate — silently, and with no way to tell afterwards.
+          where: { animalId: p.animalId, evaluationDate: p.evaluationDate, sourceId: p.sourceId, runKind: p.runKind, approvalStatus: "approved", evaluationId: { notIn: evalIds } },
         });
       }
     }

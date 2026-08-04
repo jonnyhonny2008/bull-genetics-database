@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "./db";
 import { recomputePreferredForAnimal } from "./priority";
 import { packTraits } from "./eval-traits";
+import { classifyProofFile, type ProofRunKind } from "./proof-file-kind";
+import { classifyRound, isGenotyped } from "./sire-class";
 import type { ParsedBull } from "./lactanet";
 
 // Persistence for one parsed Lactanet bull-proof row. Extracted from the
@@ -21,13 +23,22 @@ export function proofRunLabel(gerun: string | null): { label: string; date: Date
   return { label: `${monthName} ${year}`, date: new Date(Date.UTC(year, month - 1, 1)) };
 }
 
+// Module-level breed cache so bulk imports don't hit the DB once per row.
+const _breedCache = new Map<string, string | null>();
+async function getBreedId(breedCode: string): Promise<string | null> {
+  if (_breedCache.has(breedCode)) return _breedCache.get(breedCode) ?? null;
+  const b = await prisma.breed.findUnique({ where: { breedCode }, select: { breedId: true } });
+  _breedCache.set(breedCode, b?.breedId ?? null);
+  return b?.breedId ?? null;
+}
+
 // Persist one parsed bull: upsert animal + identifiers + roles + a dated genetic
 // evaluation with all trait values + a pedigree reference. Returns the animal id.
 export async function persistBull(
   bull: ParsedBull,
   ctx: { sourceId: string | null; captureId: string | null; userId?: string; fileName: string; approvalStatus?: "approved" | "pending" },
 ): Promise<{ animalId: string; created: boolean; evaluationId: string }> {
-  const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
+  const breedId = await getBreedId(bull.breedCode);
   const approvalStatus = ctx.approvalStatus ?? "approved";
   const isApproved = approvalStatus === "approved";
 
@@ -48,7 +59,7 @@ export async function persistBull(
         primaryName: bull.registeredName,
         shortName: bull.shortName,
         sex: "M",
-        breedId: holstein?.breedId ?? null,
+        breedId: breedId ?? null,
         birthDate: bull.birthDate ? new Date(bull.birthDate + "T00:00:00Z") : null,
         countryOfOrigin: bull.country,
         currentStatus: "proven",
@@ -73,12 +84,21 @@ export async function persistBull(
     { code: "COLOUR", text: bull.colourCode },
   ];
 
+  // Which Lactanet extract is this? Official and interim runs share a GERUN, so
+  // they share `runLabel` — the file name is the only thing that separates them.
+  const runKind: ProofRunKind | null = classifyProofFile(ctx.fileName).kind;
+
   // Avoid duplicate evaluations for the same run + source — but NEVER disturb an
   // existing APPROVED evaluation when staging a pending import. A pending write
   // must be a brand-new row so that denying it can't destroy a pre-existing
   // approved proof. Approved writes replace the prior row for the run as before.
+  //
+  // `runKind` is part of the key: without it the interim April file overwrites
+  // the official April proof (or the reverse, depending on upload order) and the
+  // loss is silent, because both rows look identical apart from their values.
+  // A null kind — an unrecognised file name — only ever replaces another null.
   const existingEval = await prisma.geneticEvaluation.findFirst({
-    where: { animalId, proofRun: runLabel, sourceId: ctx.sourceId, ...(isApproved ? {} : { approvalStatus: "pending" }) },
+    where: { animalId, proofRun: runLabel, sourceId: ctx.sourceId, runKind, ...(isApproved ? {} : { approvalStatus: "pending" }) },
   });
   if (existingEval) {
     await prisma.geneticEvaluation.delete({ where: { evaluationId: existingEval.evaluationId } });
@@ -92,13 +112,22 @@ export async function persistBull(
   const evalRec = await prisma.geneticEvaluation.create({
     data: {
       animalId, sourceId: ctx.sourceId, captureId: ctx.captureId, evaluationDate: runDate,
-      proofRun: runLabel, countrySystem: "CA", breedContext: "Holstein",
+      // Per-bull breed, matching the breedId resolved above (and
+      // prisma/import-cdn.ts) — a Jersey row must not record a Holstein context.
+      proofRun: runLabel, countrySystem: "CA", breedContext: bull.breedCode,
       reliabilityOverall: lpiRel != null ? lpiRel / 100 : null,
       isPreferred: false,
       approvalStatus,
       approvedById: isApproved ? ctx.userId : undefined,
       approvedAt: isApproved ? new Date() : undefined,
       createdById: ctx.userId, notes: `Imported from ${ctx.fileName}.`,
+      runKind, sourceFile: ctx.fileName,
+      // Lactanet status codes for this round. These were being dropped here while
+      // prisma/import-cdn.ts recorded them, so a proof uploaded through the web
+      // screen lost its daughter count and its proven/genomic classification.
+      activityCode: bull.activityCode, officialCode: bull.officialCode,
+      genotyped: isGenotyped(bull.activityCode), daughters: bull.daughters, herds: bull.herds,
+      sireType: classifyRound(bull),
       traitsJson: packed.traitsJson, ...packed.columns,
     },
   });

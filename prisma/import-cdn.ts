@@ -14,6 +14,7 @@ import readline from "readline";
 import crypto from "crypto";
 import { parseHeader, parseRow, type ParsedBull } from "../src/lib/lactanet";
 import { packTraits } from "../src/lib/eval-traits";
+import { classifyProofFile, type ProofRunKind } from "../src/lib/proof-file-kind";
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { computeRollbackRatings } from "./compute-rollback";
@@ -60,8 +61,11 @@ async function main() {
     regToAnimal.set(r.idValue.toUpperCase(), r.animalId);
   const evalKey = new Set<string>();
   const maxDate = new Map<string, number>();
-  for (const e of await prisma.geneticEvaluation.findMany({ select: { animalId: true, proofRun: true, evaluationDate: true } })) {
-    evalKey.add(`${e.animalId}|${e.proofRun ?? ""}`);
+  for (const e of await prisma.geneticEvaluation.findMany({ select: { animalId: true, proofRun: true, evaluationDate: true, runKind: true } })) {
+    // Seed key MUST match the in-run key exactly (animal|label|kind), or a
+    // re-import of an already-loaded file would fail to recognise its own rows
+    // and duplicate every one of them.
+    evalKey.add(`${e.animalId}|${e.proofRun ?? ""}|${e.runKind ?? ""}`);
     const t = e.evaluationDate.getTime();
     if (!maxDate.has(e.animalId) || t > maxDate.get(e.animalId)!) maxDate.set(e.animalId, t);
   }
@@ -83,7 +87,7 @@ async function main() {
     buf.animals = []; buf.ids = []; buf.roles = []; buf.evals = []; buf.peds = [];
   }
 
-  function queue(bull: ParsedBull, breedCode: string) {
+  function queue(bull: ParsedBull, breedCode: string, runKind: ProofRunKind, fileName: string) {
     const reg = bull.registrationNumber.toUpperCase();
     const { label, date } = proofRun(bull.proofRun);
     if (label === "Unknown run") { skipped++; return; }
@@ -98,8 +102,12 @@ async function main() {
       if (bull.naabMarketingCode) buf.ids.push({ animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: source?.sourceId, isPrimary: false });
       buf.roles.push({ animalId, roleType: sexFromReg(reg) === "F" ? "cow" : "reference_sire", active: true });
     }
-    if (evalKey.has(`${animalId}|${label}`)) { skipped++; return; }
-    evalKey.add(`${animalId}|${label}`);
+    // The run kind belongs in the key. Official and interim files stamp the same
+    // GERUN, so keying on (animal, label) alone made the second file for a round
+    // a silent no-op — whichever sorted first won, and 587 of 591 checked rows
+    // ended up holding the interim value with nothing recording that.
+    if (evalKey.has(`${animalId}|${label}|${runKind}`)) { skipped++; return; }
+    evalKey.add(`${animalId}|${label}|${runKind}`);
     const priorMax = maxDate.get(animalId!) ?? -Infinity;
     const isPreferred = date.getTime() >= priorMax;
     if (isPreferred && !isNew) unprefer.add(animalId!);
@@ -114,6 +122,7 @@ async function main() {
       evaluationDate: date, proofRun: label, countrySystem: "CA", breedContext: breedCode,
       reliabilityOverall: lpiRel != null ? lpiRel / 100 : null, isPreferred, approvalStatus: "approved",
       approvedById: admin?.id, approvedAt: date, createdById: admin?.id,
+      runKind, sourceFile: fileName,
       // Lactanet status codes for this round (decoded in src/lib/sire-class.ts).
       activityCode: bull.activityCode, officialCode: bull.officialCode,
       genotyped: isGenotyped(bull.activityCode), daughters: bull.daughters, herds: bull.herds,
@@ -128,10 +137,25 @@ async function main() {
     newEvals++;
   }
 
-  let fileNo = 0;
+  let fileNo = 0, skippedFiles = 0;
+  const byKind: Record<string, number> = {};
   for (const file of files) {
     fileNo++;
-    const breedCode = breedFromName(path.basename(file));
+    const id = classifyProofFile(file);
+    // Only bull proof rounds become evaluations. A "pregeno" file is the
+    // evaluation computed WITHOUT genomics — every LPI in it differs from both
+    // the official and the interim file for the same GERUN — so importing one as
+    // a round would silently replace real proofs with parallel-universe numbers.
+    // Cow and private-stud extracts are likewise not this stud's bull rounds.
+    if (!id.kind) {
+      skippedFiles++;
+      console.log(`[cdn] skip ${id.family.padEnd(11)} ${path.basename(file)}`);
+      continue;
+    }
+    byKind[id.kind] = (byKind[id.kind] ?? 0) + 1;
+    // Prefer the breed parsed off the name by the classifier; fall back to the
+    // older substring sniff so an unrecognised suffix still imports as Holstein.
+    const breedCode = id.breed ?? breedFromName(path.basename(file));
     const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
     let idx: Map<string, number> | null = null;
     for await (const line of rl) {
@@ -139,7 +163,7 @@ async function main() {
       const bull = parseRow(line.split(","), idx);
       rowsSeen++;
       if (!bull) { skipped++; continue; }
-      queue(bull, breedCode);
+      queue(bull, breedCode, id.kind, path.basename(file));
     }
     rl.close();
     if (fileNo % 25 === 0) { await flush(); process.stdout.write(`\r[cdn] files ${fileNo}/${files.length} · animals ${newAnimals} · proofs ${newEvals} · skipped ${skipped}   `); }
@@ -152,11 +176,16 @@ async function main() {
   // clarity but superseded by this authoritative recompute.)
   void unprefer;
   await prisma.$executeRawUnsafe(`UPDATE "GeneticEvaluation" SET "isPreferred" = false WHERE "isPreferred" = true`);
+  // An OFFICIAL round outranks an INTERIM one of the same date. Both kinds carry
+  // the same evaluationDate, so without this tiebreak the winner came down to
+  // "lpi DESC" — i.e. whichever file happened to flatter the bull.
   await prisma.$executeRawUnsafe(`
     WITH ranked AS (
       SELECT "evaluationId",
              ROW_NUMBER() OVER (PARTITION BY "animalId"
-               ORDER BY "evaluationDate" DESC, "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
+               ORDER BY "evaluationDate" DESC,
+                        CASE "runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
+                        "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
       FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
     )
     UPDATE "GeneticEvaluation" g SET "isPreferred" = true
@@ -174,7 +203,8 @@ async function main() {
   console.log(`[cdn] pedigree index: ${pi.withIndex}/${pi.animals} animals got an index (${pi.highConfidence} at ≥85% confidence)`);
 
   await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `CDN import: ${newAnimals} animals, ${newEvals} proof rounds from ${files.length} files` } });
-  console.log(`\n[cdn] DONE — files ${files.length}, rows ${rowsSeen}, new animals ${newAnimals}, new proof rounds ${newEvals}, skipped ${skipped}`);
+  const kinds = Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(", ") || "none";
+  console.log(`\n[cdn] DONE — files ${files.length} (imported by kind: ${kinds}; ${skippedFiles} non-round files skipped), rows ${rowsSeen}, new animals ${newAnimals}, new proof rounds ${newEvals}, skipped rows ${skipped}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });

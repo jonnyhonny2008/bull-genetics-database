@@ -504,6 +504,25 @@ interface EvalLite {
   reliabilityOverall: number | null;
   daughters: number | null;
   sireType: string | null;
+  runKind: string | null;
+}
+
+/**
+ * One row per round, oldest→newest, preferring the official file over the
+ * interim one for the same month. The two share a proofRun and evaluationDate,
+ * so without this the forecast would see two rows for the month and treat the
+ * gap between them as a real step. Values from the official file win where it
+ * exists; months that only ever had an interim file are unchanged.
+ */
+function canonicalForecastRounds(evals: EvalLite[]): EvalLite[] {
+  const rank = (k: string | null) => (k === "official" ? 0 : k === "interim" ? 1 : 2);
+  const best = new Map<string, EvalLite>();
+  for (const e of evals) {
+    const key = e.proofRun ?? periodKey(e.evaluationDate);
+    const cur = best.get(key);
+    if (!cur || rank(e.runKind) < rank(cur.runKind)) best.set(key, e);
+  }
+  return [...best.values()].sort((a, b) => a.evaluationDate.getTime() - b.evaluationDate.getTime());
 }
 
 /** A decoded bull, as the report works with it internally. */
@@ -857,16 +876,20 @@ export async function getProofForecastReport(sp: Record<string, string | undefin
         // daughters / sireType feed the analogue model's career-stage matching.
         select: {
           proofRun: true, evaluationDate: true, traitsJson: true, reliabilityOverall: true,
-          daughters: true, sireType: true,
+          daughters: true, sireType: true, runKind: true,
         },
       },
     },
   } satisfies Prisma.AnimalFindManyArgs);
 
-  // Decode every round once: date + a code→value map, oldest first.
+  // Decode every round once: date + a code→value map, oldest first. Collapse the
+  // official and interim file for a month to a single round, keeping the official
+  // one: leaving both in would feed the analogue walk a zero-elapsed-time "step"
+  // between two versions of the same month and forecast from file-versus-file
+  // noise rather than round-to-round movement.
   const decoded = bulls.map((b) => ({
     b,
-    rounds: (b.evaluations as EvalLite[]).map((e) => ({
+    rounds: canonicalForecastRounds(b.evaluations as EvalLite[]).map((e) => ({
       date: e.evaluationDate,
       run: e.proofRun,
       reliability: e.reliabilityOverall,

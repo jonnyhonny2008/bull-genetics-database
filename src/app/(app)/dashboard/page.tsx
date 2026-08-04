@@ -4,7 +4,6 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { Card, Table, EmptyState } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
-import { isOfficialProof } from "@/lib/rollback";
 import { LineChart, type LineSeries } from "@/components/TrendCharts";
 
 export const dynamic = "force-dynamic";
@@ -64,14 +63,37 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
     .filter((id): id is string => !!id);
 
   // Phase 2 — per-round trait averages across the window, and per-breed avg LPI.
+  // A month can now carry BOTH the official and the interim file for a bull, so
+  // averaging the raw rows would count him twice and blend the two files. Collapse
+  // to one canonical row per (bull, round) first — the official one where it
+  // exists — so each sire counts once and the average reflects the settled proof.
+  // `hasOfficial` marks a round that actually shipped an official file, which is
+  // what the OFFICIAL badge should mean now that the field, not the month, decides.
+  type RoundRow = {
+    evaluationDate: Date; lpi: number | null; proDollar: number | null; conf: number | null;
+    milk: number | null; fat: number | null; prot: number | null; n: number; hasOfficial: boolean;
+  };
   const [rounds, breedAvgs] = await Promise.all([
-    prisma.geneticEvaluation.groupBy({
-      by: ["evaluationDate"],
-      where: { evaluationDate: { gte: windowStart }, animal: { archived: false } },
-      _avg: { lpi: true, proDollar: true, conf: true, milk: true, fat: true, prot: true },
-      _count: { _all: true },
-      orderBy: { evaluationDate: "asc" },
-    }),
+    prisma.$queryRawUnsafe<RoundRow[]>(
+      `WITH canon AS (
+         SELECT DISTINCT ON (g."animalId", g."evaluationDate")
+                g."evaluationDate", g."lpi", g."proDollar", g."conf", g."milk", g."fat", g."prot", g."runKind"
+         FROM "GeneticEvaluation" g
+         JOIN "Animal" a ON a."id" = g."animalId"
+         WHERE g."evaluationDate" >= $1 AND a."archived" = false
+         ORDER BY g."animalId", g."evaluationDate",
+                  CASE g."runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
+                  g."lpi" DESC NULLS LAST
+       )
+       SELECT "evaluationDate",
+              AVG("lpi")::float AS "lpi", AVG("proDollar")::float AS "proDollar",
+              AVG("conf")::float AS "conf", AVG("milk")::float AS "milk",
+              AVG("fat")::float AS "fat", AVG("prot")::float AS "prot",
+              COUNT(*)::int AS "n",
+              bool_or("runKind" = 'official') AS "hasOfficial"
+       FROM canon GROUP BY "evaluationDate" ORDER BY "evaluationDate" ASC`,
+      windowStart,
+    ),
     Promise.all(topBreedIds.map((id) => prisma.geneticEvaluation.aggregate({ _avg: { lpi: true }, where: { isPreferred: true, animal: { archived: false, breedId: id } } }))),
   ]);
 
@@ -84,10 +106,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
   }));
 
   // Chart: one point per proof round in the window, y = the round's average of
-  // the selected trait. Every round is plotted — official (Apr/Aug/Dec) and interim.
+  // the selected trait. Every round is plotted — official and interim alike, one
+  // canonical (official-preferred) value per sire per round.
   const roundData = rounds.map((r) => {
-    const avg = (r._avg as Record<string, number | null>)[cCol];
-    return { date: r.evaluationDate, y: avg != null ? Math.round(avg) : null, n: r._count._all };
+    const avg = (r as unknown as Record<string, number | null>)[cCol];
+    return { date: r.evaluationDate, y: avg != null ? Math.round(avg) : null, n: r.n, official: r.hasOfficial };
   });
   const series: LineSeries[] = [{
     label: `Average ${chartTrait.label}`,
@@ -95,7 +118,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
     points: roundData.map((p) => ({
       x: `${MON[p.date.getUTCMonth()]} '${String(p.date.getUTCFullYear()).slice(2)}`,
       y: p.y,
-      note: `${fmtNum(p.n)} sires · ${isOfficialProof(p.date) ? "official" : "interim"}`,
+      note: `${fmtNum(p.n)} sires · ${p.official ? "official" : "interim"}`,
     })),
   }];
   const hasChart = roundData.some((p) => p.y != null);
@@ -149,7 +172,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
             <>
               <LineChart series={series} height={260} yLabel={chartTrait.label} />
               <p className="mt-2 text-[11px] text-slate-400">
-                Each point is a proof round in the last 12 months — official (April, August, December) and interim rounds alike. Hover a point for that round&apos;s average and sire count.
+                Each point is a proof round in the last 12 months — official and interim rounds alike. Hover a point for that round&apos;s average and sire count. Where a round shipped both, each sire is counted once on his official proof.
               </p>
             </>
           ) : (
@@ -212,7 +235,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
                 <tr key={p.date.toISOString()}>
                   <td className="td">
                     {MON[p.date.getUTCMonth()]} {p.date.getUTCFullYear()}
-                    {isOfficialProof(p.date) && <span className="ml-1.5 rounded bg-brand-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">official</span>}
+                    {p.official && <span className="ml-1.5 rounded bg-brand-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">official</span>}
                   </td>
                   <td className="td text-right tabular-nums">{fmtNum(p.n)}</td>
                   <td className="td text-right tabular-nums">{p.y ?? "—"}</td>

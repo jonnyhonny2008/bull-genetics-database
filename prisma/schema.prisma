@@ -310,6 +310,24 @@ model GeneticEvaluation {
   herds              Int?     // col 59 HERDS PROTEIN
   sireType           String?  // "proven" | "genomic" as of THIS round
 
+  // --- Which Lactanet extract this round came from --------------------------
+  // Lactanet publishes each run as an OFFICIAL file and an INTERIM (unofficial)
+  // one. Both stamp the same GERUN, so both land on the same `proofRun` label —
+  // "April 2025" can legitimately be either. The distinction survives ONLY in
+  // the file name (see src/lib/proof-file-kind.ts); it is NOT derivable from the
+  // row. For April 2025, 82 of the 137 bulls present in both files carry a
+  // different LPI while showing the same `officialCode`.
+  //
+  // `officialCode` is NOT a substitute: it is the per-bull evaluation basis
+  // (0 unofficial LPI, 1 official, 2 parent average, 3 MACE) and appears with
+  // the same values in both files.
+  //
+  // Deliberately NOT part of a unique constraint: persistBull() lets a `pending`
+  // row sit alongside an `approved` one for the same round so that denying an
+  // import cannot destroy an existing proof.
+  runKind            String?  // "official" | "interim"
+  sourceFile         String?  // original Lactanet file name — the evidence for runKind
+
   // Compact trait storage: all trait values packed here as JSON…
   traitsJson         String?
   // …plus real indexed columns for the traits people sort / filter by.
@@ -345,6 +363,8 @@ model GeneticEvaluation {
 
   @@index([animalId, evaluationDate])
   @@index([approvalStatus])
+  // Reports that show official rounds only filter on this alongside the round.
+  @@index([runKind, proofRun])
   @@index([isPreferred, lpi])
   @@index([isPreferred, proDollar])
   @@index([isPreferred, conf])

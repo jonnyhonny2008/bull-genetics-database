@@ -104,6 +104,9 @@ export default async function AnimalProfile({
   ]);
   const prefProof = pickPreferred(evaluations, {
     getSourceId: (e) => e.sourceId, getDate: (e) => e.evaluationDate, getApproval: (e) => e.approvalStatus,
+    // Same-round tie → official over interim, so the profile's "most recent"
+    // view agrees with the isPreferred flag the rest of the app uses.
+    getTieBreak: (e) => (e.runKind === "official" ? 0 : e.runKind === "interim" ? 1 : 2),
     rankMap: geRank, domainLabel: "genetic evaluations",
   });
   const prefClass = pickPreferred(a.classifications, {
@@ -128,12 +131,26 @@ export default async function AnimalProfile({
   const preferredEvalId = prefProof.chosen?.evaluationId;
   const preferredClassId = prefClass.chosen?.classificationId;
   const pref = prefProof.chosen;
+
+  // --- Which proof to SHOW (indices, trait detail, linear) -------------------
+  // The preferred proof is the most recent (official winning a same-round tie).
+  // A proven bull's newest round is often an interim monthly update, so the
+  // profile also offers "latest official" — the most recent round that shipped an
+  // official file — for anyone who wants the settled published proof instead.
+  const officialEval = evaluations
+    .filter((e) => e.approvalStatus === "approved" && e.runKind === "official")
+    .sort((x, y) => y.evaluationDate.getTime() - x.evaluationDate.getTime())[0] ?? null;
+  // Only offer the choice when it would actually change what's shown.
+  const canPickOfficial = !!officialEval && officialEval.evaluationId !== pref?.evaluationId;
+  const proofView = searchParams.proof === "official" && canPickOfficial ? "official" : "recent";
+  const displayEval = proofView === "official" ? officialEval : pref;
+
   const latestClass = prefClass.chosen ?? a.classifications[0] ?? null;
 
-  // Group preferred proof trait values by category (exclude linear traits — they get their own graph).
+  // Group the displayed proof's trait values by category (exclude linear traits — they get their own graph).
   const linearDefs = await prisma.traitDefinition.findMany({ where: { domain: "genetic", isLinear: true } });
   const linDef = new Map(linearDefs.map((d) => [d.traitCode, d]));
-  const prefTraits = pref?.traitValues ?? [];
+  const prefTraits = displayEval?.traitValues ?? [];
   const byCat = new Map<string, typeof prefTraits>();
   for (const t of prefTraits) {
     if (linDef.has(t.traitCode)) continue;
@@ -169,7 +186,30 @@ export default async function AnimalProfile({
   const pedIndex = tab === "familytree" ? computePedigreeIndex(pedAncestors) : null;
 
   const tabHref = (t: string) => (t === "main" ? `/animals/${a.id}` : `/animals/${a.id}?tab=${t}`);
-  const keyVal = (col: string) => (pref ? (pref as Record<string, unknown>)[col] as number | null : null);
+  // Link that flips the proof view while staying on the current tab.
+  const proofViewHref = (v: "recent" | "official") => {
+    const parts = [tab !== "main" ? `tab=${tab}` : "", v === "official" ? "proof=official" : ""].filter(Boolean);
+    return `/animals/${a.id}${parts.length ? `?${parts.join("&")}` : ""}`;
+  };
+  const keyVal = (col: string) => (displayEval ? (displayEval as Record<string, unknown>)[col] as number | null : null);
+
+  // Toggle shown on the Genetics + Conformation tabs when a bull's newest proof
+  // is not itself an official one, so the indices / linear / genomics below can be
+  // read from either the most recent proof or the latest official proof.
+  const recentKindLabel = pref?.runKind === "official" ? "official" : pref?.runKind === "interim" ? "interim" : "latest";
+  const proofSelector = canPickOfficial ? (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+      <span className="font-medium text-slate-500">Showing</span>
+      <Link href={proofViewHref("recent")}
+        className={`rounded-full px-3 py-1 font-medium ${proofView === "recent" ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>
+        Most recent — {pref?.proofRun ?? "—"} ({recentKindLabel})
+      </Link>
+      <Link href={proofViewHref("official")}
+        className={`rounded-full px-3 py-1 font-medium ${proofView === "official" ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>
+        Latest official — {officialEval?.proofRun ?? "—"}
+      </Link>
+    </div>
+  ) : null;
   const latestLactation = profile?.lactations?.length ? profile.lactations[profile.lactations.length - 1] : null;
 
   return (
@@ -379,6 +419,7 @@ export default async function AnimalProfile({
       {/* ================= GENETICS ================= */}
       {tab === "genetics" && (
         <div className="space-y-4">
+          {proofSelector}
           <Card title="Genomic status">
             <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <Fact k="Classification" v={
@@ -399,8 +440,8 @@ export default async function AnimalProfile({
                   : "—"
               } />
               <Fact k="Lactanet activity code" v={a.latestActivityCode ? <span title={activityLabel(a.latestActivityCode) ?? undefined}><span className="font-mono">{a.latestActivityCode}</span> — {activityLabel(a.latestActivityCode) ?? "unknown"}</span> : "—"} />
-              <Fact k="LPI official code" v={pref?.officialCode ? <span><span className="font-mono">{pref.officialCode}</span> — {officialLabel(pref.officialCode) ?? "unknown"}</span> : "—"} />
-              <Fact k="Daughters (latest)" v={pref?.daughters != null ? fmtNum(pref.daughters) : "—"} />
+              <Fact k="LPI official code" v={displayEval?.officialCode ? <span><span className="font-mono">{displayEval.officialCode}</span> — {officialLabel(displayEval.officialCode) ?? "unknown"}</span> : "—"} />
+              <Fact k="Daughters (shown proof)" v={displayEval?.daughters != null ? fmtNum(displayEval.daughters) : "—"} />
             </dl>
             <p className="mt-3 text-[11px] text-slate-400">
               Proven vs genomic comes from the Lactanet proof-activity code (column 24). A genomic (GPA) evaluation is a
@@ -408,8 +449,8 @@ export default async function AnimalProfile({
             </p>
           </Card>
 
-          <Card title={pref ? `Key index values — ${pref.proofRun ?? fmtDate(pref.evaluationDate)}` : "Key index values"}>
-            {!pref ? <EmptyState message="No approved genetic proof on file." /> : (
+          <Card title={displayEval ? `Key index values — ${displayEval.proofRun ?? fmtDate(displayEval.evaluationDate)}${proofView === "official" ? " · official" : ""}` : "Key index values"}>
+            {!displayEval ? <EmptyState message="No approved genetic proof on file." /> : (
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
                 {KEY_TRAITS.map((t) => (
                   <div key={t.col} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1">
@@ -421,10 +462,12 @@ export default async function AnimalProfile({
             )}
           </Card>
 
-          {pref && byCat.size > 0 && (
-            <Card title="Trait detail — preferred proof" actions={<span className="text-xs text-slate-400">{pref.source?.sourceName ?? ""}</span>}>
+          {displayEval && byCat.size > 0 && (
+            <Card title={`Trait detail — ${proofView === "official" ? "latest official proof" : "preferred proof"}`} actions={<span className="text-xs text-slate-400">{displayEval.source?.sourceName ?? ""}</span>}>
               <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                <span className="font-semibold">Why preferred:</span> {prefProof.reason}
+                {proofView === "official"
+                  ? <><span className="font-semibold">Latest official proof:</span> {displayEval.proofRun ?? fmtDate(displayEval.evaluationDate)} — the most recent round Lactanet shipped an official file for. The preferred (most recent) proof is {pref?.proofRun ?? "—"}.</>
+                  : <><span className="font-semibold">Why preferred:</span> {prefProof.reason}</>}
               </div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {[...byCat.entries()].map(([cat, traits]) => (
@@ -547,8 +590,8 @@ export default async function AnimalProfile({
                   <details key={e.evaluationId} className="rounded-md border border-slate-200" open={e.evaluationId === preferredEvalId}>
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 text-sm">
                       <span className="font-medium">{e.proofRun ?? fmtDate(e.evaluationDate)}</span>
-                      <span title="Official rounds are April, August and December; all others are interims.">
-                        {proofKind(e.evaluationDate) === "official" ? <Badge tone="blue">Official</Badge> : <Badge>Interim</Badge>}
+                      <span title={e.runKind ? "Recorded from the Lactanet file this proof came from." : "No file on record for this proof — inferred from the round month (April/August/December are official)."}>
+                        {(e.runKind ?? proofKind(e.evaluationDate)) === "official" ? <Badge tone="blue">Official</Badge> : <Badge>Interim</Badge>}
                       </span>
                       <span className="text-slate-400">·</span>
                       <span>{e.source?.sourceName ?? "—"}</span>
@@ -577,12 +620,13 @@ export default async function AnimalProfile({
       {/* ================= CONFORMATION ================= */}
       {tab === "conformation" && (
         <div className="space-y-4">
+          {proofSelector}
           {linearGroups.length > 0 ? (
-            <Card title="Linear conformation profile" actions={<span className="text-xs text-slate-400">{pref?.proofRun ?? ""} · {pref?.source?.sourceName ?? ""}</span>}>
+            <Card title="Linear conformation profile" actions={<span className="text-xs text-slate-400">{displayEval?.proofRun ?? ""} · {displayEval?.source?.sourceName ?? ""}</span>}>
               <LinearGraph groups={linearGroups} />
             </Card>
           ) : (
-            <Card title="Linear conformation profile"><EmptyState message="No linear conformation values on the preferred proof." /></Card>
+            <Card title="Linear conformation profile"><EmptyState message={`No linear conformation values on the ${proofView === "official" ? "latest official" : "preferred"} proof.`} /></Card>
           )}
 
           <Card title={`Classification history (${a.classifications.length})`} actions={writable ? <Link href={`/animals/${a.id}/classification/new`} className="link text-xs">+ Add classification</Link> : undefined}>

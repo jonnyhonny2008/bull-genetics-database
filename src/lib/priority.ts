@@ -72,6 +72,18 @@ export function pickPreferred<T>(
     getApproval: (t: T) => string;
     rankMap: Map<string, RankInfo>;
     domainLabel: string;
+    /**
+     * Final tiebreak when source rank AND date are equal; lower wins.
+     *
+     * Genetic evaluations need this because Lactanet's official and interim
+     * files for a round share an evaluationDate and a source, so the two are
+     * indistinguishable to the sort above and the winner came down to whatever
+     * order the database happened to return. Deliberately applied AFTER date,
+     * not before: a newer interim round still supersedes an older official one,
+     * which is how the reports have always read. It only decides same-day ties,
+     * where official must win.
+     */
+    getTieBreak?: (t: T) => number;
   },
 ): PreferredPick<T> {
   const approved = items.filter((i) => opts.getApproval(i) === "approved");
@@ -85,10 +97,11 @@ export function pickPreferred<T>(
       rank: info?.rank ?? 999,
       sourceName: info?.sourceName ?? "Unknown source",
       date: opts.getDate(item)?.getTime() ?? 0,
+      tie: opts.getTieBreak?.(item) ?? 0,
     };
   });
 
-  scored.sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : b.date - a.date));
+  scored.sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : b.date !== a.date ? b.date - a.date : a.tie - b.tie));
   const winner = scored[0];
 
   const dateStr = winner.date ? new Date(winner.date).toISOString().slice(0, 10) : "n/a";
@@ -117,6 +130,10 @@ export async function recomputePreferredForAnimal(animalId: string): Promise<voi
       getSourceId: (e) => e.sourceId,
       getDate: (e) => e.evaluationDate,
       getApproval: (e) => e.approvalStatus,
+      // Same-day tie: the official round outranks the interim one. Matches the
+      // window function in prisma/import-cdn.ts, so a bulk import and a single
+      // web import can never disagree about which row is preferred.
+      getTieBreak: (e) => (e.runKind === "official" ? 0 : e.runKind === "interim" ? 1 : 2),
       rankMap,
       domainLabel: "genetic evaluations",
     });

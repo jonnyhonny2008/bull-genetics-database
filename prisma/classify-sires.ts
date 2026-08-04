@@ -26,18 +26,25 @@ export async function classifySires(prisma: Client): Promise<{
 }> {
   // A round is "April" by its evaluationDate month; evaluationDate is built from
   // the file's GERUN (YYMM) so it is always the 1st of the run's month, in UTC.
+  //
+  // Counts are of DISTINCT ROUNDS, not rows: an official and an interim file for
+  // the same month are two rows of one round, and must count once. The `latest`
+  // row's tiebreak prefers the official file so sireType / latestActivityCode are
+  // read from the settled proof, not from whichever file was inserted last.
   await prisma.$executeRawUnsafe(`
     WITH latest AS (
       SELECT DISTINCT ON ("animalId")
              "animalId", "evaluationDate", "proofRun", "sireType", "activityCode"
       FROM "GeneticEvaluation"
       WHERE "approvalStatus" = 'approved'
-      ORDER BY "animalId", "evaluationDate" DESC, "evaluationId" DESC
+      ORDER BY "animalId", "evaluationDate" DESC,
+               CASE "runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
+               "lpi" DESC NULLS LAST, "evaluationId" DESC
     ),
     agg AS (
       SELECT "animalId",
-             COUNT(*)::int AS rounds,
-             COUNT(*) FILTER (WHERE EXTRACT(MONTH FROM "evaluationDate") = 4)::int AS rollbacks
+             COUNT(DISTINCT "proofRun")::int AS rounds,
+             COUNT(DISTINCT "proofRun") FILTER (WHERE EXTRACT(MONTH FROM "evaluationDate") = 4)::int AS rollbacks
       FROM "GeneticEvaluation"
       WHERE "approvalStatus" = 'approved'
       GROUP BY "animalId"

@@ -42,11 +42,16 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
 }> {
   const defMap = await traitDefMap();
 
-  // Only bulls with more than one round can have a round-to-round score.
-  const multi = await prisma.geneticEvaluation.groupBy({
-    by: ["animalId"], _count: { animalId: true }, having: { animalId: { _count: { gt: 1 } } },
-  });
-  const ids = multi.map((m) => m.animalId);
+  // Only bulls with more than one ROUND can have a round-to-round score. Count
+  // DISTINCT (animalId, proofRun), not rows: a bull present in both the official
+  // and the interim file for a single month has two rows but one round, and must
+  // not be scored from that same-month pair alone.
+  const multiRows = await prisma.$queryRawUnsafe<{ animalId: string }[]>(
+    `SELECT "animalId" FROM (
+       SELECT DISTINCT "animalId", "proofRun" FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
+     ) d GROUP BY "animalId" HAVING COUNT(*) > 1`,
+  );
+  const ids = multiRows.map((m) => m.animalId);
 
   type Score = { perf: number; perfSteps: number; rbRaw: number | null; rbSteps: number };
   const scores = new Map<string, Score>();
@@ -54,13 +59,16 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
     const batch = ids.slice(i, i + CHUNK);
     const animals = await prisma.animal.findMany({
       where: { id: { in: batch } },
-      select: { id: true, evaluations: { orderBy: { evaluationDate: "asc" } } },
+      // Approved rows only — matches prisma/classify-sires.ts, so the two derived
+      // columns are computed from an identical row set. computeRollback then
+      // collapses each round to its official row where one exists.
+      select: { id: true, evaluations: { where: { approvalStatus: "approved" }, orderBy: { evaluationDate: "asc" } } },
     });
     for (const a of animals) {
       const r = computeRollback(
         attachTraits(a.evaluations, defMap).map((e) => ({
           evaluationDate: e.evaluationDate, proofRun: e.proofRun,
-          reliabilityOverall: e.reliabilityOverall, traitValues: e.traitValues,
+          reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
         })),
       );
       if (r.proofPerformance != null) {
@@ -117,12 +125,19 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
   }
 
   // Clear stale values on bulls that no longer qualify (e.g. rounds removed).
+  // Same distinct-round test as the qualifying gate above, so a bull who only
+  // ever had a single round — even across two files — is cleared, not left with
+  // a score computed under the old row-counting rule.
   await prisma.$executeRawUnsafe(
     `UPDATE "Animal" SET "proofPerformance" = NULL, "proofSteps" = NULL,
        "rollbackRaw" = NULL, "rollbackResistance" = NULL, "rollbackSteps" = NULL,
        "rollbackCohortN" = NULL
      WHERE "proofPerformance" IS NOT NULL
-       AND "id" NOT IN (SELECT "animalId" FROM "GeneticEvaluation" GROUP BY "animalId" HAVING COUNT(*) > 1)`,
+       AND "id" NOT IN (
+         SELECT "animalId" FROM (
+           SELECT DISTINCT "animalId", "proofRun" FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
+         ) d GROUP BY "animalId" HAVING COUNT(*) > 1
+       )`,
   );
 
   return {

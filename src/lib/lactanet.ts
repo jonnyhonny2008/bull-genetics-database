@@ -34,6 +34,7 @@ export interface ParsedBull {
   colourCode: string | null;
   country: string; // CA | US | INT
   regIdType: string;
+  breedCode: string; // HO | JE | AY | BS | CN | GU | MS …
   proofRun: string | null;
   // Lactanet status codes for this round — see BULL_PROOF_FILE_LAYOUT.pdf and
   // src/lib/sire-class.ts for the decoded meanings.
@@ -71,8 +72,15 @@ function isoDate(yyyymmdd: string | undefined): string | null {
 function countryFromReg(reg: string): { country: string; idType: string } {
   const r = reg.toUpperCase();
   if (r.includes("CAN")) return { country: "CA", idType: "registration_ca" };
-  if (r.includes("USA") || /HO?840/.test(r)) return { country: "US", idType: "registration_us" };
+  // All US animals have "USA" in the registration or use the 840-prefix format
+  // (e.g. HO840M..., AY840M...). Match either so non-Holstein breeds work too.
+  if (r.includes("USA") || /[A-Z]{2}840/.test(r)) return { country: "US", idType: "registration_us" };
   return { country: "INT", idType: "registration_int" };
+}
+
+/** Extract the 2-char breed code from a Lactanet registration number (e.g. "HO840M..." → "HO"). */
+function breedCodeFromReg(reg: string): string {
+  return reg.slice(0, 2).toUpperCase();
 }
 
 // Index traits: [traitCode, valueCol, relCol?, pctCol?]
@@ -156,10 +164,65 @@ const LINEAR_MAP: [string, string, string?, string?][] = [
   ["TL", "TEAT LENGTH", "TEAT LENGTH SIGN", "TEAT LENGTH ALPHA"],
 ];
 
+// ---------------------------------------------------------------------------
+// Historical column aliases (proof rounds 2020-04 onward).
+//
+// Lactanet renamed columns as the evaluation system evolved. The header is
+// name-keyed, so a rename reads as "that trait is missing" rather than as bad
+// data — safe, but it silently drops real traits from older rounds. Each entry
+// below is a CONFIRMED rename of the SAME measurement, verified by diffing the
+// real headers era by era (230 cols 2020 → 243 in 2021/22 → 250 in 2023/24 →
+// 274 in 2025/26) and by checking that a given bull's values stay continuous
+// across the boundary.
+//
+// DELIBERATELY NOT ALIASED — these look similar but are DIFFERENT measurements,
+// and mapping them would silently write the wrong number into a trait:
+//   • "PRODUCTION INDEX (PI)" / LTI / HWI / RI / MI / EI  — the modern LPI
+//     subindexes. Pre-2025 files carry "LPI PRODUCTION COMPONENT" and
+//     "LPI DURABILITY COMPONENT" instead: components of the OLD LPI formula,
+//     on a different scale and definition. They are not the same trait.
+//   • "RIB STRUCTURE", "LOCOMOTION", "FRONT LEGS VIEW", "POLLED",
+//     "BETA CASEIN (A2)", "NAAB MARKETING CODE" — genuinely absent in the
+//     earlier eras. Absent stays absent.
+const COLUMN_ALIASES: Record<string, string[]> = {
+  // The NAAB code was published as the semen code until 2023.
+  // (The same value sits at position 15 of the pre-2020 headerless files.)
+  "NAAB CODE": ["SEMEN CODE"],
+  // Conformation composite carried "/MOBILITY" from 2021 to 2024.
+  "FEET & LEGS": ["FEET & LEGS/MOBILITY"],
+  "PERCENTILE RANK FEET & LEGS": ["PERCENTILE RANK FEET & LEGS/MOBILITY"],
+  // 2020 used the singular "REAR LEG …"; later rounds use "REAR LEGS …".
+  "REAR LEGS SIDE VIEW": ["REAR LEG SIDE VIEW"],
+  "REAR LEGS SIDE VIEW - SIGN": ["REAR LEG SIDE VIEW - SIGN"],
+  "REAR LEGS SIDE VIEW ALPHA": ["REAR LEG SIDE VIEW ALPHA"],
+  "REAR LEGS REAR VIEW": ["REAR LEG REAR VIEW"],
+};
+
+/**
+ * Normalise a raw header cell.
+ *
+ * The 2020 files are not valid UTF-8 in a few headers — a stray byte lands
+ * between words ("RUMP ANGLE�SIGN") or pads the end ("FOOT ANGLE���").
+ * Replacing the replacement character with a space and collapsing whitespace
+ * recovers the intended name without touching any well-formed header.
+ */
+function normalizeColumn(raw: string): string {
+  return raw.replace(/�/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function parseHeader(headerLine: string): Map<string, number> {
-  const cols = headerLine.split(",").map((c) => c.trim());
+  const cols = headerLine.split(",").map(normalizeColumn);
   const idx = new Map<string, number>();
-  cols.forEach((c, i) => { if (!idx.has(c)) idx.set(c, i); });
+  cols.forEach((c, i) => { if (c && !idx.has(c)) idx.set(c, i); });
+  // Fill in any canonical name this era spells differently. Only ever ADDS a
+  // missing key, so a file that already uses the modern name is untouched.
+  for (const [canonical, aliases] of Object.entries(COLUMN_ALIASES)) {
+    if (idx.has(canonical)) continue;
+    for (const alias of aliases) {
+      const at = idx.get(alias);
+      if (at !== undefined) { idx.set(canonical, at); break; }
+    }
+  }
   return idx;
 }
 
@@ -169,7 +232,14 @@ export function parseRow(fields: string[], idx: Map<string, number>): ParsedBull
     return i === undefined ? undefined : fields[i];
   };
   const reg = (get("REGISTRATION NUMBER") ?? "").trim();
+  // `null` from this parser means ONE thing only: the row could not be parsed.
+  // It must never encode a policy decision ("we don't want this animal"), because
+  // every caller treats null as a hard failure/skip — the chunk route counts it
+  // as `failed`, backfill-codes stops patching that animal, and import-cdn never
+  // reaches its female branch. Callers that want to drop unmarketed sires filter
+  // on `naabCode` themselves (see prisma/import-all-bulls.ts).
   if (!reg) return null;
+  const naabCode = (get("NAAB CODE") ?? "").trim() || null;
 
   const { country, idType } = countryFromReg(reg);
   const traits: ParsedTrait[] = [];
@@ -218,13 +288,14 @@ export function parseRow(fields: string[], idx: Map<string, number>): ParsedBull
     registeredName: (get("REGISTERED NAME") ?? "").trim() || reg,
     shortName: (get("SHORT NAME") ?? "").trim() || null,
     birthDate: isoDate(get("BIRTH DATE")),
-    naabCode: (get("NAAB CODE") ?? "").trim() || null,
+    naabCode,
     naabMarketingCode: (get("NAAB MARKETING CODE") ?? "").trim() || null,
     polled: (get("POLLED") ?? "").trim() || null,
     betaCasein: (get("BETA CASEIN (A2)") ?? "").trim() || null,
     colourCode: (get("COLOUR CODE") ?? "").trim() || null,
     country,
     regIdType: idType,
+    breedCode: breedCodeFromReg(reg),
     proofRun: gerun || null,
     activityCode: (get("PROOF ACTIVITY CODE and GENOTYPE INDICATOR") ?? "").trim() || null,
     officialCode: (get("LPI OFFICIAL CODE") ?? "").trim() || null,

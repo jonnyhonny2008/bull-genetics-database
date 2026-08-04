@@ -34,7 +34,33 @@ export interface EvalLite {
   evaluationDate: Date;
   proofRun: string | null;
   reliabilityOverall: number | null;
+  /** Which Lactanet file this row came from. Official wins a same-round tie. */
+  runKind?: string | null;
   traitValues: { traitCode: string; numericValue: number | null }[];
+}
+
+/**
+ * Collapse a bull's evaluations to ONE row per round, preferring the official
+ * file over the interim one.
+ *
+ * Lactanet's official and interim files for a round share a GERUN, so both land
+ * on the same proofRun label and the same evaluationDate. Left in, the pair
+ * manufactures a phantom "step" between two versions of the same month — and
+ * because 82 of 137 shared bulls differ between the files, that step carries a
+ * real, spurious magnitude that pollutes every retention figure and can land in
+ * the April bucket as fake rollback. Rollback measures change from one round to
+ * the NEXT, never one file against the other, so the two must be reconciled to a
+ * single canonical value (the official one where it exists) before stepping.
+ */
+export function canonicalRounds<T extends { proofRun: string | null; evaluationDate: Date; runKind?: string | null }>(evals: T[]): T[] {
+  const kindRank = (k: string | null | undefined) => (k === "official" ? 0 : k === "interim" ? 1 : 2);
+  const best = new Map<string, T>();
+  for (const e of evals) {
+    const key = e.proofRun ?? (e.evaluationDate ? e.evaluationDate.toISOString().slice(0, 7) : "?");
+    const cur = best.get(key);
+    if (!cur || kindRank(e.runKind) < kindRank(cur.runKind)) best.set(key, e);
+  }
+  return [...best.values()];
 }
 
 export interface TraitResistance {
@@ -138,9 +164,13 @@ function weightedBlend(pick: (code: string) => number | null | undefined): numbe
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 export function computeRollback(evals: EvalLite[]): RollbackResult {
-  const sorted = [...evals]
-    .filter((e) => e.evaluationDate)
-    .sort((a, b) => a.evaluationDate.getTime() - b.evaluationDate.getTime());
+  // One row per round (official over interim), then oldest→newest. The secondary
+  // sort on run kind only breaks a same-date tie that canonicalRounds already
+  // resolves; it is kept so ordering is deterministic even if a caller passes
+  // rows that skipped the collapse.
+  const kindRank = (k: string | null | undefined) => (k === "official" ? 0 : k === "interim" ? 1 : 2);
+  const sorted = canonicalRounds(evals.filter((e) => e.evaluationDate))
+    .sort((a, b) => a.evaluationDate.getTime() - b.evaluationDate.getTime() || kindRank(a.runKind) - kindRank(b.runKind));
 
   const rounds = sorted.map((e) => ({
     label: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7),

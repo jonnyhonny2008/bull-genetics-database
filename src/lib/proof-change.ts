@@ -104,7 +104,30 @@ interface RawBull {
   changes: TraitChange[]; // z/flagged not yet set
 }
 
-type EvalLite = { proofRun: string | null; evaluationDate: Date; traitsJson: string | null };
+type EvalLite = { proofRun: string | null; evaluationDate: Date; traitsJson: string | null; runKind?: string | null };
+
+/** True when this row is the official proof for its round (month heuristic only
+ *  when the file wasn't recorded — the pre-field web lookups). */
+function isOfficialRow(e: EvalLite): boolean {
+  return e.runKind === "official" || (e.runKind == null && isOfficialProof(e.evaluationDate));
+}
+
+/**
+ * One row per round, newest→oldest, keeping the official file over the interim
+ * one for a month. Both share a date, so without this the round selectors below
+ * would pick between them arbitrarily and could diff the interim value of a month
+ * against the official value of another.
+ */
+function canonicalByPeriod(evals: EvalLite[]): EvalLite[] {
+  const rank = (e: EvalLite) => (e.runKind === "official" ? 0 : e.runKind === "interim" ? 1 : 2);
+  const best = new Map<string, EvalLite>();
+  for (const e of evals) {
+    const k = periodKey(e.evaluationDate);
+    const cur = best.get(k);
+    if (!cur || rank(e) < rank(cur)) best.set(k, e);
+  }
+  return [...best.values()].sort((a, b) => b.evaluationDate.getTime() - a.evaluationDate.getTime());
+}
 
 /**
  * Diff one bull's proofs (no flags yet).
@@ -119,7 +142,9 @@ export function computeRawChange(
   opts: { from?: string; to?: string; mode?: ChangeMode } = {},
 ): RawBull {
   const empty: RawBull = { found: false, latestRun: null, previousRun: null, lpiDelta: null, changes: [] };
-  const sorted = [...evals].sort((a, b) => b.evaluationDate.getTime() - a.evaluationDate.getTime());
+  // One canonical (official-preferred) row per round before any selection, so a
+  // month present as both files can't be picked arbitrarily or diffed against itself.
+  const sorted = canonicalByPeriod(evals);
 
   const latest = opts.to
     ? sorted.find((e) => periodKey(e.evaluationDate) === opts.to)
@@ -132,7 +157,7 @@ export function computeRawChange(
       // Interim-to-interim: the immediately previous run, whatever kind it is.
       ? sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime())
       // Default: the most recent OFFICIAL round strictly before the latest.
-      : sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime() && isOfficialProof(e.evaluationDate));
+      : sorted.find((e) => e.evaluationDate.getTime() < latest.evaluationDate.getTime() && isOfficialRow(e));
   // The earlier side must actually be earlier, or there is nothing to compare.
   if (!previous || previous.evaluationDate.getTime() >= latest.evaluationDate.getTime()) return empty;
 
@@ -289,24 +314,27 @@ export async function getProofChangeReport(
       id: true, primaryName: true, shortName: true,
       breed: { select: { breedName: true } },
       identifiers: { where: { active: true }, select: { idType: true, idValue: true, isPrimary: true } },
-      evaluations: { orderBy: { evaluationDate: "desc" }, select: { proofRun: true, evaluationDate: true, traitsJson: true } },
+      evaluations: { orderBy: { evaluationDate: "desc" }, select: { proofRun: true, evaluationDate: true, traitsJson: true, runKind: true } },
     },
   } satisfies Prisma.AnimalFindManyArgs);
 
   // Available rounds across the NAAB lineup (newest first) for the selectors.
-  const periodMap = new Map<string, { date: Date; bulls: number }>();
+  // A round is "official" if any bull's official file shipped for it — the field,
+  // not the month, since Lactanet publishes official runs outside Apr/Aug/Dec too.
+  const periodMap = new Map<string, { date: Date; bulls: number; official: boolean }>();
   for (const b of bulls) {
     const seen = new Set<string>();
     for (const e of b.evaluations) {
       const k = periodKey(e.evaluationDate);
-      if (seen.has(k)) continue;
-      seen.add(k);
+      const off = isOfficialRow(e);
       const p = periodMap.get(k);
-      if (p) p.bulls++; else periodMap.set(k, { date: e.evaluationDate, bulls: 1 });
+      if (!p) periodMap.set(k, { date: e.evaluationDate, bulls: 1, official: off });
+      else { if (!seen.has(k)) p.bulls++; if (off) p.official = true; }
+      seen.add(k);
     }
   }
   const periods: ProofPeriod[] = [...periodMap.entries()]
-    .map(([key, v]) => ({ key, label: periodLabel(v.date), official: isOfficialProof(v.date), bulls: v.bulls }))
+    .map(([key, v]) => ({ key, label: periodLabel(v.date), official: v.official, bulls: v.bulls }))
     .sort((a, b) => b.key.localeCompare(a.key));
 
   // Only honour a selection that actually exists in the data.

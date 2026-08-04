@@ -30,6 +30,8 @@ import readline from "readline";
 import crypto from "crypto";
 import { parseHeader, parseRow, type ParsedBull } from "../src/lib/lactanet";
 import { packTraits } from "../src/lib/eval-traits";
+import { classifyProofFile } from "../src/lib/proof-file-kind";
+import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { computeRollbackRatings } from "./compute-rollback";
 import { computePedigreeIndexAll } from "./compute-pedigree-index";
@@ -61,14 +63,24 @@ async function insertChunked(model: { createMany: (a: { data: any[] }) => Promis
 
 async function main() {
   if (!fs.existsSync(fullPath)) { console.error(`[import-all] File not found: ${fullPath}`); process.exit(1); }
-  console.log(`[import-all] importing ${fileName} (limit ${limit})`);
+  // One file per run, so its kind is fixed for every row here. A stud proof file
+  // resolves to "official"/"interim"; the whole-breed Holstein archive carries no
+  // stud code and resolves to null, which is honest — it is not a Blondin
+  // official-vs-interim round and must not be forced into one.
+  const runKind = classifyProofFile(fileName).kind;
+  console.log(`[import-all] importing ${fileName} (limit ${limit}) — run kind: ${runKind ?? "unknown"}`);
 
   // (The three SQLite PRAGMAs that used to live here — WAL / busy_timeout /
   //  synchronous — were left over from the SQLite era and threw a syntax error
   //  against PostgreSQL, which broke every run of this script after the
   //  Postgres migration. Postgres needs no equivalent session tuning here.)
 
-  const holstein = await prisma.breed.findUnique({ where: { breedCode: "HO" } });
+  // Breed per bull, not per file: the Lactanet archives ship one file per breed
+  // and the registration number carries the code (HO / JE / AY / BS / CN / GU /
+  // MS). Stamping everything Holstein would misfile every non-Holstein archive,
+  // and the true breed is NOT recoverable afterwards because the file is not
+  // re-read. Same mapping src/lib/proof-import.ts and prisma/import-cdn.ts use.
+  const breeds = new Map((await prisma.breed.findMany({ select: { breedCode: true, breedId: true } })).map((b) => [b.breedCode, b.breedId]));
   const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" } });
   const admin = await prisma.user.findFirst({ where: { role: "admin" } });
 
@@ -93,8 +105,8 @@ async function main() {
   // existing evaluations: which (animalId|proofRun) already exist, and latest date per animal.
   const evalKey = new Set<string>();
   const maxDate = new Map<string, number>();
-  for (const e of await prisma.geneticEvaluation.findMany({ select: { animalId: true, proofRun: true, evaluationDate: true } })) {
-    evalKey.add(`${e.animalId}|${e.proofRun ?? ""}`);
+  for (const e of await prisma.geneticEvaluation.findMany({ select: { animalId: true, proofRun: true, evaluationDate: true, runKind: true } })) {
+    evalKey.add(`${e.animalId}|${e.proofRun ?? ""}|${e.runKind ?? ""}`);
     const t = e.evaluationDate.getTime();
     if (!maxDate.has(e.animalId) || t > maxDate.get(e.animalId)!) maxDate.set(e.animalId, t);
   }
@@ -106,7 +118,7 @@ async function main() {
 
   const buf = { animals: [] as any[], ids: [] as any[], roles: [] as any[], evals: [] as any[], peds: [] as any[] };
   const unprefer = new Set<string>(); // existing animals that received a newer round
-  let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0, newNaab = 0;
+  let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0, newNaab = 0, noNaab = 0;
 
   async function flush() {
     if (buf.evals.length === 0 && buf.animals.length === 0) return;
@@ -129,7 +141,7 @@ async function main() {
     if (isNew) {
       animalId = crypto.randomUUID();
       regToAnimal.set(reg, animalId);
-      buf.animals.push({ id: animalId, primaryName: bull.registeredName, shortName: bull.shortName, sex: "M", breedId: holstein?.breedId ?? null, birthDate: bull.birthDate ? new Date(bull.birthDate + "T00:00:00Z") : null, countryOfOrigin: bull.country, currentStatus: "proven", createdById: admin?.id, notes: `Imported from ${fileName}.` });
+      buf.animals.push({ id: animalId, primaryName: bull.registeredName, shortName: bull.shortName, sex: "M", breedId: breeds.get(bull.breedCode) ?? null, birthDate: bull.birthDate ? new Date(bull.birthDate + "T00:00:00Z") : null, countryOfOrigin: bull.country, currentStatus: "proven", createdById: admin?.id, notes: `Imported from ${fileName}.` });
       buf.ids.push({ animalId, idType: bull.regIdType, idValue: bull.registrationNumber, issuingCountry: bull.country, sourceId: source?.sourceId, isPrimary: true });
       if (bull.naabCode) buf.ids.push({ animalId, idType: "naab", idValue: bull.naabCode, sourceId: source?.sourceId, isPrimary: false });
       if (bull.naabMarketingCode) buf.ids.push({ animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: source?.sourceId, isPrimary: false });
@@ -149,9 +161,11 @@ async function main() {
       }
     }
 
-    // Skip if this exact round already exists for this bull.
-    if (evalKey.has(`${animalId}|${label}`)) { skipped++; return; }
-    evalKey.add(`${animalId}|${label}`);
+    // Skip if this exact round already exists for this bull. The run kind is part
+    // of the key: an official and an interim file share a GERUN, so keying on
+    // (animal, label) alone would make the second file for a round a silent no-op.
+    if (evalKey.has(`${animalId}|${label}|${runKind ?? ""}`)) { skipped++; return; }
+    evalKey.add(`${animalId}|${label}|${runKind ?? ""}`);
 
     const priorMax = maxDate.get(animalId!) ?? -Infinity;
     const isPreferred = date.getTime() >= priorMax; // latest round is preferred
@@ -164,7 +178,7 @@ async function main() {
       .filter(([, v]) => v)
       .map(([code, v]) => ({ traitCode: code, numericValue: null, textValue: v as string, reliability: null, percentileRank: null }));
     const packed = packTraits([...bull.traits, ...descriptive]);
-    buf.evals.push({ evaluationId, animalId, sourceId: source?.sourceId, captureId: capture.captureId, evaluationDate: date, proofRun: label, countrySystem: "CA", breedContext: "Holstein", reliabilityOverall: lpiRel != null ? lpiRel / 100 : null, isPreferred, approvalStatus: "approved", approvedById: admin?.id, approvedAt: date, createdById: admin?.id, traitsJson: packed.traitsJson, ...packed.columns });
+    buf.evals.push({ evaluationId, animalId, sourceId: source?.sourceId, captureId: capture.captureId, evaluationDate: date, proofRun: label, countrySystem: "CA", breedContext: bull.breedCode, reliabilityOverall: lpiRel != null ? lpiRel / 100 : null, isPreferred, approvalStatus: "approved", approvedById: admin?.id, approvedAt: date, createdById: admin?.id, runKind, sourceFile: fileName, activityCode: bull.activityCode, officialCode: bull.officialCode, genotyped: isGenotyped(bull.activityCode), daughters: bull.daughters, herds: bull.herds, sireType: classifyRound(bull), traitsJson: packed.traitsJson, ...packed.columns });
     if (isNew && bull.pedigree.length) {
       const summary = bull.pedigree.map((p) => `${p.relation.toUpperCase()}: ${p.name ?? "?"}${p.reg ? ` (${p.reg})` : ""}`).join(" · ");
       buf.peds.push({ animalId, sourceId: source?.sourceId, displayStatus: "linked", lastCheckedAt: date, notes: `Pedigree (from proof): ${summary}` });
@@ -182,6 +196,12 @@ async function main() {
     const bull = parseRow(line.split(","), idx);
     processed++;
     if (!bull) { skipped++; continue; }
+    // Bulk-import policy, applied HERE and nowhere else: an archive row without a
+    // NAAB code is an international/unmarketed sire that inflates the table
+    // without ever appearing in the semen catalogue. The parser deliberately does
+    // not drop these — the interactive /import-proofs path must keep updating an
+    // existing bull whose row happens to have a blank stud code.
+    if (!bull.naabCode) { noNaab++; continue; }
     queue(bull);
     if (inBatch >= BATCH_BULLS) await flush();
   }
@@ -196,13 +216,15 @@ async function main() {
     WITH ranked AS (
       SELECT "evaluationId",
              ROW_NUMBER() OVER (PARTITION BY "animalId"
-               ORDER BY "evaluationDate" DESC, "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
+               ORDER BY "evaluationDate" DESC,
+                        CASE "runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
+                        "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
       FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
     )
     UPDATE "GeneticEvaluation" g SET "isPreferred" = true
     FROM ranked r WHERE g."evaluationId" = r."evaluationId" AND r.rn = 1
   `);
-  console.log(`\n[import-all] normalized preferred flag to latest round per bull`);
+  console.log(`\n[import-all] normalized preferred flag to latest round per bull (official outranks interim on a shared date)`);
 
   // ---------------------------------------------------------------------
   // Refresh every derived column the app filters and reports on. Without
@@ -222,7 +244,7 @@ async function main() {
   console.log(`[import-all]   pedigree index — ${pi.withIndex}/${pi.animals} animals (${pi.highConfidence} high confidence)`);
 
   await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `Bulk import ${fileName}: ${newBulls} new bulls, ${newEvals} new proofs, ${skipped} skipped; refreshed ${cls.active + cls.inactive} sire classifications, ${rb.scored} rollback scores` } });
-  console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, NAAB codes backfilled ${newNaab}, skipped ${skipped}, processed ${processed}`);
+  console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, NAAB codes backfilled ${newNaab}, skipped ${skipped}, no NAAB code (dropped) ${noNaab}, processed ${processed}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });
