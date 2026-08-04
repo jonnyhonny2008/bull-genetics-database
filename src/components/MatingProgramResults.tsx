@@ -8,10 +8,12 @@ import { fmtNum } from "@/lib/format";
 import type { MatingReport, MatingFemale, MatingMatch } from "@/lib/mating-program";
 // mating-score is PURE (no server-only), so the constants that define the scale
 // can be read here instead of being retyped into the copy and drifting.
-import { MATCH_SCORE_DIGITS, SCORE_BASE, SCORE_SD_POINTS } from "@/lib/mating-score";
+import { MATCH_SCORE_DIGITS, SCORE_BASE } from "@/lib/mating-score";
 
-/** One sentence, in the same words everywhere the Match score appears. */
-const SCORE_EXPLAINER = `${SCORE_BASE} = pool average, ${SCORE_SD_POINTS} points per standard deviation`;
+/** One sentence, in the same words everywhere the Match score appears. Plain
+ *  language on purpose — the score is relative to the bulls in this run, and
+ *  higher is a better blend; the statistics behind it are not shown to staff. */
+const SCORE_EXPLAINER = `${SCORE_BASE} = the average of the bulls in this run, higher is a better blend`;
 
 /**
  * The Match score, at the one precision it is shown at anywhere.

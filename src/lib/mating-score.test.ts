@@ -389,7 +389,12 @@ test("the blend is explained in words a breeder can act on", () => {
   const said = describeSelection(selected, poolTraitStats(selected, pool(rows)), rows.length);
   assert.ok(said.length >= 1);
   assert.ok(said[0].includes("LPI (weight 2)") && said[0].includes("Conformation (weight 1)"));
-  assert.ok(said[0].includes(`${SCORE_BASE}`) && said[0].includes(`${SCORE_SD_POINTS} points`));
+  // Explained in plain words — the Match score is anchored at the pool average
+  // and "higher is better". The statistic behind it is deliberately NOT surfaced
+  // to staff, so the copy must not say "standard deviation".
+  assert.ok(said[0].includes(`${SCORE_BASE}`), "names the pool-average anchor");
+  assert.ok(/higher is a better blend/i.test(said[0]), "says higher is better in plain words");
+  assert.ok(!/standard deviation/i.test(said[0]), "must not use the SD jargon staff were confused by");
 
   // SCS in a blend gets its own sentence — a breeder must not have to infer it.
   const withScs = sel("LPI,SCS");

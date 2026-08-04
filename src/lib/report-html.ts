@@ -799,6 +799,8 @@ table.tbl{border-collapse:collapse;width:100%;font-size:12.5px}
 .down{color:var(--down);font-weight:600;font-variant-numeric:tabular-nums}
 .flat{color:var(--slate-400);font-variant-numeric:tabular-nums}
 .muted{color:var(--slate-400)}
+.roundvals{font-size:11px;color:var(--slate-400);font-variant-numeric:tabular-nums;white-space:nowrap}
+.flag-dot{display:inline-block;margin-left:3px;padding:0 4px;border-radius:3px;background:var(--amber-bg,#fef3c7);color:var(--amber-fg,#b45309);font-size:9px;font-weight:700;vertical-align:middle}
 .toggle{color:var(--slate-400);width:26px}
 .detail>td{background:var(--slate-50);padding:0;border-bottom:2px solid var(--slate-200)}
 .detail-body{padding:10px 12px}

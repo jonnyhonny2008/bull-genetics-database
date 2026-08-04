@@ -533,7 +533,7 @@ export function describeSelection(
   const parts = selected.map((s) => `${s.label} (weight ${s.weight})`);
   const list = parts.length === 2 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
   out.push(
-    `Ranked on a blend of ${list}. These traits are not on the same scale — LPI runs into the thousands while Conformation runs in single digits — so adding them up would be an LPI ranking wearing another trait's name. Instead each trait is measured against the ${poolN} bull${poolN === 1 ? "" : "s"} in this pool and the results are combined in the weights above. The Match score is ${SCORE_BASE} at the pool average and moves ${SCORE_SD_POINTS} points for every standard deviation, so a bull on ${SCORE_BASE + SCORE_SD_POINTS * 3} is three standard deviations above the pool on the blend you chose.`,
+    `Ranked on a blend of ${list}. These traits are not on the same scale — LPI runs into the thousands while Conformation runs in single digits — so adding them up would be an LPI ranking wearing another trait's name. Instead each bull is compared with the ${poolN} bull${poolN === 1 ? "" : "s"} in this pool on each trait, and those standings are combined in the weights above. The Match score is ${SCORE_BASE} at the average of this pool, and higher is a better blend; it is relative to this run only, not a national base.`,
   );
 
   for (const s of selected) {

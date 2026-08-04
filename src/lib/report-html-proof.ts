@@ -19,7 +19,15 @@ import {
 // Proof Change + Interim Proof Change  (both from getProofChangeReport)
 // ============================================================================
 
-/** Detail panel: every trait, prev → latest, Δ and z, key traits first. */
+/** Plain word for the flag sensitivity — staff never see the statistic behind
+ *  it. The number itself lives only on the report page's Sensitivity selector. */
+function sensitivityWord(sdMult: number): string {
+  if (sdMult <= 0.5) return "sensitive";
+  if (sdMult <= 1) return "balanced";
+  return "big movers only";
+}
+
+/** Detail panel: every trait, its value each round, and the change. Key first. */
 function changeDetail(changes: TraitChange[]): string {
   if (!changes.length) return `<p class="empty">No trait movement on file.</p>`;
   const rows: Row[] = changes.map((c): Row => ({
@@ -29,8 +37,7 @@ function changeDetail(changes: TraitChange[]): string {
       { html: num2(c.previous), sort: c.previous, className: "al-right mono" },
       { html: num2(c.latest), sort: c.latest, className: "al-right mono" },
       { html: `<span class="${deltaClass(c.delta)}">${arrow(c.delta)} ${signed(c.delta)}</span>`, sort: c.delta, className: "al-right" },
-      { html: c.z == null ? "—" : num2(c.z), sort: c.z, className: "al-right" },
-      { html: c.flagged ? badge("flagged", "warn") : "", sort: c.flagged ? 1 : 0 },
+      { html: c.flagged ? badge("unusual mover", "warn") : "", sort: c.flagged ? 1 : 0 },
     ],
   }));
   return table({
@@ -40,7 +47,6 @@ function changeDetail(changes: TraitChange[]): string {
       { label: "Previous", sort: "num", align: "right" },
       { label: "Latest", sort: "num", align: "right" },
       { label: "Change", sort: "num", align: "right" },
-      { label: "z", sort: "num", align: "right", title: "(Δ − cohort mean Δ) / cohort SD, per trait" },
       { label: "", sort: "none" },
     ],
     rows,
@@ -58,8 +64,13 @@ function changeRows(report: ProofChangeReport): Row[] {
     ];
     for (const t of KEY_TRAITS) {
       const k = byCode.get(t.code);
+      // Show BOTH rounds — previous → latest — so the change is read in context,
+      // not just its size. The coloured change sits above the two values.
       cells.push({
-        html: k?.delta == null ? "—" : `<span class="${deltaClass(k.delta)}">${arrow(k.delta)} ${signed(k.delta)}</span>`,
+        html: !k || k.delta == null
+          ? "—"
+          : `<div class="${deltaClass(k.delta)}">${arrow(k.delta)} ${signed(k.delta)}${k.flagged ? ' <span class="flag-dot" title="unusual mover">!</span>' : ""}</div>`
+            + `<div class="roundvals" title="previous → latest">${num2(k.previous)} → ${num2(k.latest)}</div>`,
         sort: k?.delta ?? null,
         className: `al-right${k?.flagged ? " flagged-cell" : ""}`,
       });
@@ -80,14 +91,14 @@ export function proofChangeHtml(report: ProofChangeReport): string {
     { label: "Reg", sort: "text" },
     { label: "Breed", sort: "text" },
     ...KEY_TRAITS.map((t): Column => ({ label: t.label, sort: "num", align: "right" })),
-    { label: "Key flags", sort: "num", align: "right", title: `Key traits that moved at least ${report.sdMult} SD from the cohort mean` },
+    { label: "Unusual movers", sort: "num", align: "right", title: `Key traits that moved unusually far compared with the rest of the ${report.cohortLabel}` },
   ];
 
   const stats: Stat[] = [
     { label: "NAAB bulls compared", value: report.compared, hint: report.notComparable ? `${report.notComparable} lacked a round` : undefined },
-    { label: "Significant movers", value: report.significantCount, hint: "≥1 key trait flagged", tone: report.significantCount ? "warn" : "good" },
+    { label: "Unusual movers", value: report.significantCount, hint: "≥1 key trait moved unusually", tone: report.significantCount ? "warn" : "good" },
     { label: "Key traits tracked", value: KEY_TRAITS.length },
-    { label: "Flag threshold", value: `${report.sdMult} SD` },
+    { label: "Sensitivity", value: sensitivityWord(report.sdMult) },
   ];
 
   const params = [
@@ -95,7 +106,7 @@ export function proofChangeHtml(report: ProofChangeReport): string {
     { label: "Comparison", value: interim ? "each latest proof vs the run immediately before it" : "each latest proof vs the previous official (Apr / Aug / Dec)" },
     { label: "Cohort", value: report.cohortLabel },
     { label: "Breed", value: report.breed || "all" },
-    { label: "Flag threshold", value: `${report.sdMult} standard deviations` },
+    { label: "Sensitivity", value: sensitivityWord(report.sdMult) },
     { label: "Search", value: report.q || "—" },
   ];
 
@@ -114,7 +125,8 @@ export function proofChangeHtml(report: ProofChangeReport): string {
     notices,
     sections: [section(`Proof changes · ${window}`, table({ columns, rows: changeRows(report), empty: "No comparable bulls for this window." }))],
     footnotes: [
-      `A trait is flagged when it moved at least ${report.sdMult} standard deviations from how the ${report.cohortLabel} moved on that trait — so "flagged" means "unusual relative to this peer group", and changing the cohort changes what is flagged.`,
+      `Each key-trait cell shows the change, then the two values it is between — previous → latest — so a move is read in context, not just by its size.`,
+      `A trait is highlighted as an unusual mover when it moved much further than the rest of the ${report.cohortLabel} did on that trait. "Unusual" is relative to this group, so changing the group changes what is highlighted; the sensitivity is set on the report page.`,
       "This file is a snapshot of the rounds on file when it was generated. Proofs move.",
     ],
   });

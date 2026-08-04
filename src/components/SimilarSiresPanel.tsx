@@ -137,7 +137,7 @@ export function SimilarSiresPanel({
                   </th>
                   <th
                     className="py-1 pr-3 text-right font-medium"
-                    title="Roughly how many standard deviations the agreement sits above what luck alone would give over this many moving rounds. The list is ordered by THIS, not by distance, so a modest correlation across a long career outranks a flattering one across four rounds."
+                    title="How strong the match is once the number of shared moving rounds is taken into account. The list is ordered by THIS, not by raw closeness, so a modest match across a long career outranks a flattering one across only a handful of rounds."
                   >
                     Evidence
                   </th>

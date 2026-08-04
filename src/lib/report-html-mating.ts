@@ -49,7 +49,7 @@ function femaleColumns(multi: boolean): Column[] {
     { label: "NAAB", sort: "text" },
     { label: "Reg", sort: "text" },
   ];
-  if (multi) cols.push({ label: "Match", sort: "num", align: "right", title: "100 = pool average, 5 points per standard deviation of the blend" });
+  if (multi) cols.push({ label: "Match", sort: "num", align: "right", title: "100 = the average of the bulls in this run; higher is a better blend" });
   for (const t of MATING_DISPLAY_TRAITS) cols.push({ label: t.label, sort: "num", align: "right" });
   cols.push({ label: "Checked", sort: "num", align: "right", title: "Pedigree completeness of the blinder of the two animals" });
   return cols;

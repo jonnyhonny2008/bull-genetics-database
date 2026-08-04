@@ -20,7 +20,7 @@ import ExcelJS from "exceljs";
 // nothing from it at run time. The index menu and the scale come from the pure
 // scoring module, which is where they are defined.
 import type { MatingFemale, MatingReport } from "./mating-program";
-import { MATING_INDEXES, MATING_DISPLAY_TRAITS, SCORE_BASE, SCORE_SD_POINTS, blendLabel } from "./mating-score";
+import { MATING_INDEXES, MATING_DISPLAY_TRAITS, SCORE_BASE, blendLabel } from "./mating-score";
 
 const HEADER_FILL = "FF0F3D3E"; // navy/teal header band
 const HEADER_FONT = "FFFFFFFF";
@@ -99,7 +99,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   const multi = selected.length > 1;
   const blend = blendLabel(selected);
   const rankedOn = multi ? blend : indexLabel;
-  const scaleNote = `${SCORE_BASE} = pool average, ${SCORE_SD_POINTS} points = one standard deviation`;
+  const scaleNote = `${SCORE_BASE} = the average of the bulls in this run, higher is a better blend`;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bull Stud Genetics";
@@ -390,9 +390,9 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
       );
     });
     add(
-      "Standardisation",
-      "z-score across the candidate pool",
-      `The selected traits are not on the same scale — LPI runs into the thousands, Conformation in single digits — so they are NOT added up. For each trait: z = (the bull's own value − the pool mean) ÷ the pool standard deviation, measured over the ${r.bullsConsidered} bulls in this run's pool and NEGATED where a lower value is better. The blend is composite = Σ(weight × z) ÷ Σ(weight), and the Match score is ${SCORE_BASE} + ${SCORE_SD_POINTS} × composite — so ${scaleNote}. A trait the pool has no spread on contributes nothing and is named in the warnings below. A bull missing any selected trait is left out of the ranking rather than scored on the rest.`,
+      "How the blend is scored",
+      "each trait compared within this run's pool",
+      `The selected traits are not on the same scale — LPI runs into the thousands, Conformation in single digits — so they are NOT added up. Instead each bull is compared with the ${r.bullsConsidered} bulls in this run on each trait, and those standings are combined by the weights you chose (a trait where a lower value is better is flipped first). The result is the Match score, where ${scaleNote}. A trait the pool does not vary on contributes nothing and is named in the warnings below. A bull missing any selected trait is left out of the ranking rather than scored on the rest.`,
     );
     add(
       "Standardised on",
@@ -446,7 +446,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   ];
   if (multi) {
     notes.unshift(
-      `THE MATCH SCORE IS RELATIVE TO THIS POOL. ${SCORE_BASE} is the average of the ${r.bullsConsidered} bulls that were ranked, and ${SCORE_SD_POINTS} points is one standard deviation of the blend. It is NOT a national base and NOT comparable with a Match score from a run against a different pool. Change the pool and every number on the Recommendations sheet changes with it, even though no bull has moved.`,
+      `THE MATCH SCORE IS RELATIVE TO THIS POOL. ${SCORE_BASE} is the average of the ${r.bullsConsidered} bulls that were ranked, and higher is a better blend. It is NOT a national base and NOT comparable with a Match score from a run against a different pool. Change the pool and every number on the Recommendations sheet changes with it, even though no bull has moved.`,
     );
   }
   if (audit) {

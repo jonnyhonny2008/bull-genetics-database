@@ -63,7 +63,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
         <StatCard label="NAAB bulls compared" value={fmtNum(report.compared)} hint={report.notComparable ? `${fmtNum(report.notComparable)} lack a selected round` : undefined} tone="good" />
         <StatCard label="Significant movers" value={fmtNum(report.significantCount)} hint="≥1 key trait past the bar" tone={report.significantCount ? "warn" : "default"} />
         <StatCard label="Key traits tracked" value={KEY_TRAITS.length} />
-        <StatCard label="Flag threshold" value={`${report.sdMult} SD`} hint={`vs how ${report.cohortLabel} moved`} />
+        <StatCard label="Sensitivity" value={report.sdMult <= 0.5 ? "sensitive" : report.sdMult <= 1 ? "balanced" : "big movers"} hint={`unusual vs how ${report.cohortLabel} moved`} />
       </div>
 
       {/* Which two rounds to compare. Defaults to each bull's latest proof vs
@@ -137,7 +137,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
           <input type="checkbox" name="significant" value="1" defaultChecked={report.significantOnly} />
           Only significant changes
         </label>
-        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population. Note: this also re-bases the SD flag — significance is measured against whichever cohort is shown.">
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600" title="Blondin bulls are the stud's own house bulls, as opposed to the wider Lactanet population. Note: this also re-bases the flag — unusual movers are judged against whichever group is shown.">
           <input type="checkbox" name="blondin" value="1" defaultChecked={report.blondin === "1"} />
           Blondin bulls only
         </label>
@@ -159,7 +159,7 @@ export default async function InterimChangesReportPage({ searchParams }: { searc
             <p className="mb-2 text-xs text-slate-500">
               Showing {fmtNum(report.rows.length)} of {fmtNum(report.compared)} NAAB bulls, each bull&rsquo;s latest proof vs the
               run immediately before it (interim or official). Green = increase, red = decrease.
-              A trait is flagged when its change is <strong>{report.sdMult} SD or more</strong> from how <strong>{report.cohortLabel}</strong> moved on that trait.
+              A trait is highlighted as an <strong>unusual mover</strong> when it moved much further than <strong>{report.cohortLabel}</strong> did on that trait (set by Sensitivity above).
               Only the nine key traits decide &ldquo;significant&rdquo;; other flagged traits still show when you expand a bull.
               {report.blondin && (
                 <> The &ldquo;Blondin bulls only&rdquo; toggle changes that baseline as well as the rows, so a bull can be

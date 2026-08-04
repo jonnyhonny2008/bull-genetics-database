@@ -173,12 +173,10 @@ function TraitLine({ t, cohortLabel }: { t: TraitChange; cohortLabel: string }) 
       <span className="min-w-[140px] shrink-0 text-[11px] text-slate-700">
         {t.name}{t.key && <span className="ml-1 text-[8px] uppercase text-brand-500">key</span>}
       </span>
-      <span className="ml-auto shrink-0 pl-2 text-[10px] tabular-nums text-slate-400" title="previous → latest">
-        {fmt(t.previous)}→{fmt(t.latest)}
+      <span className="ml-auto shrink-0 pl-2 text-[10px] tabular-nums text-slate-500" title="the value at each round — previous → latest">
+        {fmt(t.previous)} <span className="text-slate-300">→</span> {fmt(t.latest)}
       </span>
-      <span className={`w-11 shrink-0 text-right text-[10px] tabular-nums ${t.flagged ? "font-semibold text-amber-700" : "text-slate-400"}`} title={`SD from how ${cohortLabel} moved`}>
-        {t.z == null ? "—" : `${t.z > 0 ? "+" : ""}${t.z}`}
-      </span>
+      {t.flagged && <span className="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-bold text-amber-700" title="moved unusually far for this lineup">unusual</span>}
       <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-slate-300" title="% change (reference only)">
         {pctStr(t.pct)}
       </span>
@@ -216,7 +214,7 @@ function BullDetail({ change, cohortLabel }: { change: ReportRow["change"]; coho
       </div>
 
       <div className="text-[10px] text-slate-400">
-        Columns: change · trait · previous→latest · SD from {cohortLabel} · % (reference).
+        Columns: change · trait · the value at each round (previous → latest) · % (reference).
       </div>
     </div>
   );
