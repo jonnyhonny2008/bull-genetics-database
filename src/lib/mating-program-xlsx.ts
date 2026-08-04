@@ -16,7 +16,11 @@
 //                       disclaimer, so a printed copy can be reproduced.
 
 import ExcelJS from "exceljs";
-import { MATING_INDEXES, type MatingFemale, type MatingReport } from "./mating-program";
+// Types only from the orchestrator — it is `server-only`, and this module needs
+// nothing from it at run time. The index menu and the scale come from the pure
+// scoring module, which is where they are defined.
+import type { MatingFemale, MatingReport } from "./mating-program";
+import { MATING_INDEXES, SCORE_BASE, SCORE_SD_POINTS, blendLabel } from "./mating-score";
 
 const HEADER_FILL = "FF0F3D3E"; // navy/teal header band
 const HEADER_FONT = "FFFFFFFF";
@@ -72,7 +76,11 @@ export function matingProgramFilename(r: MatingReport): string {
   const n = r.females.length;
   const bits = [
     "Mating Program",
-    idx?.label ?? r.params.index,
+    // A blended run names every trait in it. Two workbooks ranked on different
+    // blends of the same traits must not land on the same filename.
+    r.params.selected.length > 1
+      ? r.params.selected.map((s) => (s.weight === 1 ? s.label : `${s.label} x${s.weight}`)).join(" + ")
+      : idx?.label ?? r.params.index,
     POOL_NOTE[r.params.pool].label,
     `${n} female${n === 1 ? "" : "s"}`,
     `generated ${generated}`,
@@ -85,14 +93,22 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   const idx = MATING_INDEXES.find((i) => i.code === r.params.index);
   const indexLabel = idx?.label ?? r.params.index;
   const audit = r.params.maxGen === 0;
+  // One trait: this workbook is exactly the workbook it has always been.
+  // Several: a Match score column and one projected-calf column per trait.
+  const selected = r.params.selected;
+  const multi = selected.length > 1;
+  const blend = blendLabel(selected);
+  const rankedOn = multi ? blend : indexLabel;
+  const scaleNote = `${SCORE_BASE} = pool average, ${SCORE_SD_POINTS} points = one standard deviation`;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bull Stud Genetics";
   wb.created = new Date(r.generatedAt ?? Date.now());
-  wb.title = `Mating Program — ${indexLabel}`;
+  wb.title = `Mating Program — ${rankedOn}`;
   wb.subject = "Bull recommendations screened for shared ancestry";
   wb.description =
-    `${r.females.length} females against ${r.bullsConsidered} bulls, ranked on ${indexLabel}. ` +
+    `${r.females.length} females against ${r.bullsConsidered} bulls, ranked on ${rankedOn}. ` +
+    (multi ? `Match score: ${scaleNote} of the weighted blend. ` : "") +
     (audit
       ? "AUDIT MODE: relatedness screening was OFF — nothing in this workbook has been cleared for mating."
       : `Screened to ${r.params.maxGen} generations, confidence floor ${r.params.floor}.`);
@@ -100,6 +116,14 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   // ---- Sheet 1: Recommendations -------------------------------------------
   const s1 = wb.addWorksheet("Recommendations");
   const paCols = MATING_INDEXES.map((m) => `PA ${m.label}`);
+  // The ranking columns. Single trait: the bull's own value and the projected
+  // calf value, as always. Blend: the Match score the order is actually based
+  // on, then the projected calf value of each trait in it.
+  const rankCols = multi
+    ? ["Match score", ...selected.map((s) => `Projected calf ${s.label}${s.weight === 1 ? "" : ` (weight ${s.weight})`}`)]
+    : [`Bull ${indexLabel}`, `Projected calf ${indexLabel}`];
+  /** 1-based column of "Ranking basis" — 10 in a single-trait run, as before. */
+  const BASIS_COL = 7 + rankCols.length + 1;
   headerRow(s1, [
     "Female",
     "Female reg",
@@ -108,8 +132,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     "Bull",
     "NAAB",
     "Bull reg",
-    `Bull ${indexLabel}`,
-    `Projected calf ${indexLabel}`,
+    ...rankCols,
     "Ranking basis",
     "Confidence",
     "Bull ancestors known",
@@ -121,7 +144,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
       "AUDIT MODE — screening was OFF. No bull in this run has been cleared for mating; see the Unverified sheet for the unscreened ranking.",
     ]);
     row.font = { bold: true, color: { argb: RED.font } };
-    s1.mergeCells(row.number, 1, row.number, 12);
+    s1.mergeCells(row.number, 1, row.number, BASIS_COL + 2);
   }
 
   for (const f of r.females) {
@@ -144,6 +167,18 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
       row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
       continue;
     }
+    // Which traits of the blend this female has no value for. Per trait, because
+    // a dam routinely carries an LPI and no Conformation, and a blanket "no
+    // parent average" would be false about the ones she does carry.
+    const gaps = f.traitColumns.filter((t) => t.basis === "bull-index");
+    const basis = multi
+      ? `weighted blend of ${blend}, each trait standardised across the ${r.bullsConsidered} bulls in the pool (${scaleNote})` +
+        (gaps.length
+          ? `; she has no ${gaps.map((g) => g.label).join(", ")}, so ${gaps.length === 1 ? "that column is" : "those columns are"} the bull's own value`
+          : "")
+      : f.paBasis === "pa"
+        ? `parent average (${indexLabel})`
+        : `bull's own ${indexLabel} — dam has no ${indexLabel}`;
     f.matches.forEach((m, i) => {
       const byCode = new Map(m.pa.map((p) => [p.code, p.value]));
       const row = s1.addRow([
@@ -154,14 +189,15 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         m.name,
         m.naab ?? "",
         m.reg ?? "",
-        m.ownIndex,
-        m.paIndex,
-        f.paBasis === "pa" ? `parent average (${indexLabel})` : `bull's own ${indexLabel} — dam has no ${indexLabel}`,
+        ...(multi ? [m.matchScore, ...m.traits.map((t) => t.pa)] : [m.ownIndex, m.paIndex]),
+        basis,
         m.confidence,
         `${m.bullSlots} of 14`,
         ...MATING_INDEXES.map((mi) => byCode.get(mi.code) ?? null),
       ]);
-      if (f.paBasis !== "pa") row.getCell(10).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
+      if (multi ? gaps.length > 0 : f.paBasis !== "pa") {
+        row.getCell(BASIS_COL).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
+      }
       if (i === 0) row.getCell(1).font = { bold: true };
     });
     // Per-female notes travel with the block they qualify.
@@ -172,7 +208,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     }
   }
   s1.columns.forEach((c, i) => {
-    c.width = i === 0 ? 30 : i === 4 ? 28 : i === 9 ? 34 : i < 3 ? 18 : 13;
+    c.width = i === 0 ? 30 : i === 4 ? 28 : i === BASIS_COL - 1 ? 34 : i < 3 ? 18 : 13;
   });
 
   // ---- Sheet 2: Excluded (the audit trail) --------------------------------
@@ -264,6 +300,9 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     "Females cleared for",
     "% of females in the run",
     `Mean projected calf ${indexLabel}`,
+    // A bull's Match score is the same number on every female — it is his place
+    // in the pool, not a property of the pairing — so it is one column here.
+    ...(multi ? ["Match score"] : []),
     "Best rank achieved",
     "Females",
   ]);
@@ -272,6 +311,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     naab: string | null;
     reg: string | null;
     own: number | null;
+    matchScore: number | null;
     females: string[];
     paSum: number;
     paN: number;
@@ -285,6 +325,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         naab: m.naab,
         reg: m.reg,
         own: m.ownIndex,
+        matchScore: m.matchScore,
         females: [],
         paSum: 0,
         paN: 0,
@@ -300,12 +341,14 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     });
   }
   const total = r.females.filter((f) => !f.error).length;
-  const lowerBetter = r.params.index === "SCS";
+  // A blend is always highest-first: each trait's direction was applied when it
+  // was standardised, so a second reversal here would undo it.
+  const lowerBetter = !multi && r.params.index === "SCS";
   [...cover.values()]
     .sort((a, b) => {
       if (b.females.length !== a.females.length) return b.females.length - a.females.length;
-      const am = a.paN ? a.paSum / a.paN : null;
-      const bm = b.paN ? b.paSum / b.paN : null;
+      const am = multi ? a.matchScore : a.paN ? a.paSum / a.paN : null;
+      const bm = multi ? b.matchScore : b.paN ? b.paSum / b.paN : null;
       if (am == null || bm == null) return a.name.localeCompare(b.name);
       return lowerBetter ? am - bm : bm - am;
     })
@@ -318,13 +361,15 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         c.females.length,
         total ? Math.round((c.females.length / total) * 100) : 0,
         c.paN ? Math.round((c.paSum / c.paN) * 100) / 100 : null,
+        ...(multi ? [c.matchScore] : []),
         Number.isFinite(c.bestRank) ? c.bestRank : null,
         c.females.join("; "),
       ]);
     });
   if (s4.rowCount === 1) s4.addRow(["No bull was cleared for any female in this run."]);
+  const femalesCol = multi ? 9 : 8; // 0-based; the wide "Females" list column
   s4.columns.forEach((c, i) => {
-    c.width = i === 0 ? 28 : i === 8 ? 60 : 16;
+    c.width = i === 0 ? 28 : i === femalesCol ? 60 : 16;
   });
 
   // ---- Sheet 5: Run parameters --------------------------------------------
@@ -333,7 +378,35 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   const add = (k: string, v: string | number | null, why: string) => s5.addRow([k, v, why]);
 
   add("Generated", r.generatedAt, "Timestamp of the run. Proofs move; a stale copy of this sheet is not a current recommendation.");
-  add("Index", indexLabel, `Bulls are ranked on the projected calf ${indexLabel}.${lowerBetter ? " A LOWER SCS is the better animal, so this run was ranked ascending." : ""}`);
+  // EVERY selected trait and its weight, plus the standardisation in full, so a
+  // printed recommendation can be reconstructed from this sheet alone.
+  if (multi) {
+    add("Ranked on", blend, `A weighted blend of ${selected.length} traits. The order on the Recommendations sheet is the Match score, not any single trait.`);
+    selected.forEach((s, i) => {
+      add(
+        `  Trait ${i + 1}`,
+        `${s.label} — weight ${s.weight}`,
+        `${s.higherIsBetter ? "A HIGHER value is the better animal." : `A LOWER ${s.label} is the better animal, so its contribution is reversed before blending.`} It carries ${s.weight} of the ${selected.reduce((t, x) => t + x.weight, 0)} total weight.`,
+      );
+    });
+    add(
+      "Standardisation",
+      "z-score across the candidate pool",
+      `The selected traits are not on the same scale — LPI runs into the thousands, Conformation in single digits — so they are NOT added up. For each trait: z = (the bull's own value − the pool mean) ÷ the pool standard deviation, measured over the ${r.bullsConsidered} bulls in this run's pool and NEGATED where a lower value is better. The blend is composite = Σ(weight × z) ÷ Σ(weight), and the Match score is ${SCORE_BASE} + ${SCORE_SD_POINTS} × composite — so ${scaleNote}. A trait the pool has no spread on contributes nothing and is named in the warnings below. A bull missing any selected trait is left out of the ranking rather than scored on the rest.`,
+    );
+    add(
+      "Standardised on",
+      "the bulls' own values",
+      "The Match score standardises each BULL'S OWN value, not the parent average, so one bull's score means the same thing on every female in this workbook. The per-trait columns beside it are the projected calf values.",
+    );
+  } else {
+    add("Index", indexLabel, `Bulls are ranked on the projected calf ${indexLabel}.${lowerBetter ? " A LOWER SCS is the better animal, so this run was ranked ascending." : ""}`);
+    add(
+      "Standardisation",
+      "none — raw projected calf value",
+      "A single trait is ranked on the projected calf value itself, with nothing standardised or rescaled. Select two or more traits to rank on a standardised blend with a Match score.",
+    );
+  }
   add("Generations screened", audit ? "OFF (audit mode)" : r.params.maxGen, audit ? "NO relatedness screening was performed in this run." : "A shared ancestor is looked for this many generations back on both sides.");
   add("Bull pool", POOL_NOTE[r.params.pool].label, POOL_NOTE[r.params.pool].note);
   add("Include inactive bulls", r.params.includeInactive ? "yes" : "no", "Inactive bulls have no proof in the most recent round on file.");
@@ -371,6 +444,11 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     "No inbreeding-depression penalty is applied. There is no defensible published Canadian coefficient to apply, so the ranking is the parent average only.",
     "Registration numbers are compared, names never are. Holstein herd prefixes collide constantly, so a name match alone is not treated as a relationship.",
   ];
+  if (multi) {
+    notes.unshift(
+      `THE MATCH SCORE IS RELATIVE TO THIS POOL. ${SCORE_BASE} is the average of the ${r.bullsConsidered} bulls that were ranked, and ${SCORE_SD_POINTS} points is one standard deviation of the blend. It is NOT a national base and NOT comparable with a Match score from a run against a different pool. Change the pool and every number on the Recommendations sheet changes with it, even though no bull has moved.`,
+    );
+  }
   if (audit) {
     notes.unshift(
       "AUDIT MODE. Relatedness screening was switched OFF for this run. Nothing in this workbook has been cleared for mating; the Excluded sheet shows only what a 3-generation screen WOULD have removed.",

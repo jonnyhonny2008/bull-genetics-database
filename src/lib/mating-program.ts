@@ -52,6 +52,21 @@ import {
 } from "./parent-average";
 import { blondinWhere } from "./sire-class";
 import {
+  LOWER_IS_BETTER,
+  MATING_INDEXES,
+  blendLabel,
+  compareByScore,
+  compositeScore,
+  describeSelection,
+  parentAverage,
+  parseTraitSelection,
+  poolTraitStats,
+  rankIsComposite,
+  type CompositeScore,
+  type SelectedTrait,
+  type TraitStats,
+} from "./mating-score";
+import {
   ancestorSetFromPAParent,
   assessRelatedness,
   buildAncestorSet,
@@ -65,35 +80,16 @@ import {
 } from "./relatedness";
 
 // --- the index menu ---------------------------------------------------------
+//
+// The menu itself, the sort direction and every line of the scoring maths live
+// in ./mating-score — a PURE module with no `server-only` import, so the numbers
+// that decide which bull a breeder is shown can be unit-tested directly. Both
+// are re-exported here because the page and the Excel export have always read
+// them from this module.
 
-/**
- * The indexes a mating run may be ranked on.
- *
- * PI and F&L are DELIBERATELY ABSENT. Only about half of the preferred
- * evaluations carry them, so ranking on either would silently drop half the
- * lineup — the user would see a shorter list and no explanation.
- */
-export const MATING_INDEXES: { code: string; label: string; col: string }[] = [
-  { code: "LPI", label: "LPI", col: "lpi" },
-  { code: "PRO$", label: "Pro$", col: "proDollar" },
-  { code: "CONF", label: "Conformation", col: "conf" },
-  { code: "MAMM", label: "Mammary", col: "mamm" },
-  { code: "MILK", label: "Milk", col: "milk" },
-  { code: "FAT", label: "Fat", col: "fat" },
-  { code: "PROT", label: "Protein", col: "prot" },
-  { code: "SCS", label: "SCS", col: "scs" },
-];
+export { MATING_INDEXES } from "./mating-score";
+export type { SelectedTrait } from "./mating-score";
 
-/**
- * Indexes where a LOWER number is the better animal. Somatic Cell Score is the
- * only one on the menu. Ranking it descending — as a naive "highest index wins"
- * would — recommends the worst udder-health bulls in the barn, so the sort
- * direction is derived, never assumed. Kept private so MATING_INDEXES keeps the
- * exact shape the page and the export consume.
- */
-const LOWER_IS_BETTER = new Set(["SCS"]);
-
-const DEFAULT_INDEX = "LPI";
 const MAX_FEMALES = 50;
 const DEFAULT_TOP_N = 10;
 const MAX_TOP_N = 50;
@@ -126,7 +122,19 @@ const EXCLUDED_DISPLAY_CAP = 25;
 
 export interface MatingParams {
   females: string[];
+  /**
+   * The PRIMARY index — the first selected trait. Everything that read this
+   * before the blend existed still reads it and still means the same thing:
+   * `paIndex`, `ownIndex` and the single-trait column are all this trait.
+   */
   index: string;
+  /**
+   * Every trait the run is ranked on, with its weight, in the order selected.
+   * Length 1 is the classic single-trait run — ranked on the raw projected calf
+   * value, with no standardisation anywhere. Length > 1 is the standardised
+   * blend; see src/lib/mating-score.ts for why a raw sum would be a lie.
+   */
+  selected: SelectedTrait[];
   topN: number;
   /** 0 = audit mode (screening OFF). 2 or 3 = generations screened. */
   maxGen: 0 | 2 | 3;
@@ -159,6 +167,22 @@ export interface MatingMatch {
   /** Projected calf value: mean of bull and dam. Falls back to ownIndex when
    *  the dam has no value for the index — see MatingFemale.paBasis. */
   paIndex: number | null;
+  /**
+   * The bull's place on the blended scale: 100 is the pool average and every 5
+   * points is one standard deviation of the weighted blend. null in a
+   * single-trait run (nothing was standardised), and null for a bull missing
+   * one of the selected traits — he is never scored on the traits he happens to
+   * carry, which would flatter him for the one he is missing.
+   */
+  matchScore: number | null;
+  /**
+   * One entry per SELECTED trait, in the order selected. `own` is the bull's own
+   * value and `pa` the projected calf figure shown in that trait's column — the
+   * bull's own value when the dam has none, exactly as the single-trait column
+   * has always behaved. A single-trait run carries one entry, which is the same
+   * pair of numbers as ownIndex/paIndex.
+   */
+  traits: { code: string; label: string; own: number | null; pa: number | null }[];
   pa: { code: string; label: string; value: number }[];
   unavailable: { code: string; label: string; reason: string }[];
   tier: "clear" | "unknown" | "no-pedigree";
@@ -204,6 +228,13 @@ export interface MatingFemale {
   /** Ready-made heading for the ranking column, already relabelled when the
    *  projection could not be computed. */
   indexLabel: string;
+  /**
+   * One column per SELECTED trait, in the order selected, already headed for
+   * THIS female: a trait she has no value for cannot be averaged, so its column
+   * shows the bull's own number and says so in its own heading. A single-trait
+   * run carries one entry, which duplicates indexLabel/paBasis.
+   */
+  traitColumns: { code: string; label: string; weight: number; basis: "pa" | "bull-index"; heading: string }[];
 }
 
 export interface MatingReport {
@@ -269,11 +300,35 @@ function looksLikeReg(raw: string): boolean {
 function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   const warnings: string[] = [];
 
-  const idx = MATING_INDEXES.find((i) => i.code === (sp.index ?? "").trim().toUpperCase());
-  if (sp.index && !idx) {
-    warnings.push(`"${sp.index}" is not a rankable index in this build — ranked on ${DEFAULT_INDEX} instead.`);
-  }
-  const index = idx?.code ?? DEFAULT_INDEX;
+  // --- what the run is ranked on ---
+  //
+  // Two spellings, one meaning, because both have to keep working:
+  //
+  //   COMPACT   ?index=LPI            the classic single-trait run, untouched
+  //             ?index=LPI,CONF       a blend, equal weights
+  //             ?index=LPI:2,CONF:1   a blend, LPI counting double
+  //   SLOTS     ?index=LPI&index2=CONF&weight1=2&weight2=1
+  //
+  // The form uses the slots because a plain GET form cannot join four fields
+  // into one parameter without JavaScript; every saved link, every bookmark and
+  // the Excel route use whichever they were built with. `weightN` applies to
+  // slot N, and is ignored on a slot that already carries its own weight.
+  const slotCodes = [sp.index, sp.index2, sp.index3, sp.index4];
+  const slotWeights = [sp.weight1, sp.weight2, sp.weight3, sp.weight4];
+  const tokens: string[] = [];
+  slotCodes.forEach((raw, i) => {
+    const code = (raw ?? "").trim();
+    if (!code) return;
+    const w = (slotWeights[i] ?? "").trim();
+    // A slot that is already in the compact form carries its own weights.
+    tokens.push(w && !code.includes(",") && !code.includes(":") ? `${code}:${w}` : code);
+  });
+  const sel = parseTraitSelection(tokens);
+  warnings.push(...sel.warnings);
+  const selected = sel.selected;
+  // The PRIMARY trait. Everything written before the blend existed reads this
+  // and still means exactly what it meant.
+  const index = selected[0].code;
 
   const nRaw = Number.parseInt(sp.topN ?? "", 10);
   const topN = Number.isFinite(nRaw) ? Math.min(Math.max(nRaw, 1), MAX_TOP_N) : DEFAULT_TOP_N;
@@ -361,7 +416,7 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   }
 
   return {
-    params: { females, index, topN, maxGen, pool, includeInactive, floor, naabOnly, poolExplicit },
+    params: { females, index, selected, topN, maxGen, pool, includeInactive, floor, naabOnly, poolExplicit },
     candidates,
     unparseable,
     overflow,
@@ -454,9 +509,14 @@ export async function getMatingProgramReport(
   const { params, candidates: freeTextLines, unparseable, overflow, warnings: paramWarnings } = parseParams(sp);
   const warnings = [...paramWarnings];
 
+  const selected = params.selected;
+  // ONE trait is ranked on the raw projected calf value, exactly as this report
+  // always has been. TWO OR MORE are standardised across the pool and blended —
+  // see src/lib/mating-score.ts for why adding them up would be a lie.
+  const multi = rankIsComposite(selected);
   const idx = MATING_INDEXES.find((i) => i.code === params.index)!;
   const higherIsBetter = !LOWER_IS_BETTER.has(idx.code);
-  if (!higherIsBetter) {
+  if (!multi && !higherIsBetter) {
     warnings.push(`${idx.label}: a LOWER value is the better animal, so this run is ranked ascending.`);
   }
 
@@ -539,6 +599,11 @@ export async function getMatingProgramReport(
   // ---- Q3: candidate bulls. Indexed numeric columns only. -------------------
   // NEVER traitsJson and NEVER holsteinProfileJson here: at ~1.2 KB per bull
   // that is ~3.8 MB of egress on every single page load.
+  //
+  // The SQL order is the PRIMARY trait even in a blended run. It decides nothing
+  // about the ranking — every candidate is re-ranked in memory below — it only
+  // decides which rows survive if CANDIDATE_CAP ever truncates the read, and the
+  // first-named trait is the most defensible tie-break for that.
   const orderBy = {
     [idx.col]: { sort: higherIsBetter ? "desc" : "asc", nulls: "last" },
   } as unknown as Prisma.GeneticEvaluationOrderByWithRelationInput;
@@ -697,16 +762,40 @@ export async function getMatingProgramReport(
     }
   }
 
-  // A bull with no value for the chosen index cannot be ranked on it. Dropping
-  // him is stated, not silent.
-  const indexMissing = candidates.filter((c) => c.cols.get(idx.code) == null).length;
-  if (indexMissing) {
-    candidates = candidates.filter((c) => c.cols.get(idx.code) != null);
-    warnings.push(`${indexMissing} bull${indexMissing === 1 ? " has" : "s have"} no ${idx.label} on the preferred proof and could not be ranked.`);
+  // A bull with no value for a selected trait cannot be ranked on it. Dropping
+  // him is stated, not silent — and in a blended run he is dropped rather than
+  // scored on the traits he does carry, because scoring the survivors would
+  // reward him for the trait he is missing, which is usually his weak one.
+  for (const s of selected) {
+    const missing = candidates.filter((c) => c.cols.get(s.code) == null).length;
+    if (!missing) continue;
+    candidates = candidates.filter((c) => c.cols.get(s.code) != null);
+    warnings.push(
+      multi
+        ? `${missing} bull${missing === 1 ? " has" : "s have"} no ${s.label} on the preferred proof and could not be given a Match score. A bull is never scored on part of the blend — that would flatter him for the trait he is missing — so ${missing === 1 ? "he was" : "they were"} left out of the ranking.`
+        : `${missing} bull${missing === 1 ? " has" : "s have"} no ${s.label} on the preferred proof and could not be ranked.`,
+    );
   }
 
   if (candidates.length === 0) {
-    warnings.push(`No bull in the "${params.pool}" pool has a rankable ${idx.label} — nothing could be recommended.`);
+    warnings.push(
+      `No bull in the "${params.pool}" pool has a rankable ${multi ? blendLabel(selected) : idx.label} — nothing could be recommended.`,
+    );
+  }
+
+  // ---- the pool scale, computed ONCE ---------------------------------------
+  // The scale a bull is measured against is the lineup he is being ranked
+  // inside, so it is built here — after every pool filter, before the first
+  // female. Recomputing it per female would make a bull's Match score mean a
+  // different thing on each row of the same report.
+  const stats: Map<string, TraitStats> = multi ? poolTraitStats(selected, candidates) : new Map();
+  const compositeByBull = new Map<string, CompositeScore>();
+  if (multi) {
+    for (const c of candidates) compositeByBull.set(c.animalId, compositeScore(c.cols, selected, stats));
+    // Only worth explaining when there is a pool to explain. An empty pool has
+    // already said so above; "only 0 bulls have an LPI" would just be noise on
+    // top of it.
+    if (candidates.length) warnings.push(...describeSelection(selected, stats, candidates.length));
   }
 
   const bullSets = new Map<string, AncestorSet>();
@@ -750,7 +839,18 @@ export async function getMatingProgramReport(
     tier: MatingMatch["tier"];
     confidence: number;
     bullSlots: number;
+    /**
+     * THE SORT KEY. Single trait: the raw projected calf value, sorted in that
+     * trait's own direction. Blend: the standardised composite in standard
+     * deviations, always highest-first because each trait's direction was
+     * already applied when it was standardised.
+     */
     pre: number | null;
+    /** Projected calf value per SELECTED trait, aligned with `selected`. This is
+     *  what is displayed; `pre` is only what is sorted on. */
+    preValues: (number | null)[];
+    /** 100 + 5 × composite. null in a single-trait run. */
+    matchScore: number | null;
     reason: string;
     blindSide: MatingMatch["blindSide"];
   }
@@ -849,6 +949,15 @@ export async function getMatingProgramReport(
       if (p?.found) cowSet = ancestorSetFromPAParent(p, corpus, buildGen);
     }
 
+    // Her own value for each selected trait, aligned with `selected`. A trait
+    // she has no number for cannot be averaged, so that column falls back to the
+    // bull's own value — per trait, because a dam routinely has an LPI and no
+    // Conformation, and one blanket "no parent average" would be false about the
+    // traits she does carry.
+    const damValues: (number | null)[] = selected.map((s) =>
+      parent?.found ? parent.traits.get(s.code)?.value ?? null : null,
+    );
+
     const base: MatingFemale = {
       input: f.input,
       reg: parent?.reg ?? f.input,
@@ -865,6 +974,13 @@ export async function getMatingProgramReport(
       notes,
       paBasis: "pa",
       indexLabel: idx.label,
+      traitColumns: selected.map((s, i) => ({
+        code: s.code,
+        label: s.label,
+        weight: s.weight,
+        basis: damValues[i] == null ? ("bull-index" as const) : ("pa" as const),
+        heading: damValues[i] == null ? `Bull's own ${s.label}` : `Projected calf ${s.label}`,
+      })),
     };
     const cowLabel = base.name ?? base.reg;
 
@@ -907,13 +1023,26 @@ export async function getMatingProgramReport(
     }
     if (degraded) notes.push(darkBranchNote(cowSet) ?? "Pedigree too thin to screen.");
 
-    const damIndex = parent.traits.get(idx.code)?.value ?? null;
+    const damIndex = damValues[0];
     if (damIndex == null) {
       base.paBasis = "bull-index";
       base.indexLabel = `Bull index — dam has no ${idx.label}`;
-      notes.push(
-        `${base.name ?? base.reg} has no ${idx.label}, so no parent average could be computed for it — the ranking below is the BULL'S OWN ${idx.label}, not a projection for the calf.`,
-      );
+      if (!multi) {
+        notes.push(
+          `${base.name ?? base.reg} has no ${idx.label}, so no parent average could be computed for it — the ranking below is the BULL'S OWN ${idx.label}, not a projection for the calf.`,
+        );
+      }
+    }
+    if (multi) {
+      // The Match score is built from the bulls' OWN values in every case, so a
+      // gap in her record never changes the ranking — only which columns beside
+      // it are projections and which are the bull's own number.
+      const gaps = base.traitColumns.filter((t) => t.basis === "bull-index");
+      if (gaps.length) {
+        notes.push(
+          `${base.name ?? base.reg} has no ${gaps.map((g) => g.label).join(", ")}, so no parent average could be computed for ${gaps.length === 1 ? "that trait" : "those traits"} — ${gaps.length === 1 ? "that column shows" : "those columns show"} the BULL'S OWN value, not a projection for the calf. The Match score itself is unaffected: it is always built from the bulls' own values, standardised across the pool.`,
+        );
+      }
     }
 
     const clear: Ranked[] = [];
@@ -922,8 +1051,14 @@ export async function getMatingProgramReport(
 
     for (const c of candidates) {
       const bullSet = bullSets.get(c.animalId)!;
-      const own = c.cols.get(idx.code) ?? null;
-      const pre = own == null ? null : damIndex == null ? own : (own + damIndex) / 2;
+      // Projected calf value per selected trait — the displayed figures.
+      const preValues = selected.map((s, i) => parentAverage(c.cols.get(s.code) ?? null, damValues[i]));
+      // The SORT KEY. Single trait: that trait's projected calf value, exactly
+      // as before. Blend: the pool-standardised composite, which is the same
+      // number for this bull on every female in the run.
+      const score = multi ? compositeByBull.get(c.animalId) ?? null : null;
+      const pre = multi ? score?.composite ?? null : preValues[0];
+      const matchScore = score?.matchScore ?? null;
 
       if (params.maxGen === 0) {
         // Audit mode: nothing is withheld, but the screen is still RUN so the
@@ -937,6 +1072,8 @@ export async function getMatingProgramReport(
           confidence: 0,
           bullSlots: v.bullSlots,
           pre,
+          preValues,
+          matchScore,
           reason: "Audit mode — no relatedness screening was performed on this pair.",
           blindSide: null,
         });
@@ -948,7 +1085,7 @@ export async function getMatingProgramReport(
         excluded.push({ bullId: c.animalId, name: c.name, shared: v.shared });
       } else if (v.tier === "clear") {
         clear.push({
-          c, tier: "clear", confidence: v.confidence, bullSlots: v.bullSlots, pre,
+          c, tier: "clear", confidence: v.confidence, bullSlots: v.bullSlots, pre, preValues, matchScore,
           reason: "", blindSide: null,
         });
       } else {
@@ -962,12 +1099,18 @@ export async function getMatingProgramReport(
           confidence: v.confidence,
           bullSlots: v.bullSlots,
           pre,
+          preValues,
+          matchScore,
           ...whyUnverified(cowSet, bullSet, cowLabel),
         });
       }
     }
 
     const byPre = (a: Ranked, b: Ranked) => {
+      // A composite is always highest-first: each trait's direction was applied
+      // when it was standardised, so SCS inside a blend is already the right way
+      // up and a second reversal here would undo it.
+      if (multi) return compareByScore(a.pre, b.pre) || a.c.name.localeCompare(b.c.name);
       if (a.pre == null && b.pre == null) return a.c.name.localeCompare(b.c.name);
       if (a.pre == null) return 1;
       if (b.pre == null) return -1;
@@ -1086,7 +1229,11 @@ export async function getMatingProgramReport(
       const bullParent = bullParents.get(r.c.animalId);
       const pa: MatingMatch["pa"] = [];
       const unavailable: MatingMatch["unavailable"] = [];
-      let paIndex = r.pre;
+      /** computeParentAverage's own figure per code, where it produced one. */
+      const paByCode = new Map<string, number>();
+      // The PRIMARY trait's projected calf value — never the composite, which is
+      // in standard deviations and would be nonsense in this field.
+      let paIndex = r.preValues[0];
 
       if (bullParent && d.parent) {
         // computeParentAverage, unchanged and unforked. The displayed numbers
@@ -1099,6 +1246,7 @@ export async function getMatingProgramReport(
             const row = byCode.get(m.code);
             if (row) {
               pa.push({ code: m.code, label: m.label, value: row.pa });
+              paByCode.set(m.code, row.pa);
               continue;
             }
             const u = unavByCode.get(m.code);
@@ -1138,6 +1286,20 @@ export async function getMatingProgramReport(
         naab: ids?.naab ?? null,
         ownIndex: r.c.cols.get(idx.code) ?? null,
         paIndex: paIndex == null ? null : round2(paIndex),
+        matchScore: r.matchScore,
+        // Per selected trait: computeParentAverage's figure where it produced
+        // one, and the pre-rank mean otherwise — the same precedence paIndex
+        // has always used, applied to every column of the blend.
+        traits: selected.map((s, i) => {
+          const full = paByCode.get(s.code);
+          const value = full ?? r.preValues[i];
+          return {
+            code: s.code,
+            label: s.label,
+            own: r.c.cols.get(s.code) ?? null,
+            pa: value == null ? null : round2(value),
+          };
+        }),
         pa,
         unavailable,
         tier: r.tier,

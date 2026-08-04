@@ -4,9 +4,24 @@ import { can } from "@/lib/constants";
 import { PageHeader, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { getMatingProgramReport, MATING_INDEXES } from "@/lib/mating-program";
+import { blendLabel, MAX_SELECTED_TRAITS, MAX_WEIGHT, MIN_WEIGHT, WEIGHT_STEP } from "@/lib/mating-score";
 import { MatingProgramResults } from "@/components/MatingProgramResults";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The "Rank on" slots. One select + one weight per slot, because a plain GET
+ * form cannot join four fields into a single parameter without JavaScript.
+ * Slot 1 is the field this report has always had — `?index=LPI` is still exactly
+ * one trait ranked on its own projected calf value, and every saved link keeps
+ * working. The orchestrator also accepts the compact `?index=LPI:2,CONF` form.
+ */
+const TRAIT_SLOTS = [
+  { code: "index", weight: "weight1" },
+  { code: "index2", weight: "weight2" },
+  { code: "index3", weight: "weight3" },
+  { code: "index4", weight: "weight4" },
+].slice(0, MAX_SELECTED_TRAITS);
 
 const POOLS = [
   { code: "blondin", label: "Blondin bulls" },
@@ -42,13 +57,20 @@ export default async function MatingProgramReportPage({
 
   // Preserve the current run on the Excel export link.
   const exportParams = new URLSearchParams();
-  for (const k of ["females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly"]) {
+  for (const k of [
+    "females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly",
+    // Every trait slot travels too, or the export would silently be a different
+    // ranking from the one on screen.
+    ...TRAIT_SLOTS.flatMap((s) => [s.code, s.weight]),
+  ]) {
     const v = searchParams[k];
     if (v) exportParams.set(k, v);
   }
   const exportHref = `/reports/mating-program/export${exportParams.toString() ? `?${exportParams}` : ""}`;
 
-  const indexLabel = MATING_INDEXES.find((i) => i.code === params.index)?.label ?? params.index;
+  // One trait: its own label, exactly as before. Several: the blend, weights and
+  // all — "LPI ×2 + Conformation".
+  const indexLabel = blendLabel(params.selected);
 
   const resolved = report.females.filter((f) => !f.error).length;
   const failed = report.females.length - resolved;
@@ -157,20 +179,64 @@ export default async function MatingProgramReportPage({
           </p>
         </div>
 
+        {/* Rank on — one trait, or a weighted blend of up to four. Each slot is
+            a plain select + number input so the whole form stays a GET form
+            with no JavaScript and every control is reachable by keyboard. */}
+        <fieldset className="mb-3 rounded-md border border-slate-200 px-3 pb-3 pt-1">
+          <legend className="label px-1">Rank on</legend>
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+            {TRAIT_SLOTS.map((slot, i) => {
+              const chosen = params.selected[i];
+              return (
+                <div key={slot.code} className="flex items-end gap-1.5">
+                  <div>
+                    <label className="label" htmlFor={slot.code}>
+                      {i === 0 ? "Trait" : `+ trait ${i + 1}`}
+                    </label>
+                    <select
+                      id={slot.code}
+                      name={slot.code}
+                      defaultValue={chosen?.code ?? ""}
+                      className="input min-w-[150px]"
+                    >
+                      {i > 0 && <option value="">— none —</option>}
+                      {MATING_INDEXES.map((m) => (
+                        <option key={m.code} value={m.code}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor={slot.weight}>Weight</label>
+                    <input
+                      id={slot.weight}
+                      name={slot.weight}
+                      type="number"
+                      step={WEIGHT_STEP}
+                      min={MIN_WEIGHT}
+                      max={MAX_WEIGHT}
+                      defaultValue={chosen?.weight ?? 1}
+                      className="input w-20"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            One trait ranks on the projected calf value itself, exactly as before. Pick two or more and each trait is
+            measured against the bull pool first, then blended in the weights you set — so LPI&rsquo;s thousands cannot
+            drown out Conformation&rsquo;s single digits. The result is a <strong>Match score</strong>: 100 is the pool
+            average and every 5 points is one standard deviation. A bull missing any trait in the blend is left out
+            rather than scored on the rest.
+          </p>
+        </fieldset>
+
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="label" htmlFor="pool">Bull pool</label>
             <select id="pool" name="pool" defaultValue={params.pool} className="input min-w-[170px]">
               {POOLS.map((p) => (
                 <option key={p.code} value={p.code}>{p.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="index">Rank on</label>
-            <select id="index" name="index" defaultValue={params.index} className="input">
-              {MATING_INDEXES.map((i) => (
-                <option key={i.code} value={i.code}>{i.label}</option>
               ))}
             </select>
           </div>
