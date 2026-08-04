@@ -337,6 +337,13 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   add("Generations screened", audit ? "OFF (audit mode)" : r.params.maxGen, audit ? "NO relatedness screening was performed in this run." : "A shared ancestor is looked for this many generations back on both sides.");
   add("Bull pool", POOL_NOTE[r.params.pool].label, POOL_NOTE[r.params.pool].note);
   add("Include inactive bulls", r.params.includeInactive ? "yes" : "no", "Inactive bulls have no proof in the most recent round on file.");
+  add(
+    "NAAB code only",
+    r.params.naabOnly ? "yes" : "no",
+    r.params.naabOnly
+      ? "Restricted to bulls carrying a NAAB stud code — semen that can actually be ordered."
+      : "Every bull in the pool was considered, including any with no stud code on file.",
+  );
   add("Bulls considered", r.bullsConsidered, "Bulls that passed the pool filters and were screened against every female.");
   add("Inactive bulls suppressed", r.inactiveSuppressed, "Bulls removed from the pool because they have no active proof.");
   add("Top N per female", r.params.topN, "How many cleared bulls are listed for each female.");

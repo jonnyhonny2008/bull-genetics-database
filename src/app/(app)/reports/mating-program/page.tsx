@@ -42,7 +42,7 @@ export default async function MatingProgramReportPage({
 
   // Preserve the current run on the Excel export link.
   const exportParams = new URLSearchParams();
-  for (const k of ["females", "index", "pool", "topN", "maxGen", "floor", "inactive"]) {
+  for (const k of ["females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly"]) {
     const v = searchParams[k];
     if (v) exportParams.set(k, v);
   }
@@ -228,6 +228,13 @@ export default async function MatingProgramReportPage({
           >
             <input type="checkbox" name="inactive" value="1" defaultChecked={params.includeInactive} />
             Include inactive bulls
+          </label>
+          <label
+            className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"
+            title="Only bulls carrying a NAAB stud code — i.e. semen that can actually be ordered. A bull with no stud code cannot be bought, so recommending him wastes a slot."
+          >
+            <input type="checkbox" name="naabOnly" value="1" defaultChecked={params.naabOnly} />
+            NAAB code only
           </label>
           <button type="submit" className="btn-primary">Generate</button>
           <a href="/reports/mating-program" className="btn-secondary">Reset</a>

@@ -143,6 +143,10 @@ export interface MatingParams {
   pool: "blondin" | "proven" | "genomic" | "all";
   includeInactive: boolean;
   floor: number;
+  /** Restrict the pool to bulls carrying an active NAAB stud code (marketed semen). */
+  naabOnly: boolean;
+  /** True when `pool` came from the request rather than the default. */
+  poolExplicit: boolean;
 }
 
 export interface MatingMatch {
@@ -279,6 +283,10 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
 
   let pool: MatingParams["pool"] = "blondin";
   const poolRaw = (sp.pool ?? "").trim().toLowerCase();
+  // Whether the operator actually PICKED this pool. An empty pool that was
+  // merely the default is a setup gap and falls back below; one that was chosen
+  // deliberately is respected and explained instead.
+  const poolExplicit = poolRaw !== "";
   // A bare "active" is the older vocabulary for "every bull with a current
   // proof, proven and genomic together". It has no button on the form, but a
   // bookmarked or hand-edited URL can still carry it, so it keeps working:
@@ -301,6 +309,12 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   // the same run as the form.
   const inactiveRaw = sp.inactive ?? sp.includeInactive;
   const includeInactive = !legacyActive && (inactiveRaw === "1" || inactiveRaw === "true");
+
+  // Marketed sires only: a bull with no NAAB code has no stud code and cannot be
+  // ordered, so recommending him wastes a slot in the lineup. Pushed into SQL as
+  // an identifier EXISTS, which rides @@index([idType, idValue]).
+  const naabRaw = sp.naabOnly ?? sp.naab;
+  const naabOnly = naabRaw === "1" || naabRaw === "true";
 
   // The floor is CLAMPED AT THE DEFAULT, not at zero. 0.75 is the whole reason
   // the paternally blind cohort (0.583 — own pedigree line only, the sire's own
@@ -347,7 +361,7 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   }
 
   return {
-    params: { females, index, topN, maxGen, pool, includeInactive, floor },
+    params: { females, index, topN, maxGen, pool, includeInactive, floor, naabOnly, poolExplicit },
     candidates,
     unparseable,
     overflow,
@@ -413,9 +427,17 @@ interface Candidate {
  * `inactiveSuppressed` is an exact count of what was withheld rather than a
  * silent absence.
  */
-function poolWhere(pool: MatingParams["pool"]): Prisma.AnimalWhereInput {
-  if (pool === "blondin") return blondinWhere("1") ?? {};
-  return {};
+function poolWhere(pool: MatingParams["pool"], naabOnly = false): Prisma.AnimalWhereInput {
+  const AND: Prisma.AnimalWhereInput[] = [];
+  if (pool === "blondin") {
+    const b = blondinWhere("1");
+    if (b) AND.push(b);
+  }
+  // A NAAB code is what makes a bull orderable. Matching on idType alone (not on
+  // a value shape) keeps this honest: whatever the importer wrote as the stud
+  // code counts, and a bull who has none is simply not marketed.
+  if (naabOnly) AND.push({ identifiers: { some: { idType: "naab", active: true } } });
+  return AND.length ? { AND } : {};
 }
 
 // --- the report -------------------------------------------------------------
@@ -521,23 +543,27 @@ export async function getMatingProgramReport(
     [idx.col]: { sort: higherIsBetter ? "desc" : "asc", nulls: "last" },
   } as unknown as Prisma.GeneticEvaluationOrderByWithRelationInput;
 
+  // Shared by the main pool read and the empty-pool fallback below, so the two
+  // can never drift into selecting different columns.
+  const candidateSelect = {
+    animalId: true,
+    lpi: true,
+    proDollar: true,
+    conf: true,
+    mamm: true,
+    milk: true,
+    fat: true,
+    prot: true,
+    scs: true,
+    animal: { select: { primaryName: true, proofStatus: true, sireType: true } },
+  } satisfies Prisma.GeneticEvaluationSelect;
+
   const candidateRowsPromise = prisma.geneticEvaluation.findMany({
     where: {
       isPreferred: true,
-      animal: { archived: false, sex: "M", ...poolWhere(params.pool) },
+      animal: { archived: false, sex: "M", ...poolWhere(params.pool, params.naabOnly) },
     },
-    select: {
-      animalId: true,
-      lpi: true,
-      proDollar: true,
-      conf: true,
-      mamm: true,
-      milk: true,
-      fat: true,
-      prot: true,
-      scs: true,
-      animal: { select: { primaryName: true, proofStatus: true, sireType: true } },
-    },
+    select: candidateSelect,
     orderBy,
     take: CANDIDATE_CAP,
   });
@@ -567,11 +593,46 @@ export async function getMatingProgramReport(
       })
     : Promise.resolve([]);
 
-  const [candidateRows, internalRows, defMap] = await Promise.all([
+  let [candidateRows, internalRows, defMap] = await Promise.all([
     candidateRowsPromise,
     internalRowsPromise,
     defMapPromise,
   ]);
+
+  // An empty pool is a SETUP gap, not a screening result — without this the run
+  // reports "0 eligible, 0 excluded, 0 unverifiable", which reads as "every bull
+  // was rejected" when in truth none were ever looked at. The Blondin lineup is
+  // the default and is empty until prisma/tag-blondin-animals.ts has been run,
+  // so fall back to the whole database rather than hand back an empty report —
+  // but only when the pool was the DEFAULT. A deliberately chosen empty pool is
+  // respected and explained instead.
+  if (candidateRows.length === 0 && params.pool === "blondin" && !params.poolExplicit) {
+    const fallback = await prisma.geneticEvaluation.findMany({
+      where: {
+        isPreferred: true,
+        animal: { archived: false, sex: "M", ...poolWhere("all", params.naabOnly) },
+      },
+      select: candidateSelect,
+      orderBy,
+      take: CANDIDATE_CAP,
+    });
+    if (fallback.length) {
+      params.pool = "all";
+      candidateRows = fallback;
+      warnings.push(
+        "No bull carries the Blondin tag yet, so this run used the whole database instead. " +
+          "Run prisma/tag-blondin-animals.ts to mark the stud's own lineup, then the Blondin pool will work.",
+      );
+    }
+  }
+
+  if (candidateRows.length === 0) {
+    warnings.push(
+      params.naabOnly
+        ? `No bull in the "${params.pool}" pool has an active NAAB code — nothing could be considered. Untick "NAAB code only" to widen the pool.`
+        : `No bull matched the "${params.pool}" pool — nothing could be considered. This is an empty pool, not a screening result.`,
+    );
+  }
 
   if (candidateRows.length >= CANDIDATE_CAP) {
     warnings.push(`The bull pool was truncated at ${CANDIDATE_CAP} candidates — narrow the pool for a complete run.`);
