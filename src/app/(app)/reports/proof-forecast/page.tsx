@@ -9,6 +9,11 @@ import { ProofForecastTable } from "@/components/ProofForecastTable";
 import { LineChart, type LineSeries } from "@/components/TrendCharts";
 
 export const dynamic = "force-dynamic";
+// Matching every bull against the lineup's whole history, plus backtesting the
+// last six rounds, takes several seconds on a cold request — comfortably past
+// the default serverless ceiling. The backtest is memoised, so only the first
+// request after a deploy or an import pays full price.
+export const maxDuration = 60;
 
 export default async function ProofForecastReportPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const user = currentUser();

@@ -5,6 +5,9 @@ import { getProofForecastReport } from "@/lib/proof-forecast";
 import { buildProofForecastWorkbook, proofForecastFilename } from "@/lib/proof-forecast-xlsx";
 
 export const dynamic = "force-dynamic";
+// Same model cost as the page, plus building a workbook of every trait for
+// every bull. See the note on the page.
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const user = currentUser();
