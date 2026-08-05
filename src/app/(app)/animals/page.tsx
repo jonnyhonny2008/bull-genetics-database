@@ -11,6 +11,8 @@ import { TRAIT_COLUMNS } from "@/lib/eval-traits";
 import { sireRoleWhere, blondinWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
 import { getActiveBreeds, getAllSources, getGeneticTraitDefsForFilters } from "@/lib/reference";
+import { specialistTraits, specialistFilter, parseLevel, SPECIALIST_LEVELS } from "@/lib/specialists";
+import { SpecialistPicker } from "@/components/SpecialistPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +72,23 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   if (sp.missingId === "1") AND.push({ identifiers: { none: { isPrimary: true, active: true } } });
   if (sp.pendingReview === "1") AND.push({ reviewItems: { some: { status: { in: ["pending", "conflict_review", "needs_more_info"] } } } });
   if (sp.noProof === "1") AND.push({ evaluations: { none: {} } });
+
+  // Specialists: narrow to bulls that are solidly positive for every picked trait.
+  // The bar is set against the whole breed population (a stable reference), then
+  // the qualifying ids are folded into the query so paging / sorting / the other
+  // filters still apply. Only runs when traits are picked.
+  const specCodes = (sp.spec ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const specLevel = parseLevel(sp.specLevel);
+  let specResult: Awaited<ReturnType<typeof specialistFilter>> | null = null;
+  if (specCodes.length) {
+    specResult = await specialistFilter(
+      { archived: false, sex: "M", ...(sp.breed ? { breedId: sp.breed } : {}) },
+      specCodes,
+      specLevel,
+    );
+    AND.push({ id: { in: specResult.ids } });
+  }
+
   const filterCol = sp.trait ? TRAIT_COLUMNS[sp.trait.toUpperCase()] : null;
   if (filterCol && sp.traitMin && !isNaN(Number(sp.traitMin))) {
     AND.push({ evaluations: { some: { isPreferred: true, [filterCol]: { gte: Number(sp.traitMin) } } } });
@@ -109,8 +128,8 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   const roleBase: Prisma.AnimalWhereInput = { AND: AND.filter((c) => c !== roleWhere) };
   const roleCounts = await sireRoleCounts(roleBase);
 
-  const [breeds, sources, traitDefs] = await Promise.all([
-    getActiveBreeds(), getAllSources(), getGeneticTraitDefsForFilters(),
+  const [breeds, sources, traitDefs, specTraits] = await Promise.all([
+    getActiveBreeds(), getAllSources(), getGeneticTraitDefsForFilters(), specialistTraits(),
   ]);
 
   // Which of the animals on this page have an import awaiting admin approval
@@ -148,6 +167,15 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
 
       <AnimalFilters breeds={breeds} sources={sources} traitDefs={traitDefs} sp={sp} />
       <BlondinToggle basePath="/animals" sp={sp} />
+      <div className="flex flex-wrap items-center gap-3">
+        <SpecialistPicker traits={specTraits} />
+        {specResult && (
+          <span className="mb-3 text-xs text-slate-500">
+            {SPECIALIST_LEVELS.find((l) => l.code === specLevel)?.label} for{" "}
+            <strong>{specResult.bars.map((b) => b.name).join(", ")}</strong> — {fmtNum(specResult.ids.length)} specialist{specResult.ids.length === 1 ? "" : "s"} of {fmtNum(specResult.poolN)} scored.
+          </span>
+        )}
+      </div>
       <SireRolePills basePath="/animals" sp={sp} counts={roleCounts} />
 
       {rows.length === 0 ? (

@@ -30,13 +30,6 @@ const REPORTS = [
     ready: true,
   },
   {
-    href: "/reports/trait-finder",
-    title: "Trait Finder",
-    tag: "Query",
-    blurb: "Require several traits at once and get every bull that clears them all — long teats and positive milk and milking speed over 100, for instance. Handles the linear type traits and the functional ratings that don't have their own column, and the result is sortable by any trait.",
-    ready: true,
-  },
-  {
     href: "/reports/mating-program",
     title: "Mating Program",
     tag: "Mating",
