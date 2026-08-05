@@ -15,7 +15,7 @@ import "server-only";
 
 import { prisma } from "./db";
 import { unpackTraits, traitDefMap } from "./eval-traits";
-import { fetchLactanetAnimal, parseReg } from "./lactanet-web";
+import { fetchLactanetAnimal, parentAverageTabs, parseReg } from "./lactanet-web";
 import { parseLactanetAnimal } from "./lactanet-parse";
 import { parseHolsteinProfileJson } from "./holstein-parse";
 import { parsePedigreeNotes, type Relation } from "./pedigree";
@@ -193,7 +193,10 @@ export async function resolveParentForPA(input: string): Promise<PAParent> {
   // --- 2) live Lactanet — by registration number only (name search would be
   //        ambiguous). A name not in the database can't go further. ---
   if (!ref) return empty(`No animal named "${raw}" in the database. Enter its registration number to look it up on Lactanet.`);
-  const fetched = await fetchLactanetAnimal(R);
+  // Fetch ONLY the tabs a Parent Average reads (identity, traits, family tree),
+  // not the full profile — see parentAverageTabs. Same result, half the requests,
+  // half the timeout surface that was making live females slow and flaky.
+  const fetched = await fetchLactanetAnimal(R, parentAverageTabs(ref.sex));
   if (fetched.error) return empty(fetched.error);
   const parsed = parseLactanetAnimal(R, ref.sex, fetched.tabs, fetched.fetchedAt);
   const traits = new Map<string, PATrait>();

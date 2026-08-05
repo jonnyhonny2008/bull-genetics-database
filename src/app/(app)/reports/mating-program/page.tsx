@@ -8,6 +8,12 @@ import { BALANCE_STEP, blendLabel, MAX_BALANCE, MAX_SELECTED_TRAITS, MAX_WEIGHT,
 import { MatingProgramResults } from "@/components/MatingProgramResults";
 
 export const dynamic = "force-dynamic";
+// A run resolves up to 50 females, and a female not already in the database is
+// looked up live from Lactanet (a few seconds each, concurrency 4). Without this
+// the render runs on the platform default and a slow lookup times the whole
+// report out — the "extremely slow, sometimes fails" symptom. Matches the other
+// live-lookup routes (parent-average 180, lactanet import 300).
+export const maxDuration = 300;
 
 /**
  * The "Rank on" slots. One select + one weight per slot, because a plain GET

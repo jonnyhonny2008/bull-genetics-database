@@ -45,6 +45,19 @@ const FEMALE_TABS: readonly LactanetTab[] = ["summary", "pedigree", "progeny", "
 
 export const tabsForSex = (sex: "M" | "F"): readonly LactanetTab[] => (sex === "F" ? FEMALE_TABS : MALE_TABS);
 
+// The ONLY tabs a Parent Average reads: identity + genetic traits + the family
+// tree. It uses neither progeny, classification, lactation, production nor the
+// functional/health/calving pages, so fetching them is pure latency — and every
+// extra tab is another 20 s timeout that can fail the whole animal on a slow
+// day. Fetching just these three is byte-identical for the PA (the dropped tabs
+// only populate fields resolveParentForPA discards) and cuts a cow lookup from
+// six requests to three, a bull from eight to three.
+//   female traits come from summary + detail-genomics; male traits from type.
+const PA_TABS_FEMALE: readonly LactanetTab[] = ["summary", "pedigree", "detail-genomics"];
+const PA_TABS_MALE: readonly LactanetTab[] = ["summary", "pedigree", "type"];
+export const parentAverageTabs = (sex: "M" | "F"): readonly LactanetTab[] =>
+  sex === "F" ? PA_TABS_FEMALE : PA_TABS_MALE;
+
 /** Back-compat alias; defaults to the male tab set. */
 export const LACTANET_TABS = MALE_TABS;
 

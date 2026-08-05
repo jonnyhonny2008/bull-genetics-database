@@ -7,6 +7,9 @@ import { matingProgramHtml } from "@/lib/report-html-mating";
 import { attachment } from "@/lib/report-http";
 
 export const dynamic = "force-dynamic";
+// The export re-runs the whole report, including live Lactanet lookups for any
+// female not in the database, so it needs the same headroom as the page.
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const user = currentUser();
