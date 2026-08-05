@@ -61,7 +61,10 @@ export async function POST(request: Request) {
       const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       try {
         const result = await askGeneticsAgent(question, history, {
-          userId: user.uid, userName: user.name,
+          // The agent acts AS this user: every write is gated by their role and
+          // attributed to them. Reading their role from the signed session (not
+          // client input) is what keeps the agent inside their real permissions.
+          actor: { uid: user.uid, name: user.name, role: user.role },
           onEvent: (e) => send(e),
         });
         send({ type: "done", result });

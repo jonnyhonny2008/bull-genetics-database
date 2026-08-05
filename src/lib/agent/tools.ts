@@ -16,14 +16,45 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { sireRoleWhere } from "@/lib/sire-class";
 import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex } from "@/lib/pedigree";
-import { unpackTraits, traitDefMap } from "@/lib/eval-traits";
+import { unpackTraits, traitDefMap, packTraits, type RawTrait } from "@/lib/eval-traits";
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
+import { can, ROLES, isBatchImportType } from "@/lib/constants";
+import { maskKey } from "./config";
+// Type-only imports of server-only modules — erased at compile time, so they do
+// not pull those modules into the static graph (the write tools import them at
+// runtime with a dynamic import()).
+import type { SessionUser } from "@/lib/auth";
+import type { ImportManifest, ImportAnimalRef } from "@/lib/import-staging";
+
+// NOTE ON SERVER-ONLY LIBS: db/eval-traits/pedigree/constants are plain modules
+// (safe to import statically — the agent unit test imports this file under plain
+// tsx). The write tools also need `server-only` libraries (audit, priority,
+// lactanet, import-staging, proof-import, auth). Those are pulled in with a
+// dynamic `await import(...)` INSIDE each run() — matching the existing external-
+// lookup helpers — so the static import graph stays clean for the test runner.
+
+// The signed-in user on whose behalf the agent acts. Every write goes through
+// this actor — the agent can do ONLY what this person's role can do, and every
+// change is attributed to them in the audit log. Read tools ignore it.
+export interface AgentActor {
+  uid: string;
+  name: string;
+  role: string; // a ROLES key: admin | staff | sales | consultant
+}
+export interface AgentContext {
+  actor: AgentActor | null;
+}
 
 export interface AgentTool {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
-  run: (input: Record<string, unknown>) => Promise<{ summary: string; records: unknown }>;
+  /**
+   * `ctx` carries the acting user. Read tools may ignore it; write tools MUST
+   * gate on `ctx.actor` via requireCap() so the agent never exceeds the
+   * signed-in user's own permissions.
+   */
+  run: (input: Record<string, unknown>, ctx: AgentContext) => Promise<{ summary: string; records: unknown }>;
 }
 
 // Friendly trait name → indexed GeneticEvaluation column.
@@ -246,6 +277,106 @@ async function resolveParent(name: string, reg: string, defMap: DefMap): Promise
   return { found: false, source: null, name: name || null, reg: reg || null, sex: null, reliabilityOverall: null, basis: null, genotyped: null, daughters: null, proofRun: null, traits: new Map(), externallySourced: false, error: `Not in the database, and no registration number was given to look up externally.` };
 }
 
+// ===========================================================================
+// WRITE TOOLS — shared machinery
+// ===========================================================================
+//
+// The tools above answer questions. The tools further down let the agent DO the
+// things a signed-in user can do: create/update animals and records, manage
+// reference data and users, run imports, and work the review queue. Three rules
+// hold for every one of them:
+//   1. PERMISSION PARITY — each write calls requireCap() with the SAME
+//      capability the matching server action checks (src/lib/constants.ts), so
+//      the agent can never exceed the signed-in user's own role.
+//   2. ATTRIBUTION — every change is written to the audit log as the actor.
+//   3. CONFIRMATION — destructive / irreversible actions refuse until called a
+//      second time with confirm:true, so a single stray call can't lose data.
+
+/** A ROLES key → its human label, for clear "your role can't…" messages. */
+function roleLabel(role: string | undefined): string {
+  return (ROLES as Record<string, string>)[role ?? ""] ?? role ?? "no role";
+}
+
+/**
+ * Assert the acting user exists and holds `cap`; return the actor for
+ * attribution. Throws a clear, user-facing message otherwise — the loop relays
+ * it to the model as a tool error, so the agent explains it rather than
+ * pretending the change happened. This is the HARD security boundary: it runs
+ * server-side from the signed session's role and cannot be argued around by the
+ * model or by anything embedded in retrieved data.
+ */
+export function requireCap(ctx: AgentContext, cap: string, action: string): AgentActor {
+  const actor = ctx.actor;
+  if (!actor || !actor.uid) throw new Error("No signed-in user — the assistant can't make changes without a session.");
+  if (!can(actor.role, cap)) {
+    throw new Error(`Your account (${roleLabel(actor.role)}) isn't allowed to ${action}. That needs the "${cap}" permission — ask an administrator.`);
+  }
+  return actor;
+}
+
+/** Audit a change as the acting user (mirrors src/lib/audit.ts; kept dependency-free). */
+async function logAction(actor: AgentActor, entityType: string, action: string, entityId?: string, changes?: unknown, notes?: string): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      entityType, entityId, action,
+      userId: actor.uid, userName: actor.name,
+      changesJson: changes ? JSON.stringify(changes) : null,
+      notes: notes ?? null,
+    },
+  });
+}
+
+/**
+ * Two-step confirmation for a destructive / irreversible action. When the model
+ * has NOT set confirm:true, returns a tool result that spells out exactly what
+ * WILL happen and changes nothing; the model is instructed to show that to the
+ * user and only re-call with confirm:true after a clear yes. Returns null when
+ * confirm:true — the caller then proceeds.
+ */
+export function confirmGate(input: Record<string, unknown>, message: string, preview?: unknown): { summary: string; records: unknown } | null {
+  if (input.confirm === true) return null;
+  return {
+    summary: `CONFIRM NEEDED — ${message} Nothing has been changed yet. Tell the user exactly what will happen and, only if they clearly agree, call this tool again with confirm:true.`,
+    records: { confirmRequired: true, willDo: message, ...(preview !== undefined ? { preview } : {}) },
+  };
+}
+
+/** Parse a yyyy-mm-dd (or full ISO) string into a Date, or null. */
+function toDate(v: unknown): Date | null {
+  const s = str(v);
+  if (!s) return null;
+  const d = new Date(s.length <= 10 ? s + "T00:00:00.000Z" : s);
+  return isNaN(d.getTime()) ? null : d;
+}
+/** Parse a numeric field: "" / non-number → null. */
+function toNum(v: unknown): number | null {
+  const s = str(v);
+  if (s === "") return null;
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Resolve a target animal to { id, name } from an explicit animalId, else exact
+ * reg, else name (exact then contains) — the same precedence the read tools use,
+ * so the agent addresses exactly one animal before writing to it.
+ */
+async function resolveAnimalId(input: Record<string, unknown>): Promise<{ id: string; name: string } | null> {
+  const id = str(input.animalId);
+  if (id) {
+    const a = await prisma.animal.findUnique({ where: { id }, select: { id: true, primaryName: true } });
+    return a ? { id: a.id, name: a.primaryName } : null;
+  }
+  const a = await findAnimalFull(str(input.name), str(input.reg));
+  return a ? { id: a.id, name: a.primaryName } : null;
+}
+
+/** After any record change, recompute which evaluation is the animal's preferred one. */
+async function recomputePreferred(animalId: string): Promise<void> {
+  const { recomputePreferredForAnimal } = await import("@/lib/priority");
+  await recomputePreferredForAnimal(animalId);
+}
+
 export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "search_animals",
@@ -437,7 +568,11 @@ export const AGENT_TOOLS: AgentTool[] = [
         saveToDatabase: { type: "boolean", description: "Default false. Only set true if the user explicitly asked to permanently save any externally-pulled Lactanet record. When false, external data is used for this calculation only and then discarded." },
       },
     },
-    run: async (input) => {
+    run: async (input, ctx) => {
+      // A read-capable actor is required before any work: this tool can trigger a
+      // live Lactanet fetch and (with saveToDatabase) a database write. Every real
+      // role holds animal:read, so this only refuses a missing/blank-role caller.
+      const actor = requireCap(ctx, "animal:read", "use the mating calculator");
       const sireName = str(input.sireName), sireReg = str(input.sireReg);
       const damName = str(input.damName), damReg = str(input.damReg);
       const save = input.saveToDatabase === true;
@@ -494,11 +629,19 @@ export const AGENT_TOOLS: AgentTool[] = [
       // Optional, explicit persistence of externally-pulled records.
       let saved: unknown = "External data (if any) was used for this calculation only and NOT saved. Set saveToDatabase=true to persist an externally-pulled Lactanet record permanently.";
       if (save) {
+        // Persisting an externally-pulled Lactanet animal creates an Animal + an
+        // approved GeneticEvaluation — the same authority a proof import needs.
+        // Gate it exactly like the import path (record:write) so a read-only role
+        // can compute the PA but never write, and attribute the write to the actor.
+        requireCap(ctx, "record:write", "save an externally looked-up animal to the database");
         const done: string[] = [];
         for (const p of [sire, dam]) {
           if (p.externallySourced && p._externalReg) {
-            try { await persistExternal(p); done.push(`${p.name ?? p._externalReg} (${p._externalReg})`); }
-            catch (e) { done.push(`FAILED to save ${p._externalReg}: ${(e as Error).message}`); }
+            try {
+              await persistExternal(p);
+              await logAction(actor, "animal", "import_external", p._externalReg, { source: "lactanet", via: "calculate_mating_pa" });
+              done.push(`${p.name ?? p._externalReg} (${p._externalReg})`);
+            } catch (e) { done.push(`FAILED to save ${p._externalReg}: ${(e as Error).message}`); }
           }
         }
         saved = done.length ? { savedPermanently: done } : "Nothing external to save — both parents were already in the database.";
@@ -508,6 +651,589 @@ export const AGENT_TOOLS: AgentTool[] = [
         summary: `Parent average of ${sire.name} × ${dam.name}: ${pa.length} shared traits computed, ${unavailable.length} unavailable${sire.externallySourced || dam.externallySourced ? " (includes Lactanet-sourced data)" : ""}.`,
         records: { computed: true, sire: parentMeta(sire), dam: parentMeta(dam), parentAverage: pa, descriptive, unavailableForPA: unavailable, reliabilityNotes: notes, saved },
       };
+    },
+  },
+
+  // =========================================================================
+  // WRITE TOOLS — everything a signed-in user can DO, gated by their role.
+  // =========================================================================
+
+  {
+    name: "list_reference_data",
+    description:
+      "List the platform's setup/config data so you can find the exact id or code to pass to a write tool, or answer 'what X do we have'. kind: breeds | traits | sources | priority_rules | proof_files (Lactanet files available to import from) | users (needs the user:write permission) | pending_reviews (the import/record review queue; needs review:write). breeds/traits/sources/priority_rules/proof_files are readable by anyone. This is READ-ONLY.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["breeds", "traits", "sources", "priority_rules", "proof_files", "users", "pending_reviews"] },
+        limit: { type: "integer", description: "max rows (default 100, max 200)" },
+      },
+      required: ["kind"],
+    },
+    run: async (input, ctx) => {
+      const kind = str(input.kind);
+      const take = clamp(input.limit, 1, 200, 100);
+      switch (kind) {
+        case "breeds": {
+          const rows = await prisma.breed.findMany({ orderBy: { breedCode: "asc" }, select: { breedId: true, breedCode: true, breedName: true, speciesType: true, active: true } });
+          return { summary: `${rows.length} breed(s).`, records: rows };
+        }
+        case "traits": {
+          const rows = await prisma.traitDefinition.findMany({ orderBy: [{ displayOrder: "asc" }, { traitCode: "asc" }], take, select: { traitId: true, traitCode: true, traitName: true, domain: true, category: true, unit: true, higherIsBetter: true, active: true } });
+          return { summary: `${rows.length} trait definition(s).`, records: rows };
+        }
+        case "sources": {
+          const rows = await prisma.source.findMany({ orderBy: { defaultPriorityRank: "asc" }, select: { sourceId: true, sourceName: true, sourceType: true, defaultPriorityRank: true, active: true } });
+          return { summary: `${rows.length} source(s).`, records: rows };
+        }
+        case "priority_rules": {
+          const rows = await prisma.sourcePriorityRule.findMany({ orderBy: { priorityRank: "asc" }, select: { ruleId: true, dataDomain: true, priorityRank: true, countrySystem: true, active: true, source: { select: { sourceName: true } } } });
+          return { summary: `${rows.length} priority rule(s).`, records: rows.map((r) => ({ ruleId: r.ruleId, dataDomain: r.dataDomain, source: r.source?.sourceName ?? null, priorityRank: r.priorityRank, countrySystem: r.countrySystem, active: r.active })) };
+        }
+        case "proof_files": {
+          const { listProofFiles } = await import("@/lib/lactanet");
+          const files = listProofFiles();
+          return { summary: `${files.length} Lactanet proof file(s) available to import from.`, records: files };
+        }
+        case "users": {
+          requireCap(ctx, "user:write", "list user accounts");
+          const rows = await prisma.user.findMany({ orderBy: { email: "asc" }, select: { id: true, email: true, name: true, role: true, active: true } });
+          return { summary: `${rows.length} user(s).`, records: rows };
+        }
+        case "pending_reviews": {
+          requireCap(ctx, "review:write", "view the review queue");
+          const rows = await prisma.importReviewQueue.findMany({ where: { status: "pending" }, orderBy: { createdAt: "desc" }, take, select: { reviewId: true, proposedRecordType: true, matchedAnimalId: true, status: true, createdAt: true } });
+          return { summary: `${rows.length} pending review item(s).`, records: rows };
+        }
+        default:
+          return { summary: `Unknown kind "${kind}".`, records: null };
+      }
+    },
+  },
+
+  {
+    name: "create_or_update_animal",
+    description:
+      "CREATE a new animal or UPDATE an existing one's identity fields. To UPDATE, give animalId (or a name/reg that resolves to exactly one animal); to CREATE, omit all three and give primaryName. Fields: primaryName, shortName, sex ('M'|'F'), breedCode (e.g. HO/JE/AY/BS) or breedId, birthDate (yyyy-mm-dd), countryOfOrigin ('CA'|'US'|'INT'), currentStatus (active|proven|genomic|retired|reference), notes. Optional `identifiers`: array of { idType, idValue, isPrimary?, country?, org? }. IMPORTANT: on an UPDATE, supplying identifiers REPLACES the whole identifier list — include every one you want to keep. Mirrors the New/Edit Animal screens. Requires the animal:write permission. Does NOT touch proofs/classifications/milk — use the record tools for those.",
+    input_schema: {
+      type: "object",
+      properties: {
+        animalId: { type: "string", description: "Edit this animal (database id). Omit to create." },
+        name: { type: "string", description: "Instead of animalId, resolve the animal to edit by name…" },
+        reg: { type: "string", description: "…or by registration number." },
+        primaryName: { type: "string" },
+        shortName: { type: "string" },
+        sex: { type: "string", enum: ["M", "F"] },
+        breedCode: { type: "string" },
+        breedId: { type: "string" },
+        birthDate: { type: "string", description: "yyyy-mm-dd" },
+        countryOfOrigin: { type: "string", enum: ["CA", "US", "INT"] },
+        currentStatus: { type: "string" },
+        notes: { type: "string" },
+        identifiers: {
+          type: "array",
+          description: "REPLACES existing identifiers on update.",
+          items: { type: "object", properties: { idType: { type: "string" }, idValue: { type: "string" }, isPrimary: { type: "boolean" }, country: { type: "string" }, org: { type: "string" } }, required: ["idValue"] },
+        },
+      },
+    },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "animal:write", "add or edit animals");
+      const editing = !!(str(input.animalId) || str(input.name) || str(input.reg));
+
+      let breedId = str(input.breedId) || null;
+      const breedCode = str(input.breedCode).toUpperCase();
+      if (!breedId && breedCode) {
+        const b = await prisma.breed.findUnique({ where: { breedCode }, select: { breedId: true } });
+        if (!b) return { summary: `No breed with code "${breedCode}". Use list_reference_data (kind: breeds) to see valid codes.`, records: null };
+        breedId = b.breedId;
+      }
+
+      const rawIds = Array.isArray(input.identifiers) ? (input.identifiers as Record<string, unknown>[]) : null;
+      const identifiers = rawIds
+        ? rawIds.map((r) => ({ idType: str(r.idType) || "internal_stud", idValue: str(r.idValue), issuingCountry: str(r.country) || null, issuingOrganization: str(r.org) || null, isPrimary: r.isPrimary === true, sourceId: null as string | null })).filter((r) => r.idValue)
+        : null;
+      if (identifiers && identifiers.length && !identifiers.some((r) => r.isPrimary)) identifiers[0].isPrimary = true;
+
+      if (editing) {
+        const target = await resolveAnimalId(input);
+        if (!target) return { summary: `No animal found to edit for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+        const data: Record<string, unknown> = { updatedById: actor.uid };
+        if (str(input.primaryName)) data.primaryName = str(input.primaryName);
+        if (input.shortName !== undefined) data.shortName = str(input.shortName) || null;
+        if (str(input.sex)) data.sex = str(input.sex);
+        if (breedId) data.breedId = breedId;
+        if (input.birthDate !== undefined) data.birthDate = toDate(input.birthDate);
+        if (input.countryOfOrigin !== undefined) data.countryOfOrigin = str(input.countryOfOrigin) || null;
+        if (str(input.currentStatus)) data.currentStatus = str(input.currentStatus);
+        if (input.notes !== undefined) data.notes = str(input.notes) || null;
+        await prisma.animal.update({ where: { id: target.id }, data: data as Prisma.AnimalUncheckedUpdateInput });
+        if (identifiers) {
+          await prisma.animalIdentifier.deleteMany({ where: { animalId: target.id } });
+          for (const idf of identifiers) await prisma.animalIdentifier.create({ data: { animalId: target.id, ...idf } });
+        }
+        await logAction(actor, "animal", "update", target.id, { fields: Object.keys(data), identifiersReplaced: !!identifiers });
+        return { summary: `Updated ${str(input.primaryName) || target.name}${identifiers ? ` and replaced its ${identifiers.length} identifier(s)` : ""}.`, records: { animalId: target.id, name: str(input.primaryName) || target.name } };
+      }
+
+      const primaryName = str(input.primaryName);
+      if (!primaryName) return { summary: "primaryName is required to create a new animal.", records: null };
+      const created = await prisma.animal.create({
+        data: {
+          primaryName, shortName: str(input.shortName) || null, sex: str(input.sex) || "F", breedId,
+          birthDate: toDate(input.birthDate), countryOfOrigin: str(input.countryOfOrigin) || null,
+          currentStatus: str(input.currentStatus) || "active", notes: str(input.notes) || null, createdById: actor.uid,
+        },
+      });
+      for (const idf of identifiers ?? []) await prisma.animalIdentifier.create({ data: { animalId: created.id, ...idf } });
+      await logAction(actor, "animal", "create", created.id, { primaryName });
+      return { summary: `Created ${primaryName}${identifiers?.length ? ` with ${identifiers.length} identifier(s)` : ""}.`, records: { animalId: created.id, name: primaryName } };
+    },
+  },
+
+  {
+    name: "archive_animal",
+    description: "ARCHIVE an animal: set its status to archived and remove it from the working lineup lists. This is a soft delete — its proofs and records are kept and an admin can restore it. DESTRUCTIVE: refuses unless confirm:true. Resolve by animalId, or name/reg. Requires animal:write.",
+    input_schema: { type: "object", properties: { animalId: { type: "string" }, name: { type: "string" }, reg: { type: "string" }, confirm: { type: "boolean", description: "Set true ONLY after the user has agreed to archive this specific animal." } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "animal:write", "archive animals");
+      const target = await resolveAnimalId(input);
+      if (!target) return { summary: `No animal found to archive for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+      const gate = confirmGate(input, `Archive ${target.name} — it will be hidden from the lineup lists (its proofs and records are kept).`, { animalId: target.id, name: target.name });
+      if (gate) return gate;
+      await prisma.animal.update({ where: { id: target.id }, data: { archived: true, currentStatus: "archived", updatedById: actor.uid } });
+      await logAction(actor, "animal", "archive", target.id);
+      return { summary: `Archived ${target.name}.`, records: { animalId: target.id, name: target.name, archived: true } };
+    },
+  },
+
+  {
+    name: "add_animal_note",
+    description: "Attach a free-text note to an animal (mating advice, a reminder, an observation). Resolve by animalId/name/reg. noteType optional (default general). Requires animal:write.",
+    input_schema: { type: "object", properties: { animalId: { type: "string" }, name: { type: "string" }, reg: { type: "string" }, body: { type: "string" }, noteType: { type: "string" } }, required: ["body"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "animal:write", "add notes");
+      const target = await resolveAnimalId(input);
+      if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+      const body = str(input.body);
+      if (!body) return { summary: "The note body is empty.", records: null };
+      await prisma.animalNote.create({ data: { animalId: target.id, body, noteType: str(input.noteType) || "general", createdById: actor.uid } });
+      await logAction(actor, "animal_note", "create", target.id);
+      return { summary: `Added a note to ${target.name}.`, records: { animalId: target.id, name: target.name } };
+    },
+  },
+
+  {
+    name: "add_proof",
+    description:
+      "Record a genetic evaluation (proof) for ONE animal by manual entry. Resolve the animal by animalId/name/reg. Give `traits` as an object of trait code → value, e.g. {\"LPI\":3200,\"CONF\":12,\"MILK\":900,\"FAT\":40}. Optional: evaluationDate (yyyy-mm-dd, default today), proofRun label (e.g. 'April 2026'), countrySystem, reliability, approvalStatus (approved|pending, default approved), notes. Requires record:write; recomputes the animal's preferred evaluation. NOTE: to pull OFFICIAL Lactanet proofs use import_bulls instead of typing them in.",
+    input_schema: {
+      type: "object",
+      properties: {
+        animalId: { type: "string" }, name: { type: "string" }, reg: { type: "string" },
+        traits: { type: "object", description: "trait code → numeric (or text) value", additionalProperties: true },
+        evaluationDate: { type: "string" }, proofRun: { type: "string" }, countrySystem: { type: "string" },
+        reliability: { type: "number" }, approvalStatus: { type: "string", enum: ["approved", "pending"] }, notes: { type: "string" },
+      },
+      required: ["traits"],
+    },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:write", "add proof records");
+      const target = await resolveAnimalId(input);
+      if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+      const traitsIn = input.traits && typeof input.traits === "object" && !Array.isArray(input.traits) ? (input.traits as Record<string, unknown>) : {};
+      const raw: RawTrait[] = Object.entries(traitsIn)
+        .map(([code, value]) => {
+          const asNum = Number(value);
+          const isNum = value !== "" && value != null && !isNaN(asNum);
+          return { traitCode: code.toUpperCase(), numericValue: isNum ? asNum : null, textValue: !isNum && value != null && value !== "" ? String(value) : null, reliability: null, percentileRank: null };
+        })
+        .filter((t) => t.numericValue != null || t.textValue != null);
+      if (!raw.length) return { summary: "No usable trait values were given.", records: null };
+      const packed = packTraits(raw);
+      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
+      const rec = await prisma.geneticEvaluation.create({
+        data: {
+          animalId: target.id, evaluationDate: toDate(input.evaluationDate) ?? new Date(),
+          proofRun: str(input.proofRun) || null, countrySystem: str(input.countrySystem) || null,
+          reliabilityOverall: toNum(input.reliability), approvalStatus,
+          approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
+          createdById: actor.uid, notes: str(input.notes) || null, traitsJson: packed.traitsJson, ...packed.columns,
+        },
+      });
+      await recomputePreferred(target.id);
+      await logAction(actor, "genetic_evaluation", "create", rec.evaluationId, { animalId: target.id, traits: raw.length });
+      return { summary: `Recorded a proof for ${target.name} with ${raw.length} trait(s).`, records: { evaluationId: rec.evaluationId, animalId: target.id, name: target.name, traits: raw.length } };
+    },
+  },
+
+  {
+    name: "add_milk_record",
+    description: "Record a lactation / milk record for a cow. Resolve by animalId/name/reg. Fields: recordDate (yyyy-mm-dd, default today), lactationNumber, calvingDate, daysInMilk, milkAmount, milkUnit (default kg), fatAmount, fatPercent, proteinAmount, proteinPercent, recordType, completionStatus, approvalStatus (approved|pending). Requires record:write.",
+    input_schema: {
+      type: "object",
+      properties: {
+        animalId: { type: "string" }, name: { type: "string" }, reg: { type: "string" },
+        recordDate: { type: "string" }, lactationNumber: { type: "number" }, calvingDate: { type: "string" },
+        daysInMilk: { type: "number" }, milkAmount: { type: "number" }, milkUnit: { type: "string" },
+        fatAmount: { type: "number" }, fatPercent: { type: "number" }, proteinAmount: { type: "number" }, proteinPercent: { type: "number" },
+        recordType: { type: "string" }, completionStatus: { type: "string" }, approvalStatus: { type: "string", enum: ["approved", "pending"] }, notes: { type: "string" },
+      },
+    },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:write", "add milk records");
+      const target = await resolveAnimalId(input);
+      if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
+      const rec = await prisma.milkRecord.create({
+        data: {
+          animalId: target.id, recordDate: toDate(input.recordDate) ?? new Date(), lactationNumber: toNum(input.lactationNumber),
+          calvingDate: toDate(input.calvingDate), daysInMilk: toNum(input.daysInMilk), milkAmount: toNum(input.milkAmount),
+          milkUnit: str(input.milkUnit) || "kg", fatAmount: toNum(input.fatAmount), fatPercent: toNum(input.fatPercent),
+          proteinAmount: toNum(input.proteinAmount), proteinPercent: toNum(input.proteinPercent),
+          recordType: str(input.recordType) || null, completionStatus: str(input.completionStatus) || null,
+          approvalStatus, approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
+          createdById: actor.uid, notes: str(input.notes) || null,
+        },
+      });
+      await recomputePreferred(target.id);
+      await logAction(actor, "milk_record", "create", rec.milkRecordId, { animalId: target.id });
+      return { summary: `Recorded a milk record for ${target.name}.`, records: { milkRecordId: rec.milkRecordId, animalId: target.id, name: target.name } };
+    },
+  },
+
+  {
+    name: "add_classification",
+    description: "Record a classification for a cow. Resolve by animalId/name/reg. Fields: classificationDate (yyyy-mm-dd, default today), finalScore, classificationCode (EX|VG|GP|G...), lactationNumber, ageAtClassification, approvalStatus (approved|pending). Optional `traits`: object of classification trait code → value (linear/section scores). Requires record:write.",
+    input_schema: {
+      type: "object",
+      properties: {
+        animalId: { type: "string" }, name: { type: "string" }, reg: { type: "string" },
+        classificationDate: { type: "string" }, finalScore: { type: "number" }, classificationCode: { type: "string" },
+        lactationNumber: { type: "number" }, ageAtClassification: { type: "string" }, approvalStatus: { type: "string", enum: ["approved", "pending"] },
+        traits: { type: "object", description: "classification trait code → value", additionalProperties: true }, notes: { type: "string" },
+      },
+    },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:write", "add classifications");
+      const target = await resolveAnimalId(input);
+      if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
+      const rec = await prisma.classificationRecord.create({
+        data: {
+          animalId: target.id, classificationDate: toDate(input.classificationDate) ?? new Date(),
+          lactationNumber: toNum(input.lactationNumber), ageAtClassification: str(input.ageAtClassification) || null,
+          finalScore: toNum(input.finalScore), classificationCode: str(input.classificationCode) || null,
+          approvalStatus, approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
+          createdById: actor.uid, notes: str(input.notes) || null,
+        },
+      });
+      const traitsIn = input.traits && typeof input.traits === "object" && !Array.isArray(input.traits) ? (input.traits as Record<string, unknown>) : {};
+      if (Object.keys(traitsIn).length) {
+        const defs = new Map((await prisma.traitDefinition.findMany({ where: { domain: "classification" } })).map((t) => [t.traitCode, t]));
+        for (const [code, value] of Object.entries(traitsIn)) {
+          if (value == null || value === "") continue;
+          const def = defs.get(code);
+          await prisma.classificationTraitValue.create({ data: { classificationId: rec.classificationId, traitCode: code, traitName: def?.traitName ?? code, traitValue: String(value), displayOrder: def?.displayOrder ?? 0 } });
+        }
+      }
+      await recomputePreferred(target.id);
+      await logAction(actor, "classification", "create", rec.classificationId, { animalId: target.id });
+      return { summary: `Recorded a classification for ${target.name}.`, records: { classificationId: rec.classificationId, animalId: target.id, name: target.name } };
+    },
+  },
+
+  {
+    name: "manage_breed",
+    description: "Create or update a breed. Give breedId to update, omit to create. Fields: breedCode (required, e.g. HO), breedName (required), speciesType (dairy|beef, default dairy), breedCategory, registryOrganization, active, notes. Requires the config:write permission (admin).",
+    input_schema: { type: "object", properties: { breedId: { type: "string" }, breedCode: { type: "string" }, breedName: { type: "string" }, speciesType: { type: "string" }, breedCategory: { type: "string" }, registryOrganization: { type: "string" }, active: { type: "boolean" }, notes: { type: "string" } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "config:write", "manage breeds");
+      const breedId = str(input.breedId);
+      const data = {
+        breedCode: str(input.breedCode).toUpperCase(), breedName: str(input.breedName), speciesType: str(input.speciesType) || "dairy",
+        breedCategory: str(input.breedCategory) || null, registryOrganization: str(input.registryOrganization) || null,
+        active: input.active === undefined ? true : input.active === true, notes: str(input.notes) || null,
+      };
+      if (!data.breedCode || !data.breedName) return { summary: "Breed code and name are required.", records: null };
+      const rec = breedId ? await prisma.breed.update({ where: { breedId }, data }) : await prisma.breed.create({ data });
+      await logAction(actor, "breed", breedId ? "update" : "create", rec.breedId, data);
+      return { summary: `${breedId ? "Updated" : "Created"} breed ${data.breedCode} (${data.breedName}).`, records: { breedId: rec.breedId, breedCode: data.breedCode } };
+    },
+  },
+
+  {
+    name: "manage_trait",
+    description: "Create or update a trait definition. Give traitId to update, omit to create. Fields: traitCode (required), traitName (required), speciesType (default dairy), domain (genetic|classification, default genetic), category, unit, higherIsBetter (bool), description, displayOrder, active. Requires config:write (admin).",
+    input_schema: { type: "object", properties: { traitId: { type: "string" }, traitCode: { type: "string" }, traitName: { type: "string" }, speciesType: { type: "string" }, domain: { type: "string" }, category: { type: "string" }, unit: { type: "string" }, higherIsBetter: { type: "boolean" }, description: { type: "string" }, displayOrder: { type: "number" }, active: { type: "boolean" } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "config:write", "manage traits");
+      const traitId = str(input.traitId);
+      const data = {
+        traitCode: str(input.traitCode).toUpperCase(), traitName: str(input.traitName), speciesType: str(input.speciesType) || "dairy",
+        domain: str(input.domain) || "genetic", category: str(input.category) || null, unit: str(input.unit) || null,
+        higherIsBetter: input.higherIsBetter === undefined ? true : input.higherIsBetter === true, description: str(input.description) || null,
+        displayOrder: toNum(input.displayOrder) ?? 0, active: input.active === undefined ? true : input.active === true,
+      };
+      if (!data.traitCode || !data.traitName) return { summary: "Trait code and name are required.", records: null };
+      const rec = traitId ? await prisma.traitDefinition.update({ where: { traitId }, data }) : await prisma.traitDefinition.create({ data });
+      await logAction(actor, "trait_definition", traitId ? "update" : "create", rec.traitId, data);
+      return { summary: `${traitId ? "Updated" : "Created"} trait ${data.traitCode} (${data.traitName}).`, records: { traitId: rec.traitId, traitCode: data.traitCode } };
+    },
+  },
+
+  {
+    name: "manage_source",
+    description: "Create or update a data source. Give sourceId to update, omit to create. Fields: sourceName (required), sourceType (default manual), baseUrl, defaultPriorityRank (default 50), active, notes. Requires config:write (admin).",
+    input_schema: { type: "object", properties: { sourceId: { type: "string" }, sourceName: { type: "string" }, sourceType: { type: "string" }, baseUrl: { type: "string" }, defaultPriorityRank: { type: "number" }, active: { type: "boolean" }, notes: { type: "string" } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "config:write", "manage sources");
+      const sourceId = str(input.sourceId);
+      const data = {
+        sourceName: str(input.sourceName), sourceType: str(input.sourceType) || "manual", baseUrl: str(input.baseUrl) || null,
+        defaultPriorityRank: toNum(input.defaultPriorityRank) ?? 50, active: input.active === undefined ? true : input.active === true, notes: str(input.notes) || null,
+      };
+      if (!data.sourceName) return { summary: "Source name is required.", records: null };
+      const rec = sourceId ? await prisma.source.update({ where: { sourceId }, data }) : await prisma.source.create({ data });
+      await logAction(actor, "source", sourceId ? "update" : "create", rec.sourceId, data);
+      return { summary: `${sourceId ? "Updated" : "Created"} source ${data.sourceName}.`, records: { sourceId: rec.sourceId, sourceName: data.sourceName } };
+    },
+  },
+
+  {
+    name: "manage_priority_rule",
+    description: "Create, update, or delete a source-priority rule (which source wins for a data domain). action: save (default) or delete. For save: sourceId (required), dataDomain (default genetic_evaluation), priorityRank (1 = most preferred), breedId, countrySystem, active; give ruleId to update. For delete: ruleId + confirm:true (DESTRUCTIVE). Requires config:write (admin).",
+    input_schema: { type: "object", properties: { action: { type: "string", enum: ["save", "delete"] }, ruleId: { type: "string" }, sourceId: { type: "string" }, dataDomain: { type: "string" }, priorityRank: { type: "number" }, breedId: { type: "string" }, countrySystem: { type: "string" }, active: { type: "boolean" }, confirm: { type: "boolean" } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "config:write", "manage priority rules");
+      if (str(input.action) === "delete") {
+        const ruleId = str(input.ruleId);
+        if (!ruleId) return { summary: "ruleId is required to delete a rule.", records: null };
+        const gate = confirmGate(input, `Delete source-priority rule ${ruleId}.`, { ruleId });
+        if (gate) return gate;
+        await prisma.sourcePriorityRule.delete({ where: { ruleId } });
+        await logAction(actor, "priority_rule", "delete", ruleId);
+        return { summary: `Deleted priority rule ${ruleId}.`, records: { ruleId, deleted: true } };
+      }
+      const ruleId = str(input.ruleId);
+      const sourceId = str(input.sourceId);
+      if (!sourceId) return { summary: "sourceId is required. Use list_reference_data (kind: sources) to find it.", records: null };
+      const data = { dataDomain: str(input.dataDomain) || "genetic_evaluation", sourceId, priorityRank: toNum(input.priorityRank) ?? 99, breedId: str(input.breedId) || null, countrySystem: str(input.countrySystem) || null, active: input.active === undefined ? true : input.active === true };
+      const rec = ruleId ? await prisma.sourcePriorityRule.update({ where: { ruleId }, data }) : await prisma.sourcePriorityRule.create({ data });
+      await logAction(actor, "priority_rule", ruleId ? "update" : "create", rec.ruleId, data);
+      return { summary: `${ruleId ? "Updated" : "Created"} a priority rule.`, records: { ruleId: rec.ruleId } };
+    },
+  },
+
+  {
+    name: "manage_user",
+    description:
+      "Create or update a user account. Give id to update, omit to create. Fields: email (required for create), name, role (admin|staff|sales|consultant), active, password. SECURITY: any password typed here appears in the chat transcript — prefer the Admin > Users screen for setting passwords, and use this mainly to change a user's role or active flag, or to create an account you'll have them reset. Requires the user:write permission (admin).",
+    input_schema: { type: "object", properties: { id: { type: "string" }, email: { type: "string" }, name: { type: "string" }, role: { type: "string", enum: ["admin", "staff", "sales", "consultant"] }, active: { type: "boolean" }, password: { type: "string" } } },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "user:write", "manage user accounts");
+      const id = str(input.id);
+      const role = str(input.role) || "sales";
+      if (!(role in ROLES)) return { summary: `Invalid role "${role}". Valid: ${Object.keys(ROLES).join(", ")}.`, records: null };
+      const active = input.active === undefined ? true : input.active === true;
+      const password = str(input.password);
+      if (password && password.length < 8) return { summary: "Password must be at least 8 characters.", records: null };
+      const { hashPassword } = await import("@/lib/auth");
+      if (id) {
+        const data: Record<string, unknown> = { name: str(input.name) || undefined, role, active };
+        if (str(input.name)) data.name = str(input.name);
+        if (password) data.passwordHash = hashPassword(password);
+        await prisma.user.update({ where: { id }, data: data as Prisma.UserUncheckedUpdateInput });
+        await logAction(actor, "user", "update", id, { role, active, passwordChanged: !!password });
+        return { summary: `Updated user ${id} (role ${role}, ${active ? "active" : "inactive"}${password ? ", password changed" : ""}).`, records: { id, role, active } };
+      }
+      const email = str(input.email).toLowerCase();
+      const name = str(input.name);
+      if (!email || !name || !password) return { summary: "Email, name, and password are all required to create a new user.", records: null };
+      const created = await prisma.user.create({ data: { email, name, role, active, passwordHash: hashPassword(password) } });
+      await logAction(actor, "user", "create", created.id, { email, name, role, active });
+      return { summary: `Created user ${name} <${email}> as ${role}.`, records: { id: created.id, email, role } };
+    },
+  },
+
+  {
+    name: "delete_user",
+    description: "Permanently delete a user account. DESTRUCTIVE and irreversible: refuses unless confirm:true. You cannot delete the account you are signed in as, and a user who owns records can't be deleted (set them inactive with manage_user instead). Requires user:write (admin).",
+    input_schema: { type: "object", properties: { id: { type: "string" }, confirm: { type: "boolean" } }, required: ["id"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "user:write", "delete user accounts");
+      const id = str(input.id);
+      if (!id) return { summary: "No user id given.", records: null };
+      if (actor.uid === id) return { summary: "You can't delete the account you're signed in as.", records: null };
+      const target = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true, name: true } });
+      if (!target) return { summary: `No user with id ${id}.`, records: null };
+      const gate = confirmGate(input, `Permanently delete user ${target.name} <${target.email}>.`, { id: target.id, email: target.email });
+      if (gate) return gate;
+      try {
+        await prisma.user.delete({ where: { id } });
+      } catch {
+        return { summary: `${target.name} has linked records and can't be deleted. Set them inactive instead (manage_user with active:false).`, records: { id, deleted: false } };
+      }
+      await logAction(actor, "user", "delete", id, { email: target.email, name: target.name });
+      return { summary: `Deleted user ${target.name} <${target.email}>.`, records: { id, deleted: true } };
+    },
+  },
+
+  {
+    name: "manage_agent_settings",
+    description:
+      "View or change the Genetics Agent's own settings. action: status (show whether a key is set — masked — and the model), set_model (change the model id), or clear_key (turn the assistant off; DESTRUCTIVE, needs confirm:true). You CANNOT set a new API key here — a key must never be pasted into chat; direct the admin to Admin > Settings to paste it. Requires config:write (admin).",
+    input_schema: { type: "object", properties: { action: { type: "string", enum: ["status", "set_model", "clear_key"] }, model: { type: "string" }, confirm: { type: "boolean" } }, required: ["action"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "config:write", "manage agent settings");
+      const action = str(input.action);
+      if (action === "status") {
+        const rows = await prisma.environmentConfig.findMany({ where: { key: { in: ["agent.anthropicApiKey", "agent.model"] } } });
+        const map = new Map(rows.map((r) => [r.key, r.value]));
+        const envKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+        const key = (map.get("agent.anthropicApiKey") ?? "").trim() || envKey;
+        return { summary: `Agent ${key ? "is configured" : "is NOT configured"}. Model: ${map.get("agent.model") || "claude-sonnet-5"}.`, records: { configured: !!key, keyHint: maskKey(key), model: map.get("agent.model") || "claude-sonnet-5", keySource: (map.get("agent.anthropicApiKey") ?? "").trim() ? "settings" : envKey ? "env" : null } };
+      }
+      if (action === "set_model") {
+        const model = str(input.model);
+        if (!model) return { summary: "Provide a model id to set.", records: null };
+        await prisma.environmentConfig.upsert({ where: { key: "agent.model" }, update: { value: model }, create: { key: "agent.model", value: model, notes: "Model id for the Genetics Intelligence Agent" } });
+        await logAction(actor, "config", "update", "agent.model", { model });
+        return { summary: `Agent model set to ${model}.`, records: { model } };
+      }
+      if (action === "clear_key") {
+        const gate = confirmGate(input, "Clear the Anthropic API key — this turns the Genetics Assistant OFF for everyone until an admin pastes a new key in Admin > Settings.");
+        if (gate) return gate;
+        await prisma.environmentConfig.deleteMany({ where: { key: "agent.anthropicApiKey" } });
+        await logAction(actor, "config", "update", "agent.anthropicApiKey", { cleared: true });
+        return { summary: "Cleared the stored API key. The assistant is now off until a new key is saved in Admin > Settings.", records: { cleared: true } };
+      }
+      return { summary: `Unknown action "${action}".`, records: null };
+    },
+  },
+
+  {
+    name: "import_bulls",
+    description:
+      "Import official proofs from a Lactanet proof file into the platform. mode: reg (one bull by registration or NAAB code — needs `query`), topN (the top `limit` bulls by a column such as LPI — needs `sortCol` and `limit`), or mass (EVERY bull in the file, ~99,000 — heavy; needs confirm:true). All modes need `fileName` (use list_reference_data kind: proof_files to see valid names). IMPORTANT: imports are written as PENDING and go to the review queue — an ADMIN must approve them with resolve_import before they become authoritative (nothing is silently added to the live lineup). Requires the record:write permission.",
+    input_schema: { type: "object", properties: { mode: { type: "string", enum: ["reg", "topN", "mass"] }, fileName: { type: "string" }, query: { type: "string", description: "reg mode: a registration or NAAB code" }, sortCol: { type: "string", description: "topN mode: column to rank by, e.g. LPI" }, limit: { type: "integer", description: "topN mode: how many (max 200)" }, confirm: { type: "boolean", description: "required for mass mode" } }, required: ["mode", "fileName"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:write", "import proofs");
+      const su: SessionUser = { uid: actor.uid, email: "", name: actor.name, role: actor.role };
+      const mode = str(input.mode);
+      const { safeProofFileName, resolveProofFile, findBull, topBulls } = await import("@/lib/lactanet");
+      const { persistBull } = await import("@/lib/proof-import");
+      const { createImportReview } = await import("@/lib/import-staging");
+      const fileName = safeProofFileName(str(input.fileName));
+      if (!fileName || !resolveProofFile(str(input.fileName))) return { summary: "Choose a valid proof file from list_reference_data (kind: proof_files).", records: null };
+      const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" }, select: { sourceId: true } });
+
+      if (mode === "mass") {
+        const gate = confirmGate(input, `Stage a MASS import of ALL bulls (~99,000) in ${fileName}. It will be queued and an admin must approve it in the review queue.`, { fileName });
+        if (gate) return gate;
+        const manifest: ImportManifest = { kind: "proof", mode: "all", label: `Mass import — ALL bulls in ${fileName} (~99,000)`, fileName, animals: [] };
+        const reviewId = await createImportReview({ userId: su.uid, kind: "proof", captureType: "csv", sourceName: "LactanetGen", notes: `Mass proof import request: ALL bulls in ${fileName}`, manifest });
+        await logAction(actor, "import_batch", "stage", reviewId, { mass: fileName });
+        return { summary: `Queued a mass import of ${fileName}. An admin approves it in the review queue.`, records: { reviewId, mode: "mass", fileName } };
+      }
+
+      if (mode === "reg") {
+        const query = str(input.query);
+        if (!query) return { summary: "reg mode needs a registration or NAAB code in `query`.", records: null };
+        const bull = await findBull(fileName, query);
+        if (!bull) return { summary: `No bull found for "${query}" in ${fileName}.`, records: null };
+        const capture = await prisma.sourceCapture.create({ data: { sourceId: source?.sourceId, captureType: "csv", originalFileName: fileName, capturedById: su.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Proof import (pending review): ${bull.registrationNumber} from ${fileName}` } });
+        const { animalId, created, evaluationId } = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: su.uid, fileName, approvalStatus: "pending" });
+        await prisma.sourceCapture.update({ where: { captureId: capture.captureId }, data: { animalId } });
+        const animals: ImportAnimalRef[] = [{ reg: bull.registrationNumber, animalId, created, evaluationId, name: bull.registeredName }];
+        const manifest: ImportManifest = { kind: "proof", mode: "reg", label: `Proof import: ${bull.registeredName} (${bull.registrationNumber}) from ${fileName}`, fileName, count: 1, animals };
+        const reviewId = await createImportReview({ userId: su.uid, kind: "proof", captureType: "csv", captureId: capture.captureId, manifest });
+        await logAction(actor, "import_batch", "stage", reviewId, { reg: bull.registrationNumber });
+        return { summary: `Staged ${bull.registeredName} (${bull.registrationNumber}) as pending — an admin approves it in the review queue.`, records: { reviewId, mode: "reg", name: bull.registeredName, reg: bull.registrationNumber, created } };
+      }
+
+      if (mode === "topN") {
+        const sortCol = str(input.sortCol).replace(/[^A-Za-z0-9$%_ -]/g, "").slice(0, 40) || "LPI";
+        const limit = clamp(input.limit, 1, 200, 10);
+        const bulls = await topBulls(fileName, sortCol, limit);
+        if (!bulls.length) return { summary: `No bulls returned from ${fileName} sorted by ${sortCol}.`, records: null };
+        const capture = await prisma.sourceCapture.create({ data: { sourceId: source?.sourceId, captureType: "csv", originalFileName: fileName, capturedById: su.uid, extractionStatus: "extracted", confidenceScore: 1, notes: `Proof import (pending review): top ${limit} by ${sortCol} from ${fileName}` } });
+        const animals: ImportAnimalRef[] = [];
+        for (const bull of bulls) {
+          const { animalId, created, evaluationId } = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId: capture.captureId, userId: su.uid, fileName, approvalStatus: "pending" });
+          animals.push({ reg: bull.registrationNumber, animalId, created, evaluationId, name: bull.registeredName });
+        }
+        const manifest: ImportManifest = { kind: "proof", mode: "topN", label: `Proof import: top ${animals.length} by ${sortCol} from ${fileName}`, fileName, count: animals.length, animals };
+        const reviewId = await createImportReview({ userId: su.uid, kind: "proof", captureType: "csv", captureId: capture.captureId, manifest });
+        await logAction(actor, "import_batch", "stage", reviewId, { bulk: animals.length, sortCol });
+        return { summary: `Staged the top ${animals.length} bulls by ${sortCol} from ${fileName} as pending — an admin approves them in the review queue.`, records: { reviewId, mode: "topN", count: animals.length, sortCol } };
+      }
+
+      return { summary: `Unknown mode "${mode}". Use reg, topN, or mass.`, records: null };
+    },
+  },
+
+  {
+    name: "resolve_import",
+    description:
+      "Act on a staged batch import in the review queue (created by import_bulls). action: approve (promote the pending records / start the mass job), deny (delete the records the import wrote — DESTRUCTIVE, needs confirm:true), or restore (bring back a denied import). Needs reviewId (from list_reference_data kind: pending_reviews). Requires the record:approve permission (admin only).",
+    input_schema: { type: "object", properties: { action: { type: "string", enum: ["approve", "deny", "restore"] }, reviewId: { type: "string" }, confirm: { type: "boolean" } }, required: ["action", "reviewId"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:approve", "approve or deny imports");
+      const su: SessionUser = { uid: actor.uid, email: "", name: actor.name, role: actor.role };
+      const reviewId = str(input.reviewId);
+      const action = str(input.action);
+      if (!reviewId) return { summary: "reviewId is required.", records: null };
+      const { approveImportReview, denyImportReview, restoreImportReview } = await import("@/lib/import-staging");
+      if (action === "deny") {
+        const gate = confirmGate(input, `Deny import ${reviewId} — this DELETES the records that import wrote.`, { reviewId });
+        if (gate) return gate;
+        const res = await denyImportReview(reviewId, su);
+        return { summary: res.message, records: { reviewId, ok: res.ok, action } };
+      }
+      if (action === "restore") {
+        const res = await restoreImportReview(reviewId, su);
+        return { summary: res.message, records: { reviewId, ok: res.ok, action } };
+      }
+      const res = await approveImportReview(reviewId, su);
+      return { summary: res.message, records: { reviewId, ok: res.ok, action: "approve" } };
+    },
+  },
+
+  {
+    name: "resolve_review_item",
+    description:
+      "Work a per-record item in the review queue (an uploaded/extracted proof, milk record, classification, animal or identifier — NOT a batch import, which uses resolve_import). action: approve (materialize it into a real record and link it to the source), set_status (pending|rejected|needs_more_info|duplicate|conflict_review), or update (edit its extractedDataJson, matchedAnimalId, or reviewNotes before deciding). Needs reviewId. Requires the review:write permission.",
+    input_schema: { type: "object", properties: { action: { type: "string", enum: ["approve", "set_status", "update"] }, reviewId: { type: "string" }, status: { type: "string" }, extractedDataJson: { type: "string" }, matchedAnimalId: { type: "string" }, reviewNotes: { type: "string" } }, required: ["action", "reviewId"] },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "review:write", "work the review queue");
+      const su: SessionUser = { uid: actor.uid, email: "", name: actor.name, role: actor.role };
+      const reviewId = str(input.reviewId);
+      if (!reviewId) return { summary: "reviewId is required.", records: null };
+      const row = await prisma.importReviewQueue.findUnique({ where: { reviewId }, select: { proposedRecordType: true } });
+      if (!row) return { summary: "Review item not found.", records: null };
+      if (isBatchImportType(row.proposedRecordType)) return { summary: "That is a batch import — use resolve_import (approve/deny) instead.", records: null };
+      const action = str(input.action);
+
+      if (action === "update") {
+        const extractedDataJson = str(input.extractedDataJson);
+        if (extractedDataJson) { try { JSON.parse(extractedDataJson); } catch { return { summary: "extractedDataJson must be valid JSON.", records: null }; } }
+        await prisma.importReviewQueue.update({ where: { reviewId }, data: { extractedDataJson: extractedDataJson || undefined, matchedAnimalId: str(input.matchedAnimalId) || null, reviewNotes: str(input.reviewNotes) || null } });
+        return { summary: `Updated review item ${reviewId}.`, records: { reviewId } };
+      }
+      if (action === "set_status") {
+        const status = str(input.status);
+        const valid = ["pending", "rejected", "needs_more_info", "duplicate", "conflict_review"];
+        if (!valid.includes(status)) return { summary: `Invalid status. Use one of: ${valid.join(", ")} (to finalize into a record, use action approve).`, records: null };
+        await prisma.importReviewQueue.update({ where: { reviewId }, data: { status, reviewedById: actor.uid, reviewedAt: new Date(), reviewNotes: str(input.reviewNotes) || undefined } });
+        await logAction(actor, "review_item", status, reviewId);
+        return { summary: `Set review item ${reviewId} to ${status}.`, records: { reviewId, status } };
+      }
+      // approve → materialize
+      const { applyReviewApproval } = await import("@/lib/review-apply");
+      const { targetAnimalId, proposedRecordType } = await applyReviewApproval(reviewId, su);
+      await logAction(actor, "review_item", "approve", reviewId, { proposedRecordType, targetAnimalId });
+      return { summary: `Approved review item ${reviewId} — created a ${proposedRecordType}${targetAnimalId ? " and linked it to the animal" : ""}.`, records: { reviewId, proposedRecordType, targetAnimalId } };
     },
   },
 ];

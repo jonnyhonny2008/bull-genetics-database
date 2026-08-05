@@ -158,7 +158,7 @@ export function GeneticsAssistant() {
           )}
           {messages.length === 0 && configured !== false && (
             <div className="space-y-2">
-              <p className="text-sm text-slate-500">Ask about sires, proofs, rankings, rollback resistance, pedigree, or trends. Try:</p>
+              <p className="text-sm text-slate-500">Ask about sires, proofs, rankings, pedigree or trends — or ask it to make a change (add a note, record a proof, edit an animal). It does what your account is allowed to, and confirms before anything is saved. Try:</p>
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => ask(s)} className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50">{s}</button>
               ))}

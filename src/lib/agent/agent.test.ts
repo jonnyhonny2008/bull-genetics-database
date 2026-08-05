@@ -16,7 +16,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { askGeneticsAgent, type MessagesClient, type AgentDeps, type AgentStream } from "./agent";
 import type { AgentConfig } from "./config";
 import { maskKey } from "./config";
-import { traitCol, clamp, type AgentTool } from "./tools";
+import { traitCol, clamp, type AgentTool, AGENT_TOOLS, requireCap, confirmGate, type AgentContext } from "./tools";
 import { cleanText, extractCharts, splitFollowups } from "./answer-format";
 import { slugify, recordsToRows, rowsToCsv, reportMarkdown } from "./answer-export";
 
@@ -256,4 +256,56 @@ test("reportMarkdown includes question, answer, sources and records", () => {
   assert.match(md, /## Sources/);
   assert.match(md, /- rank_animals: Top 1 by lpi\./);
   assert.match(md, /## Records/);
+});
+
+// ---------------------------------------------------------------------------
+// Write-tool guardrails. These are the security boundary that lets the agent
+// act "as the signed-in user" without ever exceeding their role. They run
+// without a database because every write tool checks the permission FIRST.
+// ---------------------------------------------------------------------------
+
+test("requireCap enforces the role's capabilities", () => {
+  const admin: AgentContext = { actor: { uid: "u1", name: "Admin", role: "admin" } };
+  const sales: AgentContext = { actor: { uid: "u2", name: "Sales", role: "sales" } };
+  const none: AgentContext = { actor: null };
+
+  assert.doesNotThrow(() => requireCap(admin, "animal:write", "edit animals"));
+  assert.doesNotThrow(() => requireCap(admin, "user:write", "manage users"));
+  assert.doesNotThrow(() => requireCap(sales, "animal:read", "read animals")); // sales can read
+  assert.throws(() => requireCap(sales, "animal:write", "edit animals"), /isn't allowed/);
+  assert.throws(() => requireCap(sales, "record:write", "add records"), /isn't allowed/);
+  assert.throws(() => requireCap(none, "animal:write", "edit animals"), /No signed-in user/);
+});
+
+test("confirmGate blocks a destructive action until confirm:true", () => {
+  const blocked = confirmGate({}, "Delete the thing.");
+  assert.ok(blocked, "returns a gate result when not confirmed");
+  assert.match(blocked!.summary, /CONFIRM NEEDED/);
+  assert.equal((blocked!.records as { confirmRequired?: boolean }).confirmRequired, true);
+  assert.equal(confirmGate({ confirm: true }, "Delete the thing."), null); // proceeds
+  assert.ok(confirmGate({ confirm: "true" }, "x"), "only the boolean true confirms, not the string");
+});
+
+test("every write tool refuses a Sales user before touching the database", async () => {
+  const sales: AgentContext = { actor: { uid: "u", name: "Sales", role: "sales" } };
+  const writeTools = [
+    "create_or_update_animal", "archive_animal", "add_animal_note", "add_proof", "add_milk_record",
+    "add_classification", "manage_breed", "manage_trait", "manage_source", "manage_priority_rule",
+    "manage_user", "delete_user", "manage_agent_settings", "import_bulls", "resolve_import", "resolve_review_item",
+  ];
+  for (const name of writeTools) {
+    const tool = AGENT_TOOLS.find((t) => t.name === name);
+    assert.ok(tool, `write tool ${name} is registered`);
+    await assert.rejects(
+      () => tool!.run({}, sales),
+      /isn't allowed|No signed-in user/,
+      `${name} must refuse a Sales user`,
+    );
+  }
+});
+
+test("write tools refuse when there is no signed-in actor", async () => {
+  const none: AgentContext = { actor: null };
+  const tool = AGENT_TOOLS.find((t) => t.name === "create_or_update_animal")!;
+  await assert.rejects(() => tool.run({ primaryName: "X" }, none), /No signed-in user/);
 });

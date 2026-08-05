@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { getAgentConfig, type AgentConfig } from "./config";
 import { AGENT_SYSTEM_PROMPT } from "./instructions";
-import { AGENT_TOOLS, AGENT_TOOL_MAP, type AgentTool } from "./tools";
+import { AGENT_TOOLS, AGENT_TOOL_MAP, type AgentTool, type AgentActor, type AgentContext } from "./tools";
 
 export class AgentNotConfiguredError extends Error {
   constructor() { super("The Genetics Intelligence Agent is not configured. An administrator must add an Anthropic API key in Admin Settings."); this.name = "AgentNotConfiguredError"; }
@@ -40,10 +40,16 @@ export interface MessagesClient {
 /** Progress events emitted while streaming (text deltas + tool status lines). */
 export type AgentEvent = { type: "delta" | "status"; text: string };
 
-/** Options + optional test seams. In production only userId/userName are passed. */
+/** Options + optional test seams. In production the route passes `actor`. */
 export interface AgentDeps {
   userId?: string;
   userName?: string;
+  /**
+   * The signed-in user the agent acts as. Write tools gate on this — the agent
+   * can do only what this person's role allows. When absent (or role is blank),
+   * every write tool refuses. Read tools work regardless.
+   */
+  actor?: AgentActor;
   /** Test seam: skip the database config lookup and use this config. */
   config?: AgentConfig;
   /** Test seam: build a fake Anthropic client. Defaults to the real SDK client. */
@@ -86,6 +92,12 @@ export async function askGeneticsAgent(
     { role: "user", content: question },
   ];
 
+  // The acting user, threaded into every tool call. Prefer the explicit actor;
+  // fall back to userId/userName with a blank role (which denies every write).
+  const ctx: AgentContext = {
+    actor: opts.actor ?? (opts.userId ? { uid: opts.userId, name: opts.userName ?? "", role: "" } : null),
+  };
+
   const toolCalls: AgentResult["toolCalls"] = [];
   const records: AgentResult["records"] = [];
   let answer = "";
@@ -124,7 +136,7 @@ export async function askGeneticsAgent(
 
     if (response.stop_reason !== "tool_use" || toolUses.length === 0) break;
 
-    if (toolUses.length) opts.onEvent?.({ type: "status", text: `Checking the database — ${toolUses.map((t) => t.name.replace(/_/g, " ")).join(", ")}…` });
+    if (toolUses.length) opts.onEvent?.({ type: "status", text: `Working — ${toolUses.map((t) => t.name.replace(/_/g, " ")).join(", ")}…` });
 
     // Execute every requested tool and return all results in one user message.
     const results: Anthropic.ToolResultBlockParam[] = [];
@@ -135,7 +147,7 @@ export async function askGeneticsAgent(
         continue;
       }
       try {
-        const out = await tool.run((call.input ?? {}) as Record<string, unknown>);
+        const out = await tool.run((call.input ?? {}) as Record<string, unknown>, ctx);
         toolCalls.push({ name: call.name, input: call.input, summary: out.summary });
         records.push({ tool: call.name, records: out.records });
         results.push({ type: "tool_result", tool_use_id: call.id, content: JSON.stringify({ summary: out.summary, records: out.records }).slice(0, 60000) });
@@ -151,7 +163,7 @@ export async function askGeneticsAgent(
   if (opts.log ?? true) try {
     await prisma.auditLog.create({
       data: {
-        entityType: "agent", action: "query", userId: opts.userId, userName: opts.userName,
+        entityType: "agent", action: "query", userId: opts.actor?.uid ?? opts.userId, userName: opts.actor?.name ?? opts.userName,
         notes: JSON.stringify({ question: question.slice(0, 500), tools: toolCalls.map((t) => t.name), rowsExamined, iterations, refused, answerPreview: answer.slice(0, 300) }).slice(0, 4000),
       },
     });

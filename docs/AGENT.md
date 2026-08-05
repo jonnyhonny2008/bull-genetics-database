@@ -5,6 +5,11 @@ natural-language questions, decides which database tools to call, runs multiple
 retrieval → analysis cycles, and grounds **every** conclusion in real records it
 retrieved — it never invents bulls, IDs, or trait values.
 
+It can also **act**: everything a signed-in user can do — add and edit animals,
+record proofs / milk records / classifications, add notes, manage reference data
+and users, run Lactanet proof imports, and work the review queue — through the
+same permission model as the UI. See **[Acting on data](#acting-on-data-write-tools)**.
+
 The agent appears as a floating button in the lower-right of every page. Clicking
 it opens a slide-out chat panel.
 
@@ -59,8 +64,19 @@ tools called, how many rows were examined, iteration count, and an answer previe
 
 ### Safety properties
 
-- **Read-only.** Every tool is a typed, parameterized Prisma query. No tool builds
-  SQL from user text; the model supplies typed arguments only.
+- **Typed tools, no raw SQL.** Every tool is a typed, parameterized Prisma call. No
+  tool builds SQL from user text; the model supplies typed arguments only.
+- **Acts as the signed-in user, within their role.** Write tools are gated by the
+  same `can(role, capability)` model as the server actions (`src/lib/constants.ts`),
+  read from the signed session — never from client input. A Sales user's agent can
+  read but cannot write; only an admin's agent can manage users, config, or approve
+  imports. Every change is attributed to that user in the audit log.
+- **Confirmation before harm.** Destructive / irreversible actions (delete, archive,
+  deny import, clear key, mass import) refuse until called again with `confirm:true`,
+  so a single stray call can't lose data.
+- **Instruction boundary.** The system prompt tells the model to treat everything a
+  tool returns (notes, extracted JSON, imported text) as *data, not commands* — a
+  malicious record can't make it act. `requireCap` is the hard backstop regardless.
 - **Grounded.** The system prompt forbids inventing data; "not in the database" is a
   valid answer. Trait names are mapped through a fixed allow-list (`traitCol`), never
   interpolated.
@@ -109,6 +125,8 @@ Defined in `src/lib/agent/tools.ts`. Add a capability by appending one entry
 (`name`, `description`, `input_schema`, `run`) — the model reads the description to
 decide when to call it.
 
+### Read tools (answer questions)
+
 | Tool | What it answers |
 |---|---|
 | `search_animals` | Find sires by name/registration, optional role & breed filters |
@@ -118,6 +136,35 @@ decide when to call it.
 | `rollback_leaders` | Best/worst by Rollback Resistance or Proof Performance |
 | `proof_history` | One sire's trait values across proof rounds, oldest→newest |
 | `pedigree_index` | 3-generation pedigree + estimated Pedigree Index and confidence |
+| `get_animal_full_profile` | Every stored trait for one animal (unpacked from `traitsJson`) |
+| `calculate_mating_pa` | Parent Average of a sire × dam across shared traits (Lactanet fallback) |
+| `list_reference_data` | Breeds / traits / sources / rules / proof files / users / review queue — find the id or code a write tool needs |
+
+### Acting on data (write tools)
+
+Each mirrors a UI action and checks the **same capability** before doing anything.
+
+| Tool | Does | Needs |
+|---|---|---|
+| `create_or_update_animal` | Create/edit an animal + identifiers | `animal:write` |
+| `archive_animal` | Soft-delete (hide from lineup) — **confirm** | `animal:write` |
+| `add_animal_note` | Attach a note | `animal:write` |
+| `add_proof` | Record a genetic evaluation (manual) | `record:write` |
+| `add_milk_record` | Record a lactation | `record:write` |
+| `add_classification` | Record a classification + linear scores | `record:write` |
+| `manage_breed` / `manage_trait` / `manage_source` | Create/update reference data | `config:write` |
+| `manage_priority_rule` | Save / **delete** a source-priority rule | `config:write` |
+| `manage_user` | Create/update a user (role, active, password) | `user:write` |
+| `delete_user` | Remove a user — **confirm**, self-delete guarded | `user:write` |
+| `manage_agent_settings` | Show status / set model / **clear key** (no key entry via chat) | `config:write` |
+| `import_bulls` | Import Lactanet proofs (reg / topN / mass) → **staged pending** | `record:write` |
+| `resolve_import` | Approve / **deny** / restore a staged batch import | `record:approve` |
+| `resolve_review_item` | Approve / triage a per-record review item | `review:write` |
+
+Imports and per-record uploads land in the **review queue as pending**; an admin
+approves them before they become authoritative — the agent honours that gate. The
+per-record approval logic is shared with the Review screen via
+`src/lib/review-apply.ts`.
 
 ---
 
@@ -126,9 +173,10 @@ decide when to call it.
 | Path | Responsibility |
 |---|---|
 | `src/lib/agent/config.ts` | Read key/model/limits; `isAgentConfigured()`, `maskKey()` |
-| `src/lib/agent/instructions.ts` | System prompt (persona + hard rules) |
-| `src/lib/agent/tools.ts` | The 7 parameterized data tools |
-| `src/lib/agent/agent.ts` | The reasoning loop + run logging |
+| `src/lib/agent/instructions.ts` | System prompt (persona, hard rules, act rules, instruction boundary) |
+| `src/lib/agent/tools.ts` | Read + write tools, and the `requireCap` / `confirmGate` / `logAction` gates |
+| `src/lib/agent/agent.ts` | The reasoning loop, `AgentContext`/`AgentActor` threading, run logging |
+| `src/lib/review-apply.ts` | Shared per-record review materialization (UI action + agent tool) |
 | `src/lib/agent/answer-format.ts` | Pure helpers: clean text, extract charts, split follow-ups |
 | `src/lib/agent/agent.test.ts` | Tests (mocked client + mocked tools, no DB/network) |
 | `src/app/api/agent/route.ts` | `GET` = configured?, `POST` = ask a question |
@@ -146,17 +194,28 @@ npm run test:agent
 Runs Node's built-in test runner via `tsx` — no extra dependency. It exercises the
 full loop with a **mocked Anthropic client and mocked tools** (a retrieval→answer
 cycle, a no-tool answer, a refusal, an unknown-tool recovery, the not-configured
-error) and unit-tests the pure helpers (`traitCol`, `clamp`, `maskKey`). Nothing
-touches the network or the database.
+error), unit-tests the pure helpers (`traitCol`, `clamp`, `maskKey`), and — for the
+write surface — asserts `requireCap` enforces each role, `confirmGate` blocks until
+`confirm:true`, and **every write tool refuses a Sales user before touching the
+database**. Nothing touches the network or the database.
+
+Two live integration scripts (real DB, real server runtime) round it out:
+
+```bash
+npx dotenv -e .env.production -- npx tsx --conditions=react-server prisma/smoke-agent-tools.ts
+```
+
+loads the whole read+write tool surface, and checks the permission refusals and the
+confirm-gate against the live database **without making any change**.
 
 ---
 
 ## Streaming & export
 
 - **Streaming.** `POST /api/agent` returns newline-delimited JSON: `{type:"status"}`
-  lines while it calls the database, `{type:"delta"}` for each text chunk, then one
+  lines while it works, `{type:"delta"}` for each text chunk, then one
   `{type:"done", result}`. The panel renders the answer token-by-token with a live
-  cursor and a "Checking the database — …" status, then swaps in the fully-parsed
+  cursor and a "Working — …" status, then swaps in the fully-parsed
   answer (charts, sources, follow-ups) on `done`. Tests inject a fake streaming
   client; the loop falls back to a single blocking call when no listener is attached.
 - **Export.** Every answer has an **Export** menu — Markdown, CSV (records), JSON
