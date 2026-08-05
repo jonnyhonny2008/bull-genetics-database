@@ -56,19 +56,38 @@ import {
   LOWER_IS_BETTER,
   MATING_INDEXES,
   blendLabel,
+  blendScores,
+  clampBlend,
+  clampWeakN,
   compareByScore,
   compositeScore,
+  correctionTraits,
   describeSelection,
+  matchScoreOf,
   parentAverage,
   parseTraitSelection,
   clampBalance,
   poolTraitStats,
+  rankWeaknesses,
+  selectActedWeaknesses,
   MATING_DISPLAY_TRAITS,
   rankIsComposite,
   type CompositeScore,
   type SelectedTrait,
   type TraitStats,
+  type WeaknessInput,
 } from "./mating-score";
+import { KEY_TRAIT_CODES } from "./key-traits";
+import {
+  CORRECTION_TRAITS,
+  correctionCentre,
+  correctionTrait,
+  deficit,
+  improvesWeakness,
+  isPositiveImprover,
+  matingFit,
+  worsensWeakness,
+} from "./mating-targets";
 import {
   ancestorSetFromPAParent,
   assessRelatedness,
@@ -176,6 +195,26 @@ export interface MatingParams {
   balance: number;
   /** True when `pool` came from the request rather than the default. */
   poolExplicit: boolean;
+  // --- corrective mating ----------------------------------------------------
+  /**
+   * How the ranking splits between MERIT (raise the calf's index) and CORRECTION
+   * (fix THIS cow's faults), 0-1. 1 is merit only — the classic ranking. Lower
+   * leans on suiting her weaknesses. See DEFAULT_BLEND in mating-score.ts. Only
+   * bites on a female who actually has a detected weakness; a strong cow is
+   * ranked on merit whatever this says.
+   */
+  blend: number;
+  /**
+   * The floor's severity. Off (default): a bull is only set aside when he would
+   * make a flagged weakness WORSE — "at least doesn't make it worse". On: a bull
+   * must be POSITIVE (an improver) on every flagged weakness or he is set aside —
+   * "only bulls that are positive for those traits", which can leave a cow with
+   * few or no bulls, and says so when it does.
+   */
+  strictImprovers: boolean;
+  /** How many of her worst faults the run acts on (hard floor + correction
+   *  weight). KEY_TRAITS get first claim on the slots. */
+  weakN: number;
 }
 
 export interface MatingMatch {
@@ -220,6 +259,28 @@ export interface MatingMatch {
   reason: string;
   /** The side that decided `confidence` — the half the screen was limited by. */
   blindSide: "female" | "bull" | null;
+  /**
+   * The flagged weaknesses this bull IMPROVES (labels), for a "fixes …" badge. A
+   * weakness he merely holds level on is not listed — only ones he moves in the
+   * right direction. Empty when she has no weaknesses, or he fixes none of them.
+   */
+  corrects: string[];
+}
+
+/** One of a cow's detected faults, shown so a recommendation explains itself. */
+export interface FemaleWeakness {
+  code: string;
+  label: string;
+  /** Her own value, on the trait's own scale. */
+  cowValue: number;
+  /** A plain-language goal: "looking for a bull above 100", "toward the 0 target". */
+  goal: string;
+  /** true = in the acted set (hard floor + correction weight). false = detected
+   *  but past the weakN cut — shown, not acted on. */
+  acted: boolean;
+  /** true = enforced on the recommended shortlist only (Milking Speed, Bone
+   *  Quality and the other traitsJson-only traits); false = enforced pool-wide. */
+  deep: boolean;
 }
 
 export interface MatingFemale {
@@ -236,6 +297,23 @@ export interface MatingFemale {
   matches: MatingMatch[];
   /** Not enough pedigree to certify — shown separately, never recommended. */
   unknown: MatingMatch[];
+  /**
+   * Her detected weaknesses, worst first — the acted ones drive the floor and
+   * the correction ranking, the rest are shown for context. Empty for a strong
+   * cow, or when nothing about her could be read.
+   */
+  weaknesses: FemaleWeakness[];
+  /** Deep traits (Milking Speed, Bone Quality …) we could not assess because she
+   *  has no value for them on file — named, never guessed to be fine. */
+  unassessedWeak: { code: string; label: string }[];
+  /**
+   * Bulls that CLEARED the relatedness screen but were set aside because they
+   * would worsen one of her flagged weaknesses (or, in strict mode, are not
+   * positive for it). Never recommended; the reason names the trait(s).
+   */
+  setback: { bullId: string; name: string; reg: string | null; naab: string | null; reasons: string[] }[];
+  /** How many bulls were set aside for a weakness — never capped, never rounded. */
+  setbackTotal: number;
   /** The closest exclusions, capped for the browser payload. See excludedTotal. */
   excluded: { bullId: string; name: string; shared: SharedAncestor[] }[];
   /** How many bulls were excluded in total — never capped, never rounded. */
@@ -261,6 +339,14 @@ export interface MatingFemale {
 export interface MatingReport {
   females: MatingFemale[];
   params: MatingParams;
+  /**
+   * Whether a Match score is shown. True for a multi-trait blend, and true
+   * whenever corrective mating is active for any female (the order is then the
+   * merit/correction blend, not a raw projected calf value, so a legible score
+   * column has to say what the order is). A single-trait run with no weaknesses
+   * anywhere stays the classic raw-value report.
+   */
+  scored: boolean;
   /**
    * The completeness bar actually applied. Equal to params.floor at the default
    * 3-generation depth; at depth 2 the MacCluer sum is normalised over two
@@ -400,6 +486,16 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   // push it outside the dial.
   const balance = clampBalance(sp.balance != null && sp.balance !== "" ? Number(sp.balance) : undefined);
 
+  // --- corrective mating dials ---
+  // How much the ranking leans on fixing HER faults vs raising the calf's index.
+  const blend = clampBlend(sp.blend != null && sp.blend !== "" ? Number(sp.blend) : undefined);
+  // Strict: a bull must be POSITIVE for every flagged weakness, not merely not
+  // worsen it. Off by default — the never-worsen floor is always on regardless.
+  const strictRaw = sp.strict ?? sp.strictImprovers;
+  const strictImprovers = strictRaw === "1" || strictRaw === "true";
+  // How many of her worst faults to act on.
+  const weakN = clampWeakN(sp.weakN != null && sp.weakN !== "" ? Number(sp.weakN) : undefined);
+
   // The floor is CLAMPED AT THE DEFAULT, not at zero. 0.75 is the whole reason
   // the paternally blind cohort (0.583 — own pedigree line only, the sire's own
   // parents unknown) is withheld instead of recommended; a hand-edited ?floor=0
@@ -445,7 +541,10 @@ function parseParams(sp: Record<string, string | undefined>): ParsedInput {
   }
 
   return {
-    params: { females, index, selected, topN, maxGen, pool, includeInactive, floor, naabOnly, crossBreed, balance, poolExplicit },
+    params: {
+      females, index, selected, topN, maxGen, pool, includeInactive, floor, naabOnly,
+      crossBreed, balance, poolExplicit, blend, strictImprovers, weakN,
+    },
     candidates,
     unparseable,
     overflow,
@@ -471,6 +570,7 @@ async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, i: number)
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function median(values: number[]): number {
   if (!values.length) return 0;
@@ -590,6 +690,7 @@ export async function getMatingProgramReport(
   const empty = (): MatingReport => ({
     females: [],
     params,
+    scored: rankIsComposite(params.selected),
     effectiveFloor,
     bullsConsidered: 0,
     inactiveSuppressed: 0,
@@ -845,15 +946,32 @@ export async function getMatingProgramReport(
   // inside, so it is built here — after every pool filter, before the first
   // female. Recomputing it per female would make a bull's Match score mean a
   // different thing on each row of the same report.
-  const stats: Map<string, TraitStats> = multi ? poolTraitStats(selected, candidates) : new Map();
-  const compositeByBull = new Map<string, CompositeScore>();
-  if (multi) {
-    for (const c of candidates) compositeByBull.set(c.animalId, compositeScore(c.cols, selected, stats, params.balance));
-    // Only worth explaining when there is a pool to explain. An empty pool has
-    // already said so above; "only 0 bulls have an LPI" would just be noise on
-    // top of it.
-    if (candidates.length) warnings.push(...describeSelection(selected, stats, candidates.length));
-  }
+  //
+  // MERIT is now standardised for EVERY run, single trait included: the
+  // corrective blend needs merit in standard deviations to combine it with the
+  // correction term. For a female with no weakness the blend collapses to merit
+  // alone, and sorting on that merit z-score gives the identical order to the
+  // raw projected calf value — it is a monotonic rescale of the same number — so
+  // a run that corrects nothing is byte-for-byte the report it always was.
+  const meritStats: Map<string, TraitStats> = poolTraitStats(selected, candidates);
+  const meritByBull = new Map<string, CompositeScore>();
+  for (const c of candidates) meritByBull.set(c.animalId, compositeScore(c.cols, selected, meritStats, params.balance));
+  // Only worth explaining a blend when there is a pool to explain, and only for a
+  // real multi-trait blend — describeSelection returns nothing for one trait.
+  if (multi && candidates.length) warnings.push(...describeSelection(selected, meritStats, candidates.length));
+
+  // The CORRECTION scale: mean and spread of every INDEXED correction trait
+  // across the pool, so a cow's fault can be measured as "how far below where
+  // the bulls sit" and weighted against her other faults on one comparable
+  // scale. Deep traits (Milking Speed, Bone Quality, the intermediate linears)
+  // have no indexed column and are enforced per-bull on the shortlist instead.
+  const indexedCorrection = CORRECTION_TRAITS.filter((t) => !t.deep);
+  const correctionSelected: SelectedTrait[] = indexedCorrection.map((t) => ({
+    code: t.code, label: t.label, col: "", weight: 1, higherIsBetter: !t.lowerIsBetter,
+  }));
+  const correctionStatsPool = poolTraitStats(correctionSelected, candidates);
+  const centreOf = (code: string): number | null =>
+    correctionCentre(code, correctionStatsPool.get(code)?.usable ? correctionStatsPool.get(code)!.mean : null);
 
   const bullSets = new Map<string, AncestorSet>();
   for (const c of candidates) bullSets.set(c.animalId, buildAncestorSet(c.animalId, corpus, buildGen));
@@ -906,10 +1024,12 @@ export async function getMatingProgramReport(
     /** Projected calf value per SELECTED trait, aligned with `selected`. This is
      *  what is displayed; `pre` is only what is sorted on. */
     preValues: (number | null)[];
-    /** 100 + 5 × composite. null in a single-trait run. */
+    /** 100 + 5 × the blended merit/correction score, or null when unscorable. */
     matchScore: number | null;
     reason: string;
     blindSide: MatingMatch["blindSide"];
+    /** Labels of her acted faults this bull improves (for the "fixes …" badge). */
+    corrects: string[];
   }
 
   /**
@@ -940,11 +1060,29 @@ export async function getMatingProgramReport(
     };
   };
 
+  /** A cow fault carried through the loop into the assemble step. */
+  interface Fault {
+    code: string;
+    label: string;
+    cowValue: number;
+    lowerIsBetter: boolean;
+  }
+
   interface Draft {
     female: MatingFemale;
     parent: PAParent | null;
     clear: Ranked[];
     unverified: Ranked[];
+    /** Bulls that cleared the pedigree screen but worsen an INDEXED acted fault
+     *  (or, in strict mode, are not positive for it). Populated in the loop. */
+    setback: MatingFemale["setback"];
+    /** Deep acted faults (Milking Speed, Bone Quality, intermediate linears) to
+     *  enforce against the recommended shortlist in the assemble step. */
+    deepWeak: Fault[];
+    /** Her full weakness list, for display. */
+    weaknesses: FemaleWeakness[];
+    /** Deep traits we could not read for her — named, never assumed fine. */
+    unassessedWeak: MatingFemale["unassessedWeak"];
   }
 
   const drafts: Draft[] = [];
@@ -1026,6 +1164,10 @@ export async function getMatingProgramReport(
       reliability: parent?.reliabilityOverall ?? null,
       matches: [],
       unknown: [],
+      weaknesses: [],
+      unassessedWeak: [],
+      setback: [],
+      setbackTotal: 0,
       excluded: [],
       excludedTotal: 0,
       notes,
@@ -1052,6 +1194,10 @@ export async function getMatingProgramReport(
         parent: null,
         clear: [],
         unverified: [],
+        setback: [],
+        deepWeak: [],
+        weaknesses: [],
+        unassessedWeak: [],
       });
       continue;
     }
@@ -1075,6 +1221,10 @@ export async function getMatingProgramReport(
         parent,
         clear: [],
         unverified: [],
+        setback: [],
+        deepWeak: [],
+        weaknesses: [],
+        unassessedWeak: [],
       });
       continue;
     }
@@ -1127,16 +1277,155 @@ export async function getMatingProgramReport(
       );
     }
 
+    // --- HER WEAKNESSES, and the pool's ability to fix them ------------------
+    // Measured against each correction trait's own base (see CORRECTION_TRAITS):
+    // 100 for the functional RBVs, 0 for the linear/percent traits, the pool mean
+    // for the composites. A trait she has no value for is named as unassessable,
+    // never read as 0 — which is breed average, and would declare an unmeasured
+    // cow perfect.
+    const traitVal = (code: string): number | null => {
+      const v = parent.traits.get(code)?.value;
+      return v == null || !Number.isFinite(v) ? null : v;
+    };
+    const weakInputs: WeaknessInput[] = indexedCorrection.map((t) => {
+      const st = correctionStatsPool.get(t.code);
+      return {
+        code: t.code,
+        label: t.label,
+        cowValue: traitVal(t.code),
+        mean: correctionCentre(t.code, st?.usable ? st.mean : null),
+        sd: st?.usable ? st.sd : null,
+      };
+    });
+    const weakSet = rankWeaknesses(weakInputs, params.weakN, LOWER_IS_BETTER);
+    const actedIndexed = selectActedWeaknesses(weakSet.ranked, params.weakN, new Set(KEY_TRAIT_CODES));
+    const actedIndexedCodes = new Set(actedIndexed.map((w) => w.code));
+
+    // Deep faults — no indexed column, so read from her own record here. The
+    // DIRECTIONAL ones (Milking Speed, Bone Quality) are the traits the request
+    // was about and are hard-floored on the recommended shortlist. The
+    // INTERMEDIATE linears (stature, teat length …) are only SHOWN: enforcing
+    // "never move any of seven both-way traits away from its optimum" as a hard
+    // floor leaves almost no bull standing, and a 1-point drift off target is not
+    // the fault a breeder means. They influence the display, nothing else.
+    const deepWeak: Fault[] = [];
+    const notedDeep: { code: string; label: string; cowValue: number }[] = [];
+    const unassessedWeak: MatingFemale["unassessedWeak"] = [];
+    for (const t of CORRECTION_TRAITS) {
+      if (!t.deep) continue;
+      const cv = traitVal(t.code);
+      if (cv == null) {
+        // Only the directional deep traits are ones a breeder asked to fix, so
+        // only those are worth flagging as "couldn't assess". A missing linear is
+        // left silent rather than nagging about a trait nobody asked to correct.
+        if (!t.intermediate) unassessedWeak.push({ code: t.code, label: t.label });
+        continue;
+      }
+      const centre = correctionCentre(t.code, null);
+      if (centre == null) continue;
+      if (!(deficit(t.code, cv, centre) > 0)) continue;
+      if (t.intermediate) notedDeep.push({ code: t.code, label: t.label, cowValue: cv });
+      else deepWeak.push({ code: t.code, label: t.label, cowValue: cv, lowerIsBetter: t.lowerIsBetter });
+    }
+    if (unassessedWeak.length) {
+      notes.push(
+        `Could not assess ${unassessedWeak.map((u) => u.label).join(", ")} for her — no value on file — so ${unassessedWeak.length === 1 ? "it was" : "they were"} not screened. Add her classification/genomic record to include ${unassessedWeak.length === 1 ? "it" : "them"}.`,
+      );
+    }
+
+    // A plain-language goal per fault, and the assembled weakness list.
+    const goalOf = (code: string, cowValue: number): string => {
+      const t = correctionTrait(code);
+      if (!t) return "looking to improve";
+      if (t.intermediate) return `toward the ${t.base} target (she is ${round1(cowValue)})`;
+      const centre = centreOf(code);
+      if (centre == null) return `looking for a ${t.lowerIsBetter ? "lower" : "higher"} bull`;
+      return `looking for a bull ${t.lowerIsBetter ? "below" : "above"} ${round1(centre)} (she is ${round1(cowValue)})`;
+    };
+    const mkWeak = (code: string, label: string, cowValue: number, acted: boolean, deep: boolean): FemaleWeakness => ({
+      code, label, cowValue: round2(cowValue), goal: goalOf(code, cowValue), acted, deep,
+    });
+    const notedIndexed = weakSet.ranked.filter((w) => !actedIndexedCodes.has(w.code));
+    const weaknesses: FemaleWeakness[] = [
+      ...actedIndexed.map((w) => mkWeak(w.code, w.label, w.cowValue, true, false)),
+      ...deepWeak.map((w) => mkWeak(w.code, w.label, w.cowValue, true, true)),
+      ...notedIndexed.map((w) => mkWeak(w.code, w.label, w.cowValue, false, false)),
+      ...notedDeep.map((w) => mkWeak(w.code, w.label, w.cowValue, false, true)),
+    ];
+
+    // The CORRECTION scale for THIS cow: every bull in her pool scored by how
+    // well he suits her acted faults, standardised so it combines with merit.
+    // matingFit turns each fault — directional or intermediate — into a number
+    // where larger is better; a bull with no value for a fault is imputed the
+    // pool-average fit (neutral), so a missing figure neither flatters nor buries
+    // him. The floor, separately, only ever sets aside a bull we can SEE worsens
+    // her.
+    const fitOf = (w: { code: string; cowValue: number }, bull: number | null): number | null =>
+      bull == null ? null : matingFit(w.code, w.cowValue, bull, LOWER_IS_BETTER.has(w.code));
+    const fitPool = breedPool.map((c) => ({
+      cols: new Map<string, number | null>(actedIndexed.map((w) => [w.code, fitOf(w, c.cols.get(w.code) ?? null)])),
+    }));
+    const fitStats = actedIndexed.length ? poolTraitStats(correctionTraits(actedIndexed), fitPool) : new Map<string, TraitStats>();
+    const fitMean = new Map<string, number>();
+    for (const [code, st] of fitStats) if (st.usable) fitMean.set(code, st.mean);
+    // Only faults the pool can actually separate on carry the correction score;
+    // an unusable one drops out rather than being divided by, and the weights
+    // over the survivors stay proportional.
+    const scoredWeak = actedIndexed.filter((w) => fitStats.get(w.code)?.usable);
+    const scoredCols = correctionTraits(scoredWeak);
+    const correctionZ = (c: Candidate): number | null => {
+      if (!scoredWeak.length) return null;
+      const cols = new Map<string, number | null>(
+        scoredWeak.map((w) => {
+          const raw = fitOf(w, c.cols.get(w.code) ?? null);
+          return [w.code, raw == null ? (fitMean.get(w.code) ?? null) : raw];
+        }),
+      );
+      return compositeScore(cols, scoredCols, fitStats, params.balance).composite;
+    };
+
+    // The never-worsen floor on the INDEXED acted faults, checked pool-wide. By
+    // default a bull is set aside only when we can SEE he worsens one; in strict
+    // mode he must be POSITIVE for every one, and a fault he has no value for
+    // cannot be certified positive, so he is set aside there too.
+    const indexedFloor = (c: Candidate): string[] => {
+      const reasons: string[] = [];
+      for (const w of actedIndexed) {
+        const bv = c.cols.get(w.code) ?? null;
+        const lower = LOWER_IS_BETTER.has(w.code);
+        if (params.strictImprovers) {
+          const centre = centreOf(w.code);
+          if (bv == null) reasons.push(`no ${w.label} on his proof`);
+          else if (centre != null && !isPositiveImprover(w.code, w.cowValue, bv, centre, lower)) reasons.push(`not positive for ${w.label}`);
+        } else if (bv != null && worsensWeakness(w.code, w.cowValue, bv, lower)) {
+          reasons.push(`would set back her ${w.label}`);
+        }
+      }
+      return reasons;
+    };
+    const correctsOf = (c: Candidate): string[] =>
+      actedIndexed
+        .filter((w) => {
+          const bv = c.cols.get(w.code) ?? null;
+          return bv != null && improvesWeakness(w.code, w.cowValue, bv, LOWER_IS_BETTER.has(w.code));
+        })
+        .map((w) => w.label);
+
+    const setback: MatingFemale["setback"] = [];
+
     for (const c of breedPool) {
       const bullSet = bullSets.get(c.animalId)!;
       // Projected calf value per selected trait — the displayed figures.
       const preValues = selected.map((s, i) => parentAverage(c.cols.get(s.code) ?? null, damValues[i]));
-      // The SORT KEY. Single trait: that trait's projected calf value, exactly
-      // as before. Blend: the pool-standardised composite, which is the same
-      // number for this bull on every female in the run.
-      const score = multi ? compositeByBull.get(c.animalId) ?? null : null;
-      const pre = multi ? score?.composite ?? null : preValues[0];
-      const matchScore = score?.matchScore ?? null;
+      // THE SORT KEY. Merit z-score, blended with how well the bull corrects HER
+      // faults when she has any (blend = 1 leaves merit alone). For a female with
+      // no acted fault this is the merit composite, whose order on one trait is
+      // identical to the raw projected calf value.
+      const merit = meritByBull.get(c.animalId) ?? null;
+      const pre = scoredWeak.length
+        ? blendScores(merit?.composite ?? null, correctionZ(c), params.blend)
+        : merit?.composite ?? null;
+      const matchScore = pre == null ? null : matchScoreOf(pre);
 
       if (params.maxGen === 0) {
         // Audit mode: nothing is withheld, but the screen is still RUN so the
@@ -1154,6 +1443,7 @@ export async function getMatingProgramReport(
           matchScore,
           reason: "Audit mode — no relatedness screening was performed on this pair.",
           blindSide: null,
+          corrects: [],
         });
         continue;
       }
@@ -1162,10 +1452,20 @@ export async function getMatingProgramReport(
       if (v.tier === "excluded") {
         excluded.push({ bullId: c.animalId, name: c.name, shared: v.shared });
       } else if (v.tier === "clear") {
-        clear.push({
-          c, tier: "clear", confidence: v.confidence, bullSlots: v.bullSlots, pre, preValues, matchScore,
-          reason: "", blindSide: null,
-        });
+        // THE NEVER-WORSEN FLOOR. A bull who cleared the pedigree screen but would
+        // set back one of her acted faults (or, strict, is not positive for it) is
+        // moved out of the recommendations entirely, not demoted inside them —
+        // "at least doesn't make it worse". reg/naab are filled in at assemble if
+        // he happens to be on the shortlist for another female.
+        const reasons = indexedFloor(c);
+        if (reasons.length) {
+          setback.push({ bullId: c.animalId, name: c.name, reg: null, naab: null, reasons });
+        } else {
+          clear.push({
+            c, tier: "clear", confidence: v.confidence, bullSlots: v.bullSlots, pre, preValues, matchScore,
+            reason: "", blindSide: null, corrects: correctsOf(c),
+          });
+        }
       } else {
         // "unknown" and "no-pedigree" both mean UNVERIFIABLE. They are removed
         // from the ranked list, not demoted inside it. The tier is carried
@@ -1180,20 +1480,17 @@ export async function getMatingProgramReport(
           preValues,
           matchScore,
           ...whyUnverified(cowSet, bullSet, cowLabel),
+          corrects: [],
         });
       }
     }
 
-    const byPre = (a: Ranked, b: Ranked) => {
-      // A composite is always highest-first: each trait's direction was applied
-      // when it was standardised, so SCS inside a blend is already the right way
-      // up and a second reversal here would undo it.
-      if (multi) return compareByScore(a.pre, b.pre) || a.c.name.localeCompare(b.c.name);
-      if (a.pre == null && b.pre == null) return a.c.name.localeCompare(b.c.name);
-      if (a.pre == null) return 1;
-      if (b.pre == null) return -1;
-      return higherIsBetter ? b.pre - a.pre : a.pre - b.pre;
-    };
+    // Highest score first, name as the tie-break. `pre` is now always a score
+    // where larger is better (each trait's direction was applied when it was
+    // standardised), so the single direction-aware branch the single-trait sort
+    // once needed is gone — a one-trait run's merit z-score sorts identically to
+    // its raw projected calf value.
+    const byPre = (a: Ranked, b: Ranked) => compareByScore(a.pre, b.pre) || a.c.name.localeCompare(b.c.name);
     clear.sort(byPre);
     // Least-blind first inside the unverified panel, so "no pedigree at all"
     // (confidence 0) always sits at the bottom.
@@ -1222,10 +1519,14 @@ export async function getMatingProgramReport(
     const shownExcluded = opts.fullExclusions ? excluded : excluded.slice(0, EXCLUDED_DISPLAY_CAP);
 
     drafts.push({
-      female: { ...base, excluded: shownExcluded, excludedTotal: excluded.length, notes },
+      female: { ...base, excluded: shownExcluded, excludedTotal: excluded.length, notes, weaknesses, unassessedWeak },
       parent,
       clear: clear.slice(0, params.topN),
       unverified: shownUnknown,
+      setback,
+      deepWeak,
+      weaknesses,
+      unassessedWeak,
     });
   }
 
@@ -1302,6 +1603,39 @@ export async function getMatingProgramReport(
 
   // ---- assemble ------------------------------------------------------------
   const females: MatingFemale[] = drafts.map((d) => {
+    // The DEEP never-worsen floor: a recommended bull whose full trait record
+    // (loaded for the shortlist) shows he would set back one of her deep faults —
+    // Milking Speed, Bone Quality, an intermediate linear — is moved out of the
+    // recommendations, exactly as the indexed floor does pool-wide. A deep trait
+    // he has no value for cannot be called a setback and leaves him in place. A
+    // bull beyond the shortlist cap has no full record to judge and is kept.
+    const deepReasonsFor = (id: string): string[] => {
+      const bp = bullParents.get(id);
+      if (!bp) return [];
+      const reasons: string[] = [];
+      for (const w of d.deepWeak) {
+        const bv = bp.traits.get(w.code)?.value ?? null;
+        if (bv == null || !Number.isFinite(bv)) continue;
+        if (params.strictImprovers) {
+          const centre = correctionCentre(w.code, null);
+          if (centre != null && !isPositiveImprover(w.code, w.cowValue, bv, centre, w.lowerIsBetter)) reasons.push(`not positive for ${w.label}`);
+        } else if (worsensWeakness(w.code, w.cowValue, bv, w.lowerIsBetter)) {
+          reasons.push(`would set back her ${w.label}`);
+        }
+      }
+      return reasons;
+    };
+    const deepCorrectsFor = (id: string): string[] => {
+      const bp = bullParents.get(id);
+      if (!bp) return [];
+      return d.deepWeak
+        .filter((w) => {
+          const bv = bp.traits.get(w.code)?.value ?? null;
+          return bv != null && Number.isFinite(bv) && improvesWeakness(w.code, w.cowValue, bv, w.lowerIsBetter);
+        })
+        .map((w) => w.label);
+    };
+
     const toMatch = (r: Ranked): MatingMatch => {
       const ids = bullIds.get(r.c.animalId);
       const bullParent = bullParents.get(r.c.animalId);
@@ -1385,13 +1719,44 @@ export async function getMatingProgramReport(
         bullSlots: r.bullSlots,
         reason: r.reason,
         blindSide: r.blindSide,
+        // Indexed faults he improves (from the loop) plus the deep ones his full
+        // record shows he improves — the "fixes …" badge.
+        corrects: [...r.corrects, ...deepCorrectsFor(r.c.animalId)],
       };
     };
 
+    // Split the cleared bulls by the deep floor before they become matches.
+    const keptClear: Ranked[] = [];
+    const deepSetback: MatingFemale["setback"] = [];
+    for (const r of d.clear) {
+      const reasons = deepReasonsFor(r.c.animalId);
+      if (reasons.length) {
+        const ids = bullIds.get(r.c.animalId);
+        deepSetback.push({ bullId: r.c.animalId, name: r.c.name, reg: ids?.reg ?? null, naab: ids?.naab ?? null, reasons });
+      } else {
+        keptClear.push(r);
+      }
+    }
+    // Fill reg/naab on the indexed set-asides where the bull happens to be on the
+    // shortlist for some other female; otherwise they stay null (never loaded).
+    const indexedSetback = d.setback.map((s) => {
+      const ids = bullIds.get(s.bullId);
+      return ids ? { ...s, reg: ids.reg, naab: ids.naab } : s;
+    });
+    const setbackAll = [...indexedSetback, ...deepSetback];
+    const extraNotes = deepSetback.length
+      ? [
+          `${deepSetback.length} otherwise-recommended bull${deepSetback.length === 1 ? " was" : "s were"} set aside for a deep trait (Milking Speed / Bone Quality) — see “Set aside” below.`,
+        ]
+      : [];
+
     return {
       ...d.female,
-      matches: d.clear.map(toMatch),
+      notes: [...d.female.notes, ...extraNotes],
+      matches: keptClear.map(toMatch),
       unknown: d.unverified.map(toMatch),
+      setback: opts.fullExclusions ? setbackAll : setbackAll.slice(0, EXCLUDED_DISPLAY_CAP),
+      setbackTotal: setbackAll.length,
     };
   });
 
@@ -1405,9 +1770,16 @@ export async function getMatingProgramReport(
     );
   }
 
+  // The report is "scored" — a Match score column is shown and the order is the
+  // merit/correction blend — for any multi-trait blend, and for any run where at
+  // least one female had a fault worth acting on. A single-trait run against a
+  // herd of strong cows stays the classic raw-value report.
+  const scored = multi || females.some((f) => f.weaknesses.some((w) => w.acted));
+
   return {
     females,
     params,
+    scored,
     effectiveFloor,
     bullsConsidered: candidates.length,
     inactiveSuppressed,

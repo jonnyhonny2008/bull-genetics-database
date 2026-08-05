@@ -5,15 +5,15 @@ import { Card, Table, Badge, EmptyState } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 // Type-only import: erased at compile time, so the server-only orchestrator
 // never enters this client bundle.
-import type { MatingReport, MatingFemale, MatingMatch } from "@/lib/mating-program";
+import type { MatingReport, MatingFemale, MatingMatch, FemaleWeakness } from "@/lib/mating-program";
 // mating-score is PURE (no server-only), so the constants that define the scale
 // can be read here instead of being retyped into the copy and drifting.
 import { MATCH_SCORE_DIGITS, SCORE_BASE } from "@/lib/mating-score";
 
 /** One sentence, in the same words everywhere the Match score appears. Plain
  *  language on purpose — the score is relative to the bulls in this run, and
- *  higher is a better blend; the statistics behind it are not shown to staff. */
-const SCORE_EXPLAINER = `${SCORE_BASE} = the average of the bulls in this run, higher is a better blend`;
+ *  higher is a better fit; the statistics behind it are not shown to staff. */
+const SCORE_EXPLAINER = `${SCORE_BASE} = the average of the bulls in this run, higher is a better fit for her`;
 
 /**
  * The Match score, at the one precision it is shown at anywhere.
@@ -48,13 +48,13 @@ function CompleteChip({ value, floor }: { value: number; floor: number }) {
  * when the dam carries no value for the chosen trait — the report never invents
  * a projection it cannot compute.
  */
-function bestIndexOf(f: MatingFemale, multi: boolean): number | null {
+function bestIndexOf(f: MatingFemale, scored: boolean): number | null {
   const top = f.matches[0];
   if (!top) return null;
-  // A blended run is ranked on the Match score, so the headline figure is the
+  // A scored run is ranked on the Match score, so the headline figure is the
   // Match score. Showing the primary trait's PA there would name the top bull of
   // one ranking and the number of another.
-  if (multi) return top.matchScore;
+  if (scored) return top.matchScore;
   return top.paIndex ?? top.ownIndex;
 }
 
@@ -81,9 +81,12 @@ export function MatingProgramResults({
 }) {
   const [view, setView] = useState<"herd" | "female">("herd");
   const { females } = report;
-  // One trait: every table below is byte-for-byte the report it has always been.
-  // Several: a Match score column plus one column per trait.
+  // A real multi-trait blend drives the blend-specific copy; `scored` (a blend
+  // of traits OR corrective mating being active) drives whether a Match score
+  // column is shown at all. A single-trait run against strong cows stays the
+  // classic raw-value report.
   const multi = report.params.selected.length > 1;
+  const scored = report.scored;
 
   if (females.length === 0) {
     return (
@@ -112,12 +115,12 @@ export function MatingProgramResults({
         </button>
         <span className="text-xs text-slate-500">
           {fmtNum(females.length)} female{females.length === 1 ? "" : "s"} · ranked on {indexLabel}
-          {multi && <> · Match score {SCORE_EXPLAINER}</>}
+          {scored && <> · Match score {SCORE_EXPLAINER}</>}
         </span>
       </div>
 
       {view === "herd" ? (
-        <HerdSummary report={report} indexLabel={indexLabel} multi={multi} />
+        <HerdSummary report={report} indexLabel={indexLabel} scored={scored} multi={multi} />
       ) : (
         <div className="space-y-3">
           {females.map((f, i) => (
@@ -125,7 +128,9 @@ export function MatingProgramResults({
               key={`${f.input}-${i}`}
               female={f}
               indexLabel={indexLabel}
+              scored={scored}
               multi={multi}
+              strict={report.params.strictImprovers}
               // The bar actually applied. At depth 2 completeness is normalised
               // over two generations, so the floor is scaled to match; showing
               // params.floor here would colour chips against a bar nobody used.
@@ -139,15 +144,91 @@ export function MatingProgramResults({
   );
 }
 
+// --- her weaknesses ---------------------------------------------------------
+
+/** The faults the run is mating to correct, and the goal for each. The acted
+ *  ones drive the never-worsen floor and the ranking; the rest are shown so the
+ *  breeder can see what was noted but not acted on. */
+function WeaknessPanel({ female: f, strict }: { female: MatingFemale; strict: boolean }) {
+  const acted = f.weaknesses.filter((w) => w.acted);
+  const noted = f.weaknesses.filter((w) => !w.acted);
+  if (acted.length === 0 && noted.length === 0 && f.setbackTotal === 0) return null;
+
+  const chip = (w: FemaleWeakness) => (
+    <span
+      key={w.code}
+      className="inline-flex items-center gap-1 rounded border border-navy-200 bg-white px-1.5 py-0.5 text-[11px] text-navy-900"
+      title={`She is ${fmtNum(w.cowValue)} — ${w.goal}${w.deep ? " (checked on the recommended bulls only)" : ""}`}
+    >
+      <span className="font-semibold">{w.label}</span>
+      <span className="text-slate-500">{fmtNum(w.cowValue)}</span>
+      {w.deep && <span className="text-slate-400" title="No indexed column — checked on the recommended bulls only">◇</span>}
+    </span>
+  );
+
+  return (
+    <div className="mb-3 rounded border border-navy-200 bg-navy-50 px-3 py-2 text-xs text-navy-900">
+      {acted.length > 0 ? (
+        <>
+          <p className="mb-1.5">
+            <strong>Mating to correct her weaknesses.</strong> Every recommended bull{" "}
+            {strict ? (
+              <>is <strong>positive</strong> for</>
+            ) : (
+              <>at least does not set back</>
+            )}{" "}
+            {acted.length === 1 ? "this trait" : "these traits"}; bulls that would are moved to{" "}
+            <em>Set aside</em>. Bulls that fix the most rank first.
+          </p>
+          <div className="flex flex-wrap gap-1.5">{acted.map(chip)}</div>
+        </>
+      ) : (
+        <p className="mb-0">
+          <strong>No major weakness detected</strong> on the traits we track — ranked on merit, with the never-worsen
+          floor still on.
+        </p>
+      )}
+      {noted.length > 0 && (
+        <div className="mt-2">
+          <span className="text-slate-500">Also below average, not acted on: </span>
+          <span className="flex flex-wrap gap-1.5 pt-1">{noted.map(chip)}</span>
+        </div>
+      )}
+      {f.unassessedWeak.length > 0 && (
+        <p className="mt-2 text-slate-500">
+          Could not read {f.unassessedWeak.map((u) => u.label).join(", ")} for her — no value on file, so{" "}
+          {f.unassessedWeak.length === 1 ? "it was" : "they were"} not screened.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Small green pills naming the flagged faults this bull improves. */
+function CorrectsBadges({ corrects }: { corrects: string[] }) {
+  if (!corrects.length) return null;
+  return (
+    <span className="ml-1 inline-flex flex-wrap gap-1 align-middle">
+      {corrects.map((c) => (
+        <span key={c} className="rounded bg-green-50 px-1 py-0.5 text-[10px] font-medium text-green-700" title={`Improves her ${c}`}>
+          ↑{c}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // --- view 1: herd summary ---------------------------------------------------
 
 function HerdSummary({
   report,
   indexLabel,
+  scored,
   multi,
 }: {
   report: MatingReport;
   indexLabel: string;
+  scored: boolean;
   multi: boolean;
 }) {
   return (
@@ -155,8 +236,7 @@ function HerdSummary({
       {multi && (
         <p className="mb-2 text-xs text-slate-500">
           Ranked on <strong>{indexLabel}</strong>. The figure beside each bull is his <strong>Match score</strong> —{" "}
-          {SCORE_EXPLAINER} — on the blend above, not a projected calf value. Open a female for the projected calf
-          figure of each trait.
+          {SCORE_EXPLAINER} — not a projected calf value. Open a female for the projected calf figure of each trait.
         </p>
       )}
       <Table
@@ -165,8 +245,9 @@ function HerdSummary({
             <th className="th">Female</th>
             <th className="th">Reg</th>
             <th className="th">Pedigree</th>
-            <th className="th">{multi ? "Top 3 bulls — match score" : `Top 3 bulls — projected calf ${indexLabel}`}</th>
+            <th className="th">{scored ? "Top 3 bulls — match score" : `Top 3 bulls — projected calf ${indexLabel}`}</th>
             <th className="th text-right">Eligible</th>
+            <th className="th text-right">Set aside</th>
             <th className="th text-right">Excluded</th>
             <th className="th text-right">Unverifiable</th>
           </>
@@ -197,17 +278,21 @@ function HerdSummary({
                     <li key={m.bullId}>
                       <span className="text-slate-400">{r + 1}.</span> {m.name}{" "}
                       <span className="font-semibold text-brand-700">
-                        {multi
+                        {scored
                           ? fmtScore(m.matchScore)
                           : fmtNum(damLacksIndex(f) ? m.ownIndex : m.paIndex)}
                       </span>
-                      {!multi && damLacksIndex(f) && <span className="text-slate-400"> (bull&rsquo;s own)</span>}
+                      {!scored && damLacksIndex(f) && <span className="text-slate-400"> (bull&rsquo;s own)</span>}
+                      <CorrectsBadges corrects={m.corrects} />
                     </li>
                   ))}
                 </ol>
               )}
             </td>
             <td className="td text-right">{f.error ? "—" : fmtNum(f.matches.length)}</td>
+            <td className="td text-right" title="Cleared the pedigree screen but would set back a weakness">
+              {f.error ? "—" : fmtNum(f.setbackTotal)}
+            </td>
             <td className="td text-right">{f.error ? "—" : fmtNum(f.excludedTotal)}</td>
             <td className="td text-right">{f.error ? "—" : fmtNum(f.unknown.length)}</td>
           </tr>
@@ -222,18 +307,22 @@ function HerdSummary({
 function FemaleCard({
   female: f,
   indexLabel,
+  scored,
   multi,
+  strict,
   floor,
   defaultOpen,
 }: {
   female: MatingFemale;
   indexLabel: string;
+  scored: boolean;
   multi: boolean;
+  strict: boolean;
   floor: number;
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const best = bestIndexOf(f, multi);
+  const best = bestIndexOf(f, scored);
   const fallback = damLacksIndex(f);
   // Which traits of the blend she has no value for. Per trait, because a dam
   // routinely carries an LPI and no Conformation.
@@ -252,6 +341,9 @@ function FemaleCard({
           {f.source === "lactanet" && <Badge tone="blue">Lactanet — not saved</Badge>}
           {f.source === "internal" && <Badge tone="slate">In database</Badge>}
           {!f.error && <CompleteChip value={f.cowComplete} floor={floor} />}
+          {!f.error && f.weaknesses.some((w) => w.acted) && (
+            <Badge tone="amber">{f.weaknesses.filter((w) => w.acted).length} weakness{f.weaknesses.filter((w) => w.acted).length === 1 ? "" : "es"}</Badge>
+          )}
           {f.error && <Badge tone="red">No recommendations</Badge>}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
@@ -259,8 +351,8 @@ function FemaleCard({
           {f.reliability !== null && f.reliability !== undefined && <span>Rel {pct(f.reliability)}</span>}
           {best !== null && (
             <span className="text-sm font-semibold text-brand-700">
-              {multi ? "Best match score" : fallback ? `Best bull ${indexLabel}` : `Best calf ${indexLabel}`}{" "}
-              {multi ? fmtScore(best) : fmtNum(best)}
+              {scored ? "Best match score" : fallback ? `Best bull ${indexLabel}` : `Best calf ${indexLabel}`}{" "}
+              {scored ? fmtScore(best) : fmtNum(best)}
             </span>
           )}
           <span className="text-slate-400">{open ? "▲" : "▼"}</span>
@@ -275,6 +367,8 @@ function FemaleCard({
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{f.error}</div>
           ) : (
             <>
+              <WeaknessPanel female={f} strict={strict} />
+
               {f.notes.length > 0 && (
                 <ul className="mb-3 list-disc space-y-0.5 pl-5 text-xs text-slate-500">
                   {f.notes.map((n, i) => (
@@ -302,15 +396,15 @@ function FemaleCard({
               ) : (
                 fallback && (
                   <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-                    She has no {indexLabel} on record, so no parent average can be computed for her. The ranking below
-                    falls back to each bull&rsquo;s own {indexLabel} — it is <strong>not</strong> a projected calf
+                    She has no {indexLabel} on record, so no parent average can be computed for her. The trait column
+                    below falls back to each bull&rsquo;s own {indexLabel} — it is <strong>not</strong> a projected calf
                     value.
                   </p>
                 )
               )}
 
               {f.matches.length === 0 ? (
-                <EmptyState message="No bull cleared the relatedness screen for this female at the current settings." />
+                <EmptyState message="No bull cleared the screen for this female at the current settings — check the Set aside, Excluded and unverifiable lists below." />
               ) : (
                 <Table
                   head={
@@ -318,7 +412,7 @@ function FemaleCard({
                       <th className="th w-12">Rank</th>
                       <th className="th">Bull</th>
                       <th className="th">NAAB</th>
-                      {multi ? (
+                      {scored ? (
                         <>
                           <th className="th text-right" title={`Match score — ${SCORE_EXPLAINER}`}>
                             Match score
@@ -350,14 +444,61 @@ function FemaleCard({
                   }
                 >
                   {f.matches.map((m, i) => (
-                    <MatchRow key={m.bullId} match={m} rank={i + 1} fallback={fallback} multi={multi} />
+                    <MatchRow key={m.bullId} match={m} rank={i + 1} fallback={fallback} scored={scored} />
                   ))}
                 </Table>
               )}
 
-              {/* The two disclosures. The excluded list is the audit trail that
-                  makes a recommendation defensible — always present, never gated. */}
+              {/* The disclosures. Each is the audit trail that makes a
+                  recommendation defensible — always present, never gated. */}
               <div className="mt-4 space-y-2">
+                <details className="rounded border border-amber-200 bg-amber-50">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-900">
+                    Set aside — {fmtNum(f.setbackTotal)} bull{f.setbackTotal === 1 ? "" : "s"} would set back a weakness
+                  </summary>
+                  <div className="border-t border-amber-200 bg-white px-3 py-2">
+                    {f.setbackTotal === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        No cleared bull would set back any of her flagged weaknesses.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="mb-2 text-xs text-slate-500">
+                          These bulls cleared the relatedness screen but were kept out of the recommendations because
+                          they would {strict ? "not be positive for" : "set back"} one of her weaknesses. They are never
+                          recommended.
+                        </p>
+                        <Table
+                          head={
+                            <>
+                              <th className="th">Bull</th>
+                              <th className="th">NAAB</th>
+                              <th className="th">Why it was set aside</th>
+                            </>
+                          }
+                        >
+                          {f.setback.map((s) => (
+                            <tr key={s.bullId}>
+                              <td className="td">
+                                {s.name}
+                                {s.reg && <div className="font-mono text-[11px] text-slate-400">{s.reg}</div>}
+                              </td>
+                              <td className="td font-mono text-xs text-slate-600">{s.naab ?? "—"}</td>
+                              <td className="td text-xs text-slate-600">{s.reasons.join("; ")}</td>
+                            </tr>
+                          ))}
+                        </Table>
+                        {f.setbackTotal > f.setback.length && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Showing {fmtNum(f.setback.length)} of {fmtNum(f.setbackTotal)}. Every set-aside bull is on
+                            the Excel export.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </details>
+
                 <details className="rounded border border-slate-200 bg-slate-50">
                   <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700">
                     Excluded — {fmtNum(f.excludedTotal)} bull{f.excludedTotal === 1 ? "" : "s"} share a registered
@@ -465,17 +606,17 @@ function MatchRow({
   match: m,
   rank,
   fallback,
-  multi,
+  scored,
 }: {
   match: MatingMatch;
   rank: number;
   fallback: boolean;
-  multi: boolean;
+  scored: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // Rank + Bull + NAAB, then either (own, projected) or (match score, one per
   // trait), then Tier + Checked.
-  const columns = 3 + (multi ? 1 + m.traits.length : 2) + 2;
+  const columns = 3 + (scored ? 1 + m.traits.length : 2) + 2;
   return (
     <>
       <tr>
@@ -484,10 +625,11 @@ function MatchRow({
           <button type="button" onClick={() => setOpen((v) => !v)} className="text-left font-medium text-navy-800 hover:underline">
             {m.name}
           </button>
+          <CorrectsBadges corrects={m.corrects} />
           {m.reg && <div className="font-mono text-[11px] text-slate-400">{m.reg}</div>}
         </td>
         <td className="td font-mono text-xs text-slate-600">{m.naab ?? "—"}</td>
-        {multi ? (
+        {scored ? (
           <>
             <td className="td text-right font-semibold text-brand-700">{fmtScore(m.matchScore)}</td>
             {m.traits.map((t) => (

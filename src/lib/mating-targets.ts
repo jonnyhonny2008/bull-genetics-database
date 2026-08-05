@@ -154,3 +154,163 @@ export function correctionNote(
 
 const fmt = (n: number) => (n > 0 ? `+${round1(n)}` : `${round1(n)}`);
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+// ---------------------------------------------------------------------------
+// CORRECTION ELIGIBILITY — which traits a mating actually tries to FIX, and the
+// reference that separates "weak" from "fine" and "positive" from "negative".
+//
+// This is the table the never-worsen floor and the weakness scan read. It is
+// breeding policy, like INTERMEDIATE_TARGETS above, and every base is a
+// deliberate choice justified in its comment — never inferred from the trait
+// table, because TraitDefinition carries no base and higherIsBetter is wrong for
+// the intermediate traits (see the note at the top of this file).
+//
+// WHY A PER-TRAIT BASE, NOT ONE NUMBER
+// The evaluations in this database do not share a scale. Measured over the
+// preferred proofs: the functional RBVs (DF, MSPD, MR, HL …) sit at 100, SCS at
+// about 3.0, and the linear type traits and the fat/protein percentages near 0.
+// "Positive" therefore means a different number on each — a bull "positive for
+// Daughter Fertility" is one above 100, "positive for Bone Quality" one above 0.
+// Reading a single origin for all of them is the exact bug WeaknessInput.mean was
+// added to kill (see mating-score.ts): with base 0, no cow could ever be weak on
+// a 100-based trait. The composite indexes Conformation and Mammary have no clean
+// published base here (they read ~12-15, not 0), so they carry base "pool" and
+// take the candidate-pool mean as their centre instead.
+//
+// LPI and Pro$ are ABSENT on purpose. They are aggregate money indexes you
+// MAXIMISE, not faults you fix; they drive the merit half of the ranking, never
+// the correction floor. A bull is never set aside for "worsening her LPI".
+// ---------------------------------------------------------------------------
+
+export interface CorrectionTrait {
+  code: string;
+  label: string;
+  /** The reference point. A number is a published/breed base; "pool" means take
+   *  the candidate-pool mean, for the composites that have no fixed base here. */
+  base: number | "pool";
+  lowerIsBetter: boolean;
+  /** true = lives only inside traitsJson (no indexed GeneticEvaluation column),
+   *  so the floor on it runs on the recommended shortlist, not pool-wide. */
+  deep: boolean;
+  /** true = intermediate optimum; the goal is the INTERMEDIATE_TARGETS value,
+   *  and BOTH extremes are faults. `base` is that target. */
+  intermediate?: boolean;
+}
+
+export const CORRECTION_TRAITS: CorrectionTrait[] = [
+  // --- indexed (a GeneticEvaluation column exists → floored across the pool) ---
+  // Production is a deviation in kg around the breed base of 0; more is the
+  // improvement a cow low on components needs.
+  { code: "MILK", label: "Milk", base: 0, lowerIsBetter: false, deep: false },
+  { code: "FAT", label: "Fat", base: 0, lowerIsBetter: false, deep: false },
+  { code: "PROT", label: "Protein", base: 0, lowerIsBetter: false, deep: false },
+  // The fat/protein percentages sit near 0; a negative one genuinely dilutes.
+  { code: "FATPCT", label: "Fat %", base: 0, lowerIsBetter: false, deep: false },
+  { code: "PROTPCT", label: "Protein %", base: 0, lowerIsBetter: false, deep: false },
+  // Functional RBV, base 100. This is one of the three the meeting cow needs.
+  { code: "DF", label: "Daughter Fertility", base: 100, lowerIsBetter: false, deep: false },
+  // Somatic Cell — LOWER is healthier. Its scale is not fixed here: some rounds
+  // publish the ~3.0 score, others a ~100 index, so the base is the POOL MEAN
+  // rather than a hard-coded number that is right for one and nonsense for the
+  // other. The never-worsen floor is base-independent, so it is correct either
+  // way; only "is she weak" and the goal text read this.
+  { code: "SCS", label: "SCS", base: "pool", lowerIsBetter: true, deep: false },
+  // Conformation and Mammary are composites with no clean fixed base here
+  // (they read ~12-15), so their centre is the pool mean. Still floored, because
+  // Blondin breeds for type and a bull who lowers her class is a real setback.
+  { code: "CONF", label: "Conformation", base: "pool", lowerIsBetter: false, deep: false },
+  { code: "MAMM", label: "Mammary", base: "pool", lowerIsBetter: false, deep: false },
+
+  // --- deep (traitsJson only → floored on the recommended shortlist) ----------
+  // Milking Speed: functional RBV, base 100. The second of the meeting cow's
+  // three needs, and the KEY trait with no indexed column.
+  { code: "MSPD", label: "Milking Speed", base: 100, lowerIsBetter: false, deep: true },
+  // Bone Quality: linear type, deviation base 0, higher = flatter/cleaner bone.
+  // The third of the meeting cow's needs.
+  { code: "BQ", label: "Bone Quality", base: 0, lowerIsBetter: false, deep: true },
+];
+
+// The intermediate linear traits are correction-eligible too — their base IS the
+// INTERMEDIATE_TARGETS value, and they are all deep (no indexed column). Built
+// from the same table so the two cannot fall out of step.
+const INTERMEDIATE_LABELS: Record<string, string> = {
+  STA: "Stature", BODY: "Body Depth", RA: "Rump Angle", RLSV: "Rear Legs Side View",
+  FTP: "Front Teat Placement", RTP: "Rear Teat Placement", TL: "Teat Length",
+};
+for (const code of Object.keys(INTERMEDIATE_TARGETS)) {
+  CORRECTION_TRAITS.push({
+    code,
+    label: INTERMEDIATE_LABELS[code] ?? code,
+    base: INTERMEDIATE_TARGETS[code],
+    lowerIsBetter: false,
+    deep: true,
+    intermediate: true,
+  });
+}
+
+const CORRECTION_BY_CODE = new Map(CORRECTION_TRAITS.map((t) => [t.code, t]));
+
+/** The correction policy for a trait, or null if it is not one we fix. */
+export function correctionTrait(code: string): CorrectionTrait | null {
+  return CORRECTION_BY_CODE.get(code.toUpperCase()) ?? null;
+}
+
+/**
+ * The reference point for judging weak-vs-fine and positive-vs-negative on this
+ * trait. For a "pool"-based composite the caller passes the pool mean; it is used
+ * only then, so an unknown pool mean (null) leaves the trait uncorrectable rather
+ * than silently centred on 0.
+ */
+export function correctionCentre(code: string, poolMean: number | null): number | null {
+  const t = correctionTrait(code);
+  if (!t) return null;
+  if (t.intermediate) return t.base as number; // the target itself
+  return t.base === "pool" ? poolMean : (t.base as number);
+}
+
+const EPS = 1e-9;
+
+/**
+ * True when this bull would push the projected daughter AWAY from where the cow
+ * already sits on the trait — i.e. make an existing weakness worse. This is the
+ * never-worsen floor, and it is deliberately base-INDEPENDENT: it compares the
+ * daughter's fit with the cow's own, so it is well defined for every trait
+ * (intermediate, directional or lower-is-better) whether or not we know its base.
+ *
+ *   directional higher : worse ⟺ bull below the cow      (daughter drops)
+ *   lower-is-better     : worse ⟺ bull above the cow      (daughter rises)
+ *   intermediate        : worse ⟺ daughter further from target than the cow
+ */
+export function worsensWeakness(code: string, cowValue: number, bullValue: number, lowerIsBetter = false): boolean {
+  const held = matingFit(code, cowValue, cowValue, lowerIsBetter); // her own line, unchanged
+  const daughter = matingFit(code, cowValue, bullValue, lowerIsBetter);
+  return daughter < held - EPS;
+}
+
+/** True when the projected daughter is strictly BETTER on the trait than the cow
+ *  — the bull moves her fault in the right direction, however far. */
+export function improvesWeakness(code: string, cowValue: number, bullValue: number, lowerIsBetter = false): boolean {
+  const held = matingFit(code, cowValue, cowValue, lowerIsBetter);
+  const daughter = matingFit(code, cowValue, bullValue, lowerIsBetter);
+  return daughter > held + EPS;
+}
+
+/**
+ * True when the bull is himself POSITIVE for the trait — on the good side of its
+ * base. This is the strict "only bulls that are positive" test.
+ *
+ * For an intermediate trait "positive" has no meaning (both extremes are faults),
+ * so the strict test there is simply that he IMPROVES her — lands the daughter
+ * closer to target than she is now.
+ */
+export function isPositiveImprover(
+  code: string,
+  cowValue: number,
+  bullValue: number,
+  centre: number,
+  lowerIsBetter = false,
+): boolean {
+  const t = correctionTrait(code);
+  if (t?.intermediate) return improvesWeakness(code, cowValue, bullValue, lowerIsBetter);
+  return lowerIsBetter ? bullValue < centre - EPS : bullValue > centre + EPS;
+}

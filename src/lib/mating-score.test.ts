@@ -12,10 +12,18 @@ import { join } from "node:path";
 import {
   BALANCE_STEP,
   DEFAULT_BALANCE,
+  DEFAULT_BLEND,
+  DEFAULT_WEAK_N,
   MAX_BALANCE,
+  MAX_BLEND,
+  MAX_WEAK_N,
   MIN_BALANCE,
+  MIN_BLEND,
+  MIN_WEAK_N,
   MATCH_SCORE_DIGITS,
   clampBalance,
+  clampBlend,
+  clampWeakN,
   MAX_SELECTED_TRAITS,
   MAX_WEIGHT,
   MIN_WEIGHT,
@@ -23,6 +31,7 @@ import {
   SCORE_SD_POINTS,
   WEIGHT_STEP,
   blendLabel,
+  blendScores,
   compareByScore,
   compositeScore,
   describeSelection,
@@ -31,7 +40,10 @@ import {
   parseTraitSelection,
   poolTraitStats,
   rankIsComposite,
+  rankWeaknesses,
+  selectActedWeaknesses,
   type SelectedTrait,
+  type WeaknessInput,
 } from "./mating-score";
 import { fmtNum } from "./format";
 
@@ -489,4 +501,54 @@ test("clampBalance keeps a hand-edited URL inside the dial", () => {
   assert.equal(clampBalance(null), DEFAULT_BALANCE);
   assert.equal(clampBalance(undefined), DEFAULT_BALANCE);
   assert.equal(clampBalance(Number.NaN), DEFAULT_BALANCE);
+});
+
+// --- corrective mating: the dials and KEY-first fault selection --------------
+
+test("clampBlend and clampWeakN keep a hand-edited URL inside range", () => {
+  assert.equal(clampBlend(-1), MIN_BLEND);
+  assert.equal(clampBlend(5), MAX_BLEND);
+  assert.equal(clampBlend(0.5), 0.5);
+  assert.equal(clampBlend(null), DEFAULT_BLEND);
+  assert.equal(clampBlend(Number.NaN), DEFAULT_BLEND);
+  assert.equal(clampWeakN(0), MIN_WEAK_N);
+  assert.equal(clampWeakN(999), MAX_WEAK_N);
+  assert.equal(clampWeakN(3.7), 4, "rounded to a whole number of faults");
+  assert.equal(clampWeakN(undefined), DEFAULT_WEAK_N);
+});
+
+test("blendScores collapses to merit at 1 and correction at 0, and refuses a half-known blend", () => {
+  assert.equal(blendScores(2, -1, 1), 2, "blend 1 is merit alone");
+  assert.equal(blendScores(2, -1, 0), -1, "blend 0 is correction alone");
+  assert.equal(blendScores(2, -1, 0.5), 0.5, "the midpoint of the two");
+  // A bull whose correction could not be computed is NOT quietly ranked on merit
+  // at half the score missing — that would flatter him for the unread trait.
+  assert.equal(blendScores(2, null, 0.5), null);
+  assert.equal(blendScores(null, -1, 0.5), null);
+});
+
+test("selectActedWeaknesses gives the tracked KEY traits first claim on the slots", () => {
+  // A big deficit on a trait nobody tracks must not crowd out a KEY-trait fault.
+  const inputs: WeaknessInput[] = [
+    { code: "RA", label: "Rump Angle", cowValue: 9, mean: null, sd: 3 }, // deficit 7, NOT a key trait
+    { code: "DF", label: "Daughter Fertility", cowValue: 94, mean: 100, sd: 6 }, // key trait, smaller SD deficit
+  ];
+  const { ranked } = rankWeaknesses(inputs, 5);
+  // By raw severity RA outranks DF; but with only one slot, DF (a KEY trait) wins.
+  const acted = selectActedWeaknesses(ranked, 1);
+  assert.deepEqual(acted.map((w) => w.code), ["DF"], "a KEY-trait fault is never dropped for a bigger off-list one");
+  assert.equal(acted[0].weight, 1, "the single acted fault carries all the weight");
+});
+
+test("selectActedWeaknesses re-normalises weights over exactly the chosen faults", () => {
+  const inputs: WeaknessInput[] = [
+    { code: "DF", label: "Daughter Fertility", cowValue: 90, mean: 100, sd: 5 },
+    { code: "PROT", label: "Protein", cowValue: -20, mean: 0, sd: 20 },
+    { code: "CONF", label: "Conformation", cowValue: 6, mean: 11, sd: 5 },
+  ];
+  const { ranked } = rankWeaknesses(inputs, 5);
+  const acted = selectActedWeaknesses(ranked, 2);
+  assert.equal(acted.length, 2);
+  const total = acted.reduce((s, w) => s + w.weight, 0);
+  assert.ok(Math.abs(total - 1) < 1e-9, "weights over the acted set must sum to 1");
 });

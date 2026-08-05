@@ -4,7 +4,10 @@ import { can } from "@/lib/constants";
 import { PageHeader, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { getMatingProgramReport, MATING_INDEXES } from "@/lib/mating-program";
-import { BALANCE_STEP, blendLabel, MAX_BALANCE, MAX_SELECTED_TRAITS, MAX_WEIGHT, MIN_BALANCE, MIN_WEIGHT, WEIGHT_STEP } from "@/lib/mating-score";
+import {
+  BALANCE_STEP, BLEND_STEP, blendLabel, MAX_BALANCE, MAX_BLEND, MAX_SELECTED_TRAITS, MAX_WEAK_N, MAX_WEIGHT,
+  MIN_BALANCE, MIN_BLEND, MIN_WEAK_N, MIN_WEIGHT, WEIGHT_STEP,
+} from "@/lib/mating-score";
 import { MatingProgramResults } from "@/components/MatingProgramResults";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +68,9 @@ export default async function MatingProgramReportPage({
   const exportParams = new URLSearchParams();
   for (const k of [
     "females", "index", "pool", "topN", "maxGen", "floor", "inactive", "naabOnly", "crossBreed", "balance",
+    // The corrective-mating dials travel too, or the export is a different
+    // recommendation from the one on screen.
+    "blend", "strict", "weakN",
     // Every trait slot travels too, or the export would silently be a different
     // ranking from the one on screen.
     ...TRAIT_SLOTS.flatMap((s) => [s.code, s.weight]),
@@ -271,6 +277,62 @@ export default async function MatingProgramReportPage({
               </p>
             </div>
           )}
+        </fieldset>
+
+        {/* Correct her weaknesses. Always on: every recommended bull at least
+            does not set back a flagged weakness. These dials only tune how hard
+            the run leans on fixing them and how strict the floor is. */}
+        <fieldset className="mb-3 rounded-md border border-slate-200 px-3 pb-3 pt-1">
+          <legend className="label px-1">Correct her weaknesses</legend>
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+            <div className="min-w-[240px] flex-1">
+              <label className="label" htmlFor="blend">
+                Balance — {Math.round(params.blend * 100)}% raise the index / {Math.round((1 - params.blend) * 100)}% fix her faults
+              </label>
+              <input
+                id="blend"
+                name="blend"
+                type="range"
+                min={MIN_BLEND}
+                max={MAX_BLEND}
+                step={BLEND_STEP}
+                defaultValue={params.blend}
+                className="w-full"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>0 — fix her faults</span>
+                <span>100 — raise the index</span>
+              </div>
+            </div>
+            <div>
+              <label className="label" htmlFor="weakN" title="How many of her worst faults the run acts on. The traits the reports already track get first claim.">
+                Faults to act on
+              </label>
+              <input
+                id="weakN"
+                name="weakN"
+                type="number"
+                min={MIN_WEAK_N}
+                max={MAX_WEAK_N}
+                defaultValue={params.weakN}
+                className="input w-24"
+              />
+            </div>
+            <label
+              className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"
+              title="Off: a bull is only set aside if he would make a weakness worse. On: a bull must be POSITIVE for every flagged weakness — this can leave a cow with few or no bulls, and the report says so when it does."
+            >
+              <input type="checkbox" name="strict" value="1" defaultChecked={params.strictImprovers} />
+              Only bulls positive on every flagged weakness
+            </label>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            Her weaknesses are read from her own record against each trait&rsquo;s breed base. A bull that would set back
+            any flagged weakness is never recommended — he is moved to <strong>Set aside</strong>. Among the rest, the
+            bulls that fix the most rank first. Daughter Fertility and the production traits are checked across the whole
+            pool; <strong>Milking Speed and Bone Quality</strong> are checked on the recommended bulls only (they have no
+            fast column).
+          </p>
         </fieldset>
 
         <div className="flex flex-wrap items-end gap-3">

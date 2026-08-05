@@ -3,16 +3,19 @@
 // report TYPES never pulls exceljs into the browser bundle — the same split
 // proof-change-xlsx.ts uses.
 //
-// Five sheets, in the order a user works through them:
+// Seven sheets, in the order a user works through them:
 //   1 Recommendations — the cleared bulls, best first. The only actionable list.
-//   2 Excluded        — the audit trail. Which bull, which shared ancestor, and
+//   2 Weaknesses      — what each cow is being mated to correct, and the goal.
+//   3 Set aside       — bulls that cleared the pedigree screen but would worsen a
+//                       flagged weakness, with the reason. Never recommended.
+//   4 Excluded        — the audit trail. Which bull, which shared ancestor, and
 //                       where that ancestor sits on EACH side. This sheet is the
 //                       reason the report can be trusted; it is never collapsed
 //                       into a count.
-//   3 Unverified      — pairs we could not certify, with the dark branch named.
-//   4 Bull coverage   — bull × how many females he is cleared for + mean PA.
+//   5 Unverified      — pairs we could not certify, with the dark branch named.
+//   6 Bull coverage   — bull × how many females he is cleared for + mean PA.
 //                       The semen-order sheet.
-//   5 Run parameters  — every parameter, every warning, and the ceiling
+//   7 Run parameters  — every parameter, every warning, and the ceiling
 //                       disclaimer, so a printed copy can be reproduced.
 
 import ExcelJS from "exceljs";
@@ -97,9 +100,12 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   // Several: a Match score column and one projected-calf column per trait.
   const selected = r.params.selected;
   const multi = selected.length > 1;
+  // A Match score column appears for any multi-trait blend AND for a single-trait
+  // run where corrective mating reordered the list — matching the screen.
+  const scored = r.scored;
   const blend = blendLabel(selected);
   const rankedOn = multi ? blend : indexLabel;
-  const scaleNote = `${SCORE_BASE} = the average of the bulls in this run, higher is a better blend`;
+  const scaleNote = `${SCORE_BASE} = the average of the bulls in this run, higher is a better fit for her`;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bull Stud Genetics";
@@ -121,8 +127,10 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   // on, then the projected calf value of each trait in it.
   const rankCols = multi
     ? ["Match score", ...selected.map((s) => `Projected calf ${s.label}${s.weight === 1 ? "" : ` (weight ${s.weight})`}`)]
-    : [`Bull ${indexLabel}`, `Projected calf ${indexLabel}`];
-  /** 1-based column of "Ranking basis" — 10 in a single-trait run, as before. */
+    : scored
+      ? ["Match score", `Bull ${indexLabel}`, `Projected calf ${indexLabel}`]
+      : [`Bull ${indexLabel}`, `Projected calf ${indexLabel}`];
+  /** 1-based column of "Ranking basis" — adapts to the rank columns above. */
   const BASIS_COL = 7 + rankCols.length + 1;
   headerRow(s1, [
     "Female",
@@ -137,6 +145,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     "Confidence",
     "Bull ancestors known",
     ...paCols,
+    "Fixes (her faults he improves)",
   ]);
 
   if (audit) {
@@ -176,9 +185,11 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         (gaps.length
           ? `; she has no ${gaps.map((g) => g.label).join(", ")}, so ${gaps.length === 1 ? "that column is" : "those columns are"} the bull's own value`
           : "")
-      : f.paBasis === "pa"
-        ? `parent average (${indexLabel})`
-        : `bull's own ${indexLabel} — dam has no ${indexLabel}`;
+      : scored
+        ? `Match score — the calf's ${indexLabel} blended with how well the bull corrects her weaknesses (${scaleNote})`
+        : f.paBasis === "pa"
+          ? `parent average (${indexLabel})`
+          : `bull's own ${indexLabel} — dam has no ${indexLabel}`;
     f.matches.forEach((m, i) => {
       const byCode = new Map(m.pa.map((p) => [p.code, p.value]));
       const row = s1.addRow([
@@ -189,11 +200,12 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         m.name,
         m.naab ?? "",
         m.reg ?? "",
-        ...(multi ? [m.matchScore, ...m.traits.map((t) => t.pa)] : [m.ownIndex, m.paIndex]),
+        ...(multi ? [m.matchScore, ...m.traits.map((t) => t.pa)] : scored ? [m.matchScore, m.ownIndex, m.paIndex] : [m.ownIndex, m.paIndex]),
         basis,
         m.confidence,
         `${m.bullSlots} of 14`,
         ...MATING_DISPLAY_TRAITS.map((mi) => byCode.get(mi.code) ?? null),
+        m.corrects.join(", "),
       ]);
       if (multi ? gaps.length > 0 : f.paBasis !== "pa") {
         row.getCell(BASIS_COL).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
@@ -211,7 +223,64 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     c.width = i === 0 ? 30 : i === 4 ? 28 : i === BASIS_COL - 1 ? 34 : i < 3 ? 18 : 13;
   });
 
-  // ---- Sheet 2: Excluded (the audit trail) --------------------------------
+  // ---- Sheet 2: Weaknesses (what each cow is mated to correct) -------------
+  const sw = wb.addWorksheet("Weaknesses");
+  headerRow(sw, ["Female", "Female reg", "Weakness", "Her value", "Goal", "Acted on", "Enforced across"]);
+  for (const f of r.females) {
+    if (f.error) continue;
+    if (!f.weaknesses.length && !f.unassessedWeak.length) {
+      sw.addRow([femaleLabel(f), f.reg, "no weakness detected on the traits we track"]);
+      continue;
+    }
+    let firstRow = true;
+    const label = () => (firstRow ? ((firstRow = false), femaleLabel(f)) : "");
+    const reg = (first: boolean) => (first ? f.reg : "");
+    f.weaknesses.forEach((w) => {
+      const showLabel = firstRow;
+      sw.addRow([
+        label(),
+        reg(showLabel),
+        w.label,
+        w.cowValue,
+        w.goal,
+        w.acted ? "yes" : "noted only",
+        w.deep ? "recommended bulls only (no fast column)" : "the whole pool",
+      ]);
+    });
+    for (const u of f.unassessedWeak) {
+      const showLabel = firstRow;
+      const row = sw.addRow([label(), reg(showLabel), u.label, "no value", "could not assess — add her classification/genomic record", "", ""]);
+      row.getCell(5).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
+    }
+  }
+  if (sw.rowCount === 1) sw.addRow(["No female had a detectable weakness in this run."]);
+  sw.columns.forEach((c, i) => {
+    c.width = i === 0 ? 30 : i === 4 ? 40 : i === 1 ? 22 : 16;
+  });
+  sw.getColumn(5).alignment = { wrapText: true, vertical: "top" };
+
+  // ---- Sheet 3: Set aside (cleared, but would worsen a weakness) -----------
+  const ss = wb.addWorksheet("Set aside");
+  headerRow(ss, ["Female", "Female reg", "Bull", "NAAB", "Why it was set aside"]);
+  for (const f of r.females) {
+    f.setback.forEach((s, i) => {
+      const row = ss.addRow([
+        i === 0 ? femaleLabel(f) : "",
+        i === 0 ? f.reg : "",
+        s.name,
+        s.naab ?? "",
+        s.reasons.join("; "),
+      ]);
+      row.getCell(5).fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMBER } };
+    });
+  }
+  if (ss.rowCount === 1) ss.addRow(["No bull was set aside for a weakness in this run — every cleared bull at least held her line."]);
+  ss.columns.forEach((c, i) => {
+    c.width = i === 0 ? 30 : i === 2 ? 28 : i === 4 ? 60 : 16;
+  });
+  ss.getColumn(5).alignment = { wrapText: true, vertical: "top" };
+
+  // ---- Sheet 4: Excluded (the audit trail) --------------------------------
   const s2 = wb.addWorksheet("Excluded");
   headerRow(s2, [
     "Female",
@@ -246,7 +315,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     c.width = i === 0 ? 30 : i === 2 || i === 3 ? 28 : i === 7 ? 34 : 18;
   });
 
-  // ---- Sheet 3: Unverified -------------------------------------------------
+  // ---- Sheet 5: Unverified -------------------------------------------------
   const s3 = wb.addWorksheet("Unverified");
   headerRow(s3, [
     "Female",
@@ -290,7 +359,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     c.width = i === 0 ? 30 : i === 2 ? 28 : i === 9 ? 56 : 16;
   });
 
-  // ---- Sheet 4: Bull coverage (the semen-order sheet) ---------------------
+  // ---- Sheet 6: Bull coverage (the semen-order sheet) ---------------------
   const s4 = wb.addWorksheet("Bull coverage");
   headerRow(s4, [
     "Bull",
@@ -302,7 +371,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     `Mean projected calf ${indexLabel}`,
     // A bull's Match score is the same number on every female — it is his place
     // in the pool, not a property of the pairing — so it is one column here.
-    ...(multi ? ["Match score"] : []),
+    ...(scored ? ["Match score"] : []),
     "Best rank achieved",
     "Females",
   ]);
@@ -343,12 +412,12 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
   const total = r.females.filter((f) => !f.error).length;
   // A blend is always highest-first: each trait's direction was applied when it
   // was standardised, so a second reversal here would undo it.
-  const lowerBetter = !multi && r.params.index === "SCS";
+  const lowerBetter = !scored && r.params.index === "SCS";
   [...cover.values()]
     .sort((a, b) => {
       if (b.females.length !== a.females.length) return b.females.length - a.females.length;
-      const am = multi ? a.matchScore : a.paN ? a.paSum / a.paN : null;
-      const bm = multi ? b.matchScore : b.paN ? b.paSum / b.paN : null;
+      const am = scored ? a.matchScore : a.paN ? a.paSum / a.paN : null;
+      const bm = scored ? b.matchScore : b.paN ? b.paSum / b.paN : null;
       if (am == null || bm == null) return a.name.localeCompare(b.name);
       return lowerBetter ? am - bm : bm - am;
     })
@@ -361,18 +430,18 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         c.females.length,
         total ? Math.round((c.females.length / total) * 100) : 0,
         c.paN ? Math.round((c.paSum / c.paN) * 100) / 100 : null,
-        ...(multi ? [c.matchScore] : []),
+        ...(scored ? [c.matchScore] : []),
         Number.isFinite(c.bestRank) ? c.bestRank : null,
         c.females.join("; "),
       ]);
     });
   if (s4.rowCount === 1) s4.addRow(["No bull was cleared for any female in this run."]);
-  const femalesCol = multi ? 9 : 8; // 0-based; the wide "Females" list column
+  const femalesCol = scored ? 9 : 8; // 0-based; the wide "Females" list column
   s4.columns.forEach((c, i) => {
     c.width = i === 0 ? 28 : i === femalesCol ? 60 : 16;
   });
 
-  // ---- Sheet 5: Run parameters --------------------------------------------
+  // ---- Sheet 7: Run parameters --------------------------------------------
   const s5 = wb.addWorksheet("Run parameters");
   headerRow(s5, ["Parameter", "Value", "What it means"]);
   const add = (k: string, v: string | number | null, why: string) => s5.addRow([k, v, why]);
@@ -403,10 +472,35 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
     add("Index", indexLabel, `Bulls are ranked on the projected calf ${indexLabel}.${lowerBetter ? " A LOWER SCS is the better animal, so this run was ranked ascending." : ""}`);
     add(
       "Standardisation",
-      "none — raw projected calf value",
-      "A single trait is ranked on the projected calf value itself, with nothing standardised or rescaled. Select two or more traits to rank on a standardised blend with a Match score.",
+      scored ? "merit blended with correction — Match score" : "none — raw projected calf value",
+      scored
+        ? "At least one cow had a weakness worth correcting, so the order is the calf's index blended with how well the bull suits her faults — see the correction settings below and the Weaknesses sheet."
+        : "A single trait is ranked on the projected calf value itself, with nothing standardised or rescaled. Select two or more traits to rank on a standardised blend with a Match score.",
     );
   }
+  // Corrective mating settings — the never-worsen floor is always on; these tune it.
+  add(
+    "Correction balance",
+    `${Math.round(r.params.blend * 100)}% index / ${Math.round((1 - r.params.blend) * 100)}% fix her faults`,
+    "How the ranking splits between raising the calf's index and correcting THIS cow's own weaknesses. 100% index is the classic merit ranking; lower leans on suiting her faults. Only bites on a cow who has a detected weakness.",
+  );
+  add(
+    "Weakness floor",
+    r.params.strictImprovers ? "strict — bull must be positive" : "never worsen (default)",
+    r.params.strictImprovers
+      ? "Only bulls POSITIVE for every flagged weakness were recommended. This is the strictest setting and can leave a cow with few or no bulls; the Set aside sheet shows who it removed and why."
+      : "A recommended bull may never make a flagged weakness worse. Bulls that would are moved to the Set aside sheet, never recommended. Among the rest, the bulls that fix the most rank first.",
+  );
+  add(
+    "Faults acted on",
+    r.params.weakN,
+    "How many of her worst faults drive the floor and the correction ranking. The traits the reports already track get first claim on the slots.",
+  );
+  add(
+    "Deep-trait coverage",
+    "recommended bulls only",
+    "Daughter Fertility and the production traits are checked across the whole pool. Milking Speed and Bone Quality have no fast column, so they are checked only on the bulls that reach the recommendation shortlist.",
+  );
   add("Generations screened", audit ? "OFF (audit mode)" : r.params.maxGen, audit ? "NO relatedness screening was performed in this run." : "A shared ancestor is looked for this many generations back on both sides.");
   add("Bull pool", POOL_NOTE[r.params.pool].label, POOL_NOTE[r.params.pool].note);
   add("Include inactive bulls", r.params.includeInactive ? "yes" : "no", "Inactive bulls have no proof in the most recent round on file.");
@@ -477,7 +571,7 @@ export async function buildMatingProgramWorkbook(r: MatingReport): Promise<Excel
         f.name ?? "(name not resolved)",
         f.source ? `source: ${f.source}` : "not resolved",
         `${f.cowSlots} of 14 ancestors known (completeness ${f.cowComplete})`,
-        f.error ?? `${f.matches.length} recommended, ${f.unknown.length} unverified, ${f.excludedTotal} excluded`,
+        f.error ?? `${f.matches.length} recommended, ${f.setbackTotal} set aside, ${f.unknown.length} unverified, ${f.excludedTotal} excluded`,
       ].join(" · "),
     ]);
   }

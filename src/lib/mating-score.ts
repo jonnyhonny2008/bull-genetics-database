@@ -773,3 +773,39 @@ export function blendScores(meritZ: number | null, correctionZ: number | null, b
   if (meritZ == null || correctionZ == null) return null;
   return b * meritZ + (1 - b) * correctionZ;
 }
+
+/** Keep the correction dial inside its range whatever a hand-edited URL supplies. */
+export function clampBlend(v: number | null | undefined): number {
+  if (v == null || !Number.isFinite(v)) return DEFAULT_BLEND;
+  return Math.min(MAX_BLEND, Math.max(MIN_BLEND, v));
+}
+
+/** Keep the weakness count inside its range and integer. */
+export function clampWeakN(v: number | null | undefined): number {
+  if (v == null || !Number.isFinite(v)) return DEFAULT_WEAK_N;
+  return Math.min(MAX_WEAK_N, Math.max(MIN_WEAK_N, Math.round(v)));
+}
+
+/**
+ * Choose which of a cow's ranked faults the run acts on, giving the traits the
+ * stud already watches (KEY_TRAITS) first claim on the `topK` slots before the
+ * rest are filled by raw severity. This is the "focus especially on the traits I
+ * have highlighted" rule: a KEY-trait fault is never dropped past the cut in
+ * favour of a larger deficit on a trait nobody tracks.
+ *
+ * Ordering WITHIN each group is unchanged — worst deficit first — and the acted
+ * weights are recomputed over exactly the chosen set so they still sum to 1. The
+ * input `ranked` is not mutated; fresh Weakness objects are returned.
+ */
+export function selectActedWeaknesses(
+  ranked: Weakness[],
+  topK: number,
+  keyCodes: Set<string> = new Set(KEY_TRAITS.map((t) => t.code)),
+): Weakness[] {
+  const k = Math.max(0, Math.floor(topK));
+  const key = ranked.filter((w) => keyCodes.has(w.code));
+  const rest = ranked.filter((w) => !keyCodes.has(w.code));
+  const chosen = [...key, ...rest].slice(0, k);
+  const total = chosen.reduce((s, w) => s + w.deficitSd, 0);
+  return chosen.map((w) => ({ ...w, weight: total > 0 ? w.deficitSd / total : 0 }));
+}
