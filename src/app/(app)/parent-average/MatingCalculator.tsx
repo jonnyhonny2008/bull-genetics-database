@@ -53,6 +53,9 @@ export default function MatingCalculator() {
   const [saveSel, setSaveSel] = useState<Record<string, boolean>>({});
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Regs saved this session — so a saved animal flips to "saved" immediately,
+  // without waiting for a re-run of the calculation.
+  const [savedRegs, setSavedRegs] = useState<Set<string>>(new Set());
 
   const setSire = (i: number, v: string) => setSireRegs((a) => a.map((x, j) => (j === i ? v : x)));
   const addSire = () => setSireRegs((a) => (a.length < 5 ? [...a, ""] : a));
@@ -61,7 +64,7 @@ export default function MatingCalculator() {
   async function calculate() {
     const sires = sireRegs.map((s) => s.trim()).filter(Boolean);
     if (!damReg.trim() || !sires.length) { setErr("Enter a dam and at least one sire registration number."); return; }
-    setBusy(true); setErr(null); setResp(null); setSaveSel({}); setSaveMsg(null);
+    setBusy(true); setErr(null); setResp(null); setSaveSel({}); setSaveMsg(null); setSavedRegs(new Set());
     try {
       const r = await fetch("/api/parent-average", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ damReg: damReg.trim(), sireRegs: sires }) });
       const data: PAResponse = await r.json();
@@ -82,7 +85,8 @@ export default function MatingCalculator() {
     resp.matings.forEach((m) => consider(m.sire));
     return [...seen.values()];
   }, [resp]);
-  const savable = involved.filter((p) => !p.inDatabase && p.source === "lactanet");
+  const isSaved = (p: ParentMeta) => p.inDatabase || savedRegs.has(p.reg.toUpperCase());
+  const savable = involved.filter((p) => !isSaved(p) && p.source === "lactanet");
 
   async function saveSelected() {
     const regs = savable.filter((p) => saveSel[p.reg]).map((p) => p.reg);
@@ -91,8 +95,18 @@ export default function MatingCalculator() {
     try {
       const r = await fetch("/api/parent-average", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ save: regs }) });
       const d = await r.json();
-      if (!r.ok) setSaveMsg(d.error ?? "Import failed.");
-      else setSaveMsg(`Imported ${d.saved.filter((s: { ok: boolean }) => s.ok).length}/${regs.length}. Re-run the calculation to see them as “in database”.`);
+      if (!r.ok) { setSaveMsg(d.error ?? "Import failed."); return; }
+      const results: { reg: string; ok: boolean; error?: string }[] = d.saved ?? [];
+      const okRegs = results.filter((s) => s.ok).map((s) => s.reg.toUpperCase());
+      // Flip the saved animals to "saved" right away.
+      setSavedRegs((prev) => new Set([...prev, ...okRegs]));
+      setSaveSel((s) => { const n = { ...s }; for (const reg of okRegs) delete n[reg]; return n; });
+      const failed = results.filter((s) => !s.ok);
+      setSaveMsg(
+        failed.length
+          ? `Saved ${okRegs.length}/${regs.length}. Could not save ${failed.map((f) => f.reg).join(", ")}${failed[0]?.error ? ` — ${failed[0].error}` : ""}.`
+          : `Saved ${okRegs.length} animal${okRegs.length === 1 ? "" : "s"} to the database.`,
+      );
     } catch (e) { setSaveMsg(String(e)); }
     finally { setSaving(false); }
   }
@@ -135,23 +149,26 @@ export default function MatingCalculator() {
             calculation only — tick a box to import it, or leave it unticked and it&apos;s discarded.
           </p>
           <div className="flex flex-wrap gap-3">
-            {involved.map((p) => (
-              <label
-                key={p.reg}
-                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${p.inDatabase ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/40"}`}
-              >
-                {p.inDatabase ? (
-                  <input type="checkbox" checked disabled title="Already in the database" />
-                ) : (
-                  <input type="checkbox" checked={!!saveSel[p.reg]} onChange={(e) => setSaveSel((s) => ({ ...s, [p.reg]: e.target.checked }))} />
-                )}
-                <span className="font-medium">{p.name ?? p.reg}</span>
-                <span className="font-mono text-[10px] text-slate-400">{p.reg}</span>
-                <span className={`rounded px-1 text-[9px] font-semibold uppercase ${p.inDatabase ? "text-emerald-700" : "text-amber-700"}`}>
-                  {p.inDatabase ? "in database" : "save?"}
-                </span>
-              </label>
-            ))}
+            {involved.map((p) => {
+              const saved = isSaved(p);
+              return (
+                <label
+                  key={p.reg}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${saved ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/40"}`}
+                >
+                  {saved ? (
+                    <input type="checkbox" checked disabled title="Saved in the database" />
+                  ) : (
+                    <input type="checkbox" checked={!!saveSel[p.reg]} onChange={(e) => setSaveSel((s) => ({ ...s, [p.reg]: e.target.checked }))} />
+                  )}
+                  <span className="font-medium">{p.name ?? p.reg}</span>
+                  <span className="font-mono text-[10px] text-slate-400">{p.reg}</span>
+                  <span className={`rounded px-1 text-[9px] font-semibold uppercase ${saved ? "text-emerald-700" : "text-amber-700"}`}>
+                    {saved ? (p.inDatabase ? "in database" : "saved ✓") : "save?"}
+                  </span>
+                </label>
+              );
+            })}
           </div>
           {savable.length > 0 && (
             <div className="mt-2 flex items-center gap-3">
