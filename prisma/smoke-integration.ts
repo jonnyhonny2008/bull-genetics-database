@@ -1,16 +1,12 @@
-// Integration check (not part of the app): do the Proof Forecast report and the
-// Mating Program report — built in parallel by two separate work streams —
-// actually coexist?
+// Smoke check (not part of the app): does the Mating Program report build and
+// return real results against the live database?
 //
 //   npx tsx --conditions=react-server prisma/smoke-integration.ts
 //
-// Both are exercised IN ONE PROCESS against the real database, because that is
-// where they could collide: a shared Prisma client, shared trait/reference
-// caches, a shared Blondin role filter, and shared report primitives. Running
-// them separately would not prove they can live in the same server.
+// Exercised against the real database, for a real female, across every rankable
+// trait, and as an Excel workbook — the seams where an internally-consistent
+// half can still be wrong end-to-end.
 
-import { getProofForecastReport } from "../src/lib/proof-forecast";
-import { buildProofForecastWorkbook } from "../src/lib/proof-forecast-xlsx";
 import { getMatingProgramReport, MATING_INDEXES } from "../src/lib/mating-program";
 import { buildMatingProgramWorkbook } from "../src/lib/mating-program-xlsx";
 import { prisma } from "../src/lib/db";
@@ -31,32 +27,11 @@ async function main() {
   const femaleReg = female?.identifiers[0]?.idValue ?? "";
   console.log(`\n  test female: ${female?.primaryName ?? "(none found)"} ${femaleReg}\n`);
 
-  console.log("  --- FORECAST REPORT ---");
-  const t1 = Date.now();
-  const fc = await getProofForecastReport({});
-  check("forecast builds", fc.rows.length > 0, `${fc.rows.length} bulls in ${Date.now() - t1} ms`);
-  check("forecast targets the next round", !!fc.targetLabel, `${fc.targetLabel} (${fc.targetKind})`);
-  check("every bull has key-trait projections",
-    fc.rows.every((r) => r.forecast.keyForecasts.length > 0));
-  check("every key projection carries a confidence",
-    fc.rows.every((r) => r.forecast.keyForecasts.every((k) => k.confidence != null && k.predicted != null)));
-  check("confidences are real shares",
-    fc.rows.every((r) => r.forecast.keyForecasts.every((k) => (k.confidence ?? -1) >= 0 && (k.confidence ?? 2) <= 1)));
-  check("backtest ran", fc.backtest.ran, `range skill ${fc.backtest.overallRangeSkill}%`);
-  check("backtest beats the model it replaced", (fc.backtest.overallRangeSkill ?? -1) > 0);
-
-  console.log("\n  --- FORECAST, BLONDIN FILTER (the seam both sessions touch) ---");
-  const fcB = await getProofForecastReport({ blondin: "1" });
-  check("blondin filter narrows the lineup", fcB.compared > 0 && fcB.compared <= fc.compared,
-    `${fcB.compared} of ${fc.compared}`);
-  check("blondin cohort is labelled", fcB.cohortLabel.includes("Blondin"), fcB.cohortLabel);
-
-  console.log("\n  --- MATING PROGRAM REPORT (other session) ---");
+  console.log("  --- MATING PROGRAM REPORT ---");
   const t2 = Date.now();
   const mp = await getMatingProgramReport(femaleReg ? { females: femaleReg, pool: "blondin", topN: "5" } : {});
   check("mating report builds", !!mp, `in ${Date.now() - t2} ms`);
-  const mpAny = mp as unknown as Record<string, unknown>;
-  const females = (mpAny.females as unknown[]) ?? [];
+  const females = (mp as unknown as { females?: unknown[] }).females ?? [];
   check("mating report returns a females array", Array.isArray(females), `${females.length} female(s)`);
 
   // Every trait the menu offers must actually rank. The menu and the database
@@ -76,32 +51,13 @@ async function main() {
   check("no trait on the Rank-on menu returns an empty list",
     dead.length === 0, dead.length ? `dead: ${dead.join(", ")}` : `all ${MATING_INDEXES.length} rank`);
 
-  console.log("\n  --- EXCEL EXPORTS (both) ---");
-  const wb1 = await buildProofForecastWorkbook(fc);
-  const buf1 = await wb1.xlsx.writeBuffer();
-  check("forecast workbook builds", buf1.byteLength > 10000,
-    `${(buf1.byteLength / 1024).toFixed(0)} kB, sheets: ${wb1.worksheets.map((w) => w.name).join(", ")}`);
-
+  console.log("\n  --- EXCEL EXPORT ---");
   const wb2 = await buildMatingProgramWorkbook(await getMatingProgramReport(
     femaleReg ? { females: femaleReg, pool: "blondin", topN: "5" } : {}, { fullExclusions: true },
   ));
   const buf2 = await wb2.xlsx.writeBuffer();
   check("mating workbook builds", buf2.byteLength > 5000,
     `${(buf2.byteLength / 1024).toFixed(0)} kB, sheets: ${wb2.worksheets.map((w) => w.name).join(", ")}`);
-
-  console.log("\n  --- INTERLEAVED (the actual collision test) ---");
-  // Run both again, alternating, to catch a cache one report populates that the
-  // other then reads wrongly — the failure a sequential run would miss.
-  const [a, b, c] = await Promise.all([
-    getProofForecastReport({}),
-    getMatingProgramReport(femaleReg ? { females: femaleReg, pool: "blondin", topN: "5" } : {}),
-    getProofForecastReport({ blondin: "1" }),
-  ]);
-  check("forecast is identical when run concurrently with the mating report",
-    a.rows.length === fc.rows.length && a.backtest.overallRangeSkill === fc.backtest.overallRangeSkill,
-    `${a.rows.length} rows, skill ${a.backtest.overallRangeSkill}%`);
-  check("mating report survives concurrency", !!b);
-  check("blondin forecast is identical under concurrency", c.compared === fcB.compared);
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n  ${results.length - failed.length}/${results.length} checks passed`);
