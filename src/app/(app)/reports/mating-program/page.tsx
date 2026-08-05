@@ -193,7 +193,7 @@ export default async function MatingProgramReportPage({
           />
           <p className="mt-1 text-[11px] text-slate-500">
             Canadian (HOCANM…) and US/840 (HO840M…) registrations are both accepted. Females not in the database are
-            looked up live from Lactanet for this run only and are never saved.
+            looked up live from Lactanet for this run; after it runs you can tick any of them to save to the database.
           </p>
         </div>
 

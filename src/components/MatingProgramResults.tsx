@@ -88,6 +88,38 @@ export function MatingProgramResults({
   const multi = report.params.selected.length > 1;
   const scored = report.scored;
 
+  // --- Save females looked up live from Lactanet ----------------------------
+  // A female entered by registration is fetched live and used for this run only.
+  // Tick her to keep her in the database (same ingest the PA tool uses). Saved
+  // regs flip to "saved" immediately, no re-run needed.
+  const [savedRegs, setSavedRegs] = useState<Set<string>>(new Set());
+  const [saveSel, setSaveSel] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const savable = females.filter((f) => f.source === "lactanet" && f.reg && !savedRegs.has(f.reg.toUpperCase()));
+
+  async function saveFemales() {
+    const regs = savable.filter((f) => saveSel[f.reg]).map((f) => f.reg);
+    if (!regs.length) { setSaveMsg("Tick at least one female to save."); return; }
+    setSaving(true); setSaveMsg(null);
+    try {
+      const r = await fetch("/api/parent-average", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ save: regs }) });
+      const d = await r.json();
+      if (!r.ok) { setSaveMsg(d.error ?? "Save failed."); return; }
+      const results: { reg: string; ok: boolean; error?: string }[] = d.saved ?? [];
+      const okRegs = results.filter((s) => s.ok).map((s) => s.reg.toUpperCase());
+      setSavedRegs((prev) => new Set([...prev, ...okRegs]));
+      setSaveSel((s) => { const n = { ...s }; for (const reg of okRegs) delete n[reg]; return n; });
+      const failed = results.filter((s) => !s.ok);
+      setSaveMsg(
+        failed.length
+          ? `Saved ${okRegs.length}/${regs.length}. Could not save ${failed.map((f) => f.reg).join(", ")}${failed[0]?.error ? ` — ${failed[0].error}` : ""}.`
+          : `Saved ${okRegs.length} female${okRegs.length === 1 ? "" : "s"} to the database.`,
+      );
+    } catch (e) { setSaveMsg(String(e)); }
+    finally { setSaving(false); }
+  }
+
   if (females.length === 0) {
     return (
       <Card title="Mating program">
@@ -119,8 +151,30 @@ export function MatingProgramResults({
         </span>
       </div>
 
+      {savable.length > 0 && (
+        <div className="card card-pad mb-3 border-amber-200 bg-amber-50/40">
+          <div className="mb-1 text-sm font-semibold text-slate-700">
+            {fmtNum(savable.length)} female{savable.length === 1 ? "" : "s"} looked up live from Lactanet — not saved
+          </div>
+          <p className="mb-2 text-xs text-slate-500">Used for this run only. Tick any you want to keep in the database.</p>
+          <div className="flex flex-wrap gap-2">
+            {savable.map((f) => (
+              <label key={f.reg} className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs">
+                <input type="checkbox" checked={!!saveSel[f.reg]} onChange={(e) => setSaveSel((s) => ({ ...s, [f.reg]: e.target.checked }))} />
+                <span className="font-medium">{f.name ?? f.reg}</span>
+                <span className="font-mono text-[10px] text-slate-400">{f.reg}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            <button type="button" onClick={saveFemales} disabled={saving} className="btn-primary btn-sm">{saving ? "Saving…" : "Save selected"}</button>
+            {saveMsg && <span className="text-xs text-slate-500">{saveMsg}</span>}
+          </div>
+        </div>
+      )}
+
       {view === "herd" ? (
-        <HerdSummary report={report} indexLabel={indexLabel} scored={scored} multi={multi} />
+        <HerdSummary report={report} indexLabel={indexLabel} scored={scored} multi={multi} savedRegs={savedRegs} />
       ) : (
         <div className="space-y-3">
           {females.map((f, i) => (
@@ -131,6 +185,7 @@ export function MatingProgramResults({
               scored={scored}
               multi={multi}
               strict={report.params.strictImprovers}
+              savedRegs={savedRegs}
               // The bar actually applied. At depth 2 completeness is normalised
               // over two generations, so the floor is scaled to match; showing
               // params.floor here would colour chips against a bar nobody used.
@@ -225,11 +280,13 @@ function HerdSummary({
   indexLabel,
   scored,
   multi,
+  savedRegs,
 }: {
   report: MatingReport;
   indexLabel: string;
   scored: boolean;
   multi: boolean;
+  savedRegs: Set<string>;
 }) {
   return (
     <Card title="Herd summary">
@@ -259,7 +316,9 @@ function HerdSummary({
               {f.name ?? f.input}
               {f.source === "lactanet" && (
                 <span className="ml-1.5">
-                  <Badge tone="blue">Lactanet — not saved</Badge>
+                  {f.reg && savedRegs.has(f.reg.toUpperCase())
+                    ? <Badge tone="green">Saved ✓</Badge>
+                    : <Badge tone="blue">Lactanet — not saved</Badge>}
                 </span>
               )}
             </td>
@@ -312,6 +371,7 @@ function FemaleCard({
   strict,
   floor,
   defaultOpen,
+  savedRegs,
 }: {
   female: MatingFemale;
   indexLabel: string;
@@ -320,6 +380,7 @@ function FemaleCard({
   strict: boolean;
   floor: number;
   defaultOpen: boolean;
+  savedRegs: Set<string>;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const best = bestIndexOf(f, scored);
@@ -338,7 +399,9 @@ function FemaleCard({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-800">{f.name ?? f.input}</span>
           <span className="font-mono text-xs text-slate-500">{f.reg ?? f.input}</span>
-          {f.source === "lactanet" && <Badge tone="blue">Lactanet — not saved</Badge>}
+          {f.source === "lactanet" && (f.reg && savedRegs.has(f.reg.toUpperCase())
+            ? <Badge tone="green">Saved ✓</Badge>
+            : <Badge tone="blue">Lactanet — not saved</Badge>)}
           {f.source === "internal" && <Badge tone="slate">In database</Badge>}
           {!f.error && <CompleteChip value={f.cowComplete} floor={floor} />}
           {!f.error && f.weaknesses.some((w) => w.acted) && (
