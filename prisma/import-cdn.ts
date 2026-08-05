@@ -75,6 +75,7 @@ async function main() {
 
   const buf = { animals: [] as any[], ids: [] as any[], roles: [] as any[], evals: [] as any[], peds: [] as any[] };
   const unprefer = new Set<string>();
+  const nameUpdate = new Map<string, { name: string; short: string | null }>();
   let newAnimals = 0, newEvals = 0, skipped = 0, rowsSeen = 0;
 
   async function flush() {
@@ -112,6 +113,9 @@ async function main() {
     const isPreferred = date.getTime() >= priorMax;
     if (isPreferred && !isNew) unprefer.add(animalId!);
     if (date.getTime() > priorMax) maxDate.set(animalId!, date.getTime());
+    // Registered names change over time — the newest round's name is the true one.
+    // isPreferred rows are the newest on file, so the last one per animal wins.
+    if (isPreferred && bull.registeredName) nameUpdate.set(animalId!, { name: bull.registeredName, short: bull.shortName });
 
     const lpiRel = bull.traits.find((t) => t.traitCode === "LPI")?.reliability ?? null;
     const descriptive = ([["A2", bull.betaCasein], ["POLLED", bull.polled], ["COLOUR", bull.colourCode]] as const)
@@ -169,6 +173,22 @@ async function main() {
     if (fileNo % 25 === 0) { await flush(); process.stdout.write(`\r[cdn] files ${fileNo}/${files.length} · animals ${newAnimals} · proofs ${newEvals} · skipped ${skipped}   `); }
   }
   await flush();
+
+  // Adopt each animal's name from its newest round in this batch (names change
+  // over time; the most recent is the true one). Only rows that were the latest
+  // on file recorded a name here, so this never regresses to an older name.
+  if (nameUpdate.size) {
+    const rows = [...nameUpdate.entries()].map(([id, v]) => ({ id, name: v.name, short: v.short }));
+    for (let i = 0; i < rows.length; i += 1000) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Animal" a SET "primaryName" = v.name, "shortName" = v.short
+           FROM jsonb_to_recordset($1::jsonb) AS v(id text, name text, short text)
+          WHERE a."id" = v.id`,
+        JSON.stringify(rows.slice(i, i + 1000)),
+      );
+    }
+    console.log(`[cdn] refreshed ${rows.length} animal names to their newest round`);
+  }
 
   // Enforce the invariant: exactly ONE preferred eval per animal (latest approved
   // proof). A single window-function pass is correct regardless of file order and

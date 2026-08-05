@@ -144,6 +144,19 @@ export async function persistBull(
     });
   }
 
+  // Registered names change over time (new prefix, registry correction). Keep the
+  // animal's name from its NEWEST proof: if this approved round is the latest on
+  // file, adopt this file's name. (New animals already took it at creation.)
+  if (!wasCreated && isApproved && bull.registeredName) {
+    const newer = await prisma.geneticEvaluation.findFirst({
+      where: { animalId, approvalStatus: "approved", evaluationDate: { gt: runDate } },
+      select: { evaluationId: true },
+    });
+    if (!newer) {
+      await prisma.animal.update({ where: { id: animalId }, data: { primaryName: bull.registeredName, shortName: bull.shortName } });
+    }
+  }
+
   await recomputePreferredForAnimal(animalId);
   return { animalId, created: wasCreated, evaluationId: evalRec.evaluationId };
 }

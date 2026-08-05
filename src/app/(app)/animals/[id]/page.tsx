@@ -435,8 +435,8 @@ export default async function AnimalProfile({
                   : "—"
               } />
               <Fact k="Proof status" v={
-                a.proofStatus === "active" ? "Active — in the most recent round on file"
-                  : a.proofStatus === "inactive" ? "Inactive — latest proof predates the most recent round"
+                a.proofStatus === "active" ? "Active — available to breed to (has a NAAB stud code)"
+                  : a.proofStatus === "inactive" ? "Inactive — no NAAB stud code"
                   : "—"
               } />
               <Fact k="Lactanet activity code" v={a.latestActivityCode ? <span title={activityLabel(a.latestActivityCode) ?? undefined}><span className="font-mono">{a.latestActivityCode}</span> — {activityLabel(a.latestActivityCode) ?? "unknown"}</span> : "—"} />

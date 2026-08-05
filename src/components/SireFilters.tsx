@@ -75,7 +75,7 @@ export function SireClassBadges({
         </span>
       )}
       {proofStatus && (
-        <span title={proofStatus === "active" ? "Has a proof in the most recent round on file" : "Latest proof predates the most recent round on file"}>
+        <span title={proofStatus === "active" ? "Available — has a NAAB stud (semen) code" : "No NAAB stud code"}>
           <Badge tone={proofStatus === "active" ? "brand" : "slate"}>
             {proofStatus === "active" ? "Active" : "Inactive"}
           </Badge>

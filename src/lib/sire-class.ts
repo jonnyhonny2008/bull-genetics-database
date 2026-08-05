@@ -48,26 +48,30 @@ export const OFFICIAL_CODES: Record<string, string> = {
 };
 
 /**
- * Classify one proof round as a proven or a genomic evaluation.
+ * Classify one proof round as a proven (full EBV) or a genomic (GPA) evaluation.
  *
- * Primary signal is the activity code, because Lactanet's own wording for it is
- * literally "NOT YET PROVEN" vs "NEWLY PROVEN". Where the code is missing (older
- * file layouts), fall back to the LPI official code — "official" (1) and "MACE"
- * (3) evaluations are daughter-based EBVs, "parent average" (2) is GPA-only —
- * and finally to a plain daughter count.
+ * Proven means a daughter-based breeding value; genomic means a genomic parent
+ * average. The direct signal for that is the LPI OFFICIAL CODE (NOTE 11), so it
+ * is the PRIMARY test:
+ *   1 official (daughter-based) / 3 MACE (daughter-based Interbull) → full EBV → proven
+ *   2 parent average                                                → GPA      → genomic
+ * Only when there is no official LPI code (0 unofficial, or an older layout that
+ * omitted the field) do we fall back to the proof-activity code's proven flag,
+ * and finally to a plain daughter count. (A MACE bull carries official code 3 but
+ * an unproven domestic activity code, which is exactly why the official code has
+ * to win — the activity-code-first order mislabelled MACE sires as genomic.)
  */
 export function classifyRound(input: {
   activityCode?: string | null;
   officialCode?: string | null;
   daughters?: number | null;
 }): "proven" | "genomic" {
-  const act = (input.activityCode ?? "").trim();
-  const known = ACTIVITY_CODES[act];
-  if (known) return known.proven ? "proven" : "genomic";
-
   const off = (input.officialCode ?? "").trim();
   if (off === "1" || off === "3") return "proven";
   if (off === "2") return "genomic";
+
+  const known = ACTIVITY_CODES[(input.activityCode ?? "").trim()];
+  if (known) return known.proven ? "proven" : "genomic";
 
   return (input.daughters ?? 0) > 0 ? "proven" : "genomic";
 }
@@ -100,10 +104,10 @@ export function officialLabel(officialCode?: string | null): string | null {
 // filter is one flat list of four, so each entry carries its own predicate.
 
 export const SIRE_ROLES = [
-  { code: "proven",   label: "Proven",   hint: "Has daughter-based EBVs (Lactanet: newly proven / added daughters / MACE)" },
-  { code: "genomic",  label: "Genomic",  hint: "GPA genomics only — Lactanet: not yet proven" },
-  { code: "active",   label: "Active",   hint: "Has a proof in the most recent round on file" },
-  { code: "inactive", label: "Inactive", hint: "Latest proof predates the most recent round on file" },
+  { code: "proven",   label: "Proven",   hint: "Full EBVs — a daughter-based evaluation (official or MACE)" },
+  { code: "genomic",  label: "Genomic",  hint: "GPA only — a genomic parent average, no daughter proof yet" },
+  { code: "active",   label: "Active",   hint: "Available — has a NAAB stud (semen) code" },
+  { code: "inactive", label: "Inactive", hint: "No NAAB stud code" },
 ] as const;
 
 export type SireRole = (typeof SIRE_ROLES)[number]["code"];

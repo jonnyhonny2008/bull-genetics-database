@@ -2,10 +2,11 @@
 // Derive the four sire roles onto Animal, in SQL, so the lineup lists can filter
 // and paginate on them without loading every bull into memory.
 //
-//   sireType        proven | genomic   — from the LATEST round's Lactanet
-//                                        proof-activity code (see src/lib/sire-class.ts)
-//   proofStatus     active | inactive  — active = the sire appears in the most
-//                                        recent proof round on file
+//   sireType        proven | genomic   — full EBV vs GPA, from the LATEST round's
+//                                        LPI official code (see src/lib/sire-class.ts)
+//   proofStatus     active | inactive  — active = carries a NAAB stud code (is
+//                                        available to breed to); inactive = none.
+//                                        NOT proof-recency; a NAAB code is the rule.
 //   rollbackCount                      — how many April rounds the sire has been
 //                                        through (Lactanet re-bases every April;
 //                                        every other round is updated information)
@@ -48,9 +49,6 @@ export async function classifySires(prisma: Client): Promise<{
       FROM "GeneticEvaluation"
       WHERE "approvalStatus" = 'approved'
       GROUP BY "animalId"
-    ),
-    newest AS (
-      SELECT MAX("evaluationDate") AS d FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
     )
     UPDATE "Animal" a SET
       "sireType"           = l."sireType",
@@ -58,17 +56,30 @@ export async function classifySires(prisma: Client): Promise<{
       "latestProofRun"     = l."proofRun",
       "latestActivityCode" = l."activityCode",
       "rollbackCount"      = g.rollbacks,
-      "proofRoundCount"    = g.rounds,
-      "proofStatus"        = CASE WHEN l."evaluationDate" = (SELECT d FROM newest) THEN 'active' ELSE 'inactive' END
+      "proofRoundCount"    = g.rounds
     FROM latest l
     JOIN agg g ON g."animalId" = l."animalId"
     WHERE a."id" = l."animalId"
   `);
 
-  // Animals with no approved proof at all are inactive with no sire type.
+  // proofStatus (active / inactive) is NOT proof-derived: a sire is ACTIVE when
+  // he carries a NAAB stud (semen) code — i.e. he is available to breed to — and
+  // INACTIVE when he does not, regardless of how recent his proof is. Set it for
+  // every animal in one pass so the rule is uniform.
+  await prisma.$executeRawUnsafe(`
+    UPDATE "Animal" a SET "proofStatus" =
+      CASE WHEN EXISTS (
+        SELECT 1 FROM "AnimalIdentifier" i
+        WHERE i."animalId" = a."id" AND i."idType" = 'naab' AND i."active" = true
+      ) THEN 'active' ELSE 'inactive' END
+    WHERE a."archived" = false
+  `);
+
+  // Animals with no approved proof at all keep no sire type / counts (proofStatus
+  // is already set above from their NAAB code).
   await prisma.$executeRawUnsafe(`
     UPDATE "Animal" a SET
-      "sireType" = NULL, "proofStatus" = 'inactive', "rollbackCount" = 0, "proofRoundCount" = 0,
+      "sireType" = NULL, "rollbackCount" = 0, "proofRoundCount" = 0,
       "latestProofDate" = NULL, "latestProofRun" = NULL, "latestActivityCode" = NULL
     WHERE NOT EXISTS (
       SELECT 1 FROM "GeneticEvaluation" e

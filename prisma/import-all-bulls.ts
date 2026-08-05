@@ -118,6 +118,7 @@ async function main() {
 
   const buf = { animals: [] as any[], ids: [] as any[], roles: [] as any[], evals: [] as any[], peds: [] as any[] };
   const unprefer = new Set<string>(); // existing animals that received a newer round
+  const nameUpdate = new Map<string, { name: string; short: string | null }>();
   let processed = 0, newBulls = 0, newEvals = 0, skipped = 0, inBatch = 0, newNaab = 0, noNaab = 0;
 
   async function flush() {
@@ -171,6 +172,8 @@ async function main() {
     const isPreferred = date.getTime() >= priorMax; // latest round is preferred
     if (isPreferred && !isNew) unprefer.add(animalId!); // older rounds must lose preferred
     if (date.getTime() > priorMax) maxDate.set(animalId!, date.getTime());
+    // Names change over time — adopt the newest round's name (see import-cdn.ts).
+    if (isPreferred && bull.registeredName) nameUpdate.set(animalId!, { name: bull.registeredName, short: bull.shortName });
 
     const evaluationId = crypto.randomUUID();
     const lpiRel = bull.traits.find((t) => t.traitCode === "LPI")?.reliability ?? null;
@@ -207,6 +210,20 @@ async function main() {
   }
   rl.close();
   await flush();
+
+  // Adopt each bull's name from its newest round in this file (see import-cdn.ts).
+  if (nameUpdate.size) {
+    const rows = [...nameUpdate.entries()].map(([id, v]) => ({ id, name: v.name, short: v.short }));
+    for (let i = 0; i < rows.length; i += 1000) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Animal" a SET "primaryName" = v.name, "shortName" = v.short
+           FROM jsonb_to_recordset($1::jsonb) AS v(id text, name text, short text)
+          WHERE a."id" = v.id`,
+        JSON.stringify(rows.slice(i, i + 1000)),
+      );
+    }
+    console.log(`[import-all] refreshed ${rows.length} bull names to their newest round`);
+  }
 
   // Enforce the invariant: exactly ONE preferred eval per bull (latest approved
   // round). Single window-function pass — correct regardless of file/import order.
