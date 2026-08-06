@@ -3,6 +3,7 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { getRoundReport, type RoundReportType } from "@/lib/proof-round-report";
 import { roundReportHtml } from "@/lib/report-html-round";
+import { roundReportCsv } from "@/lib/proof-round-csv";
 import { attachment } from "@/lib/report-http";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,20 @@ export async function GET(request: Request) {
   if (fromRun === toRun) return NextResponse.json({ error: "Pick two different rounds to compare." }, { status: 400 });
 
   const report = await getRoundReport({ fromRun, toRun, type });
-  const html = roundReportHtml(report);
+  const stem = `Proof Change ${type.toUpperCase()} - ${fromRun} vs ${toRun}`.replace(/[\\/:*?"<>|]/g, "-");
 
-  // Download button adds ?download=1; the plain View button opens it inline.
+  // ?format=csv — the full type-scoped table as a spreadsheet-ready CSV.
+  if (sp.format === "csv") {
+    // A BOM so Excel opens the UTF-8 accents (bull names) correctly.
+    const csv = "﻿" + roundReportCsv(report);
+    return new Response(csv, { headers: attachment("text/csv; charset=utf-8", `${stem}.csv`) });
+  }
+
+  // Otherwise the self-contained HTML: download button adds ?download=1; a plain
+  // hit opens it inline.
+  const html = roundReportHtml(report);
   if (sp.download === "1") {
-    const filename = `Proof Change ${type.toUpperCase()} - ${fromRun} vs ${toRun}.html`.replace(/[\\/:*?"<>|]/g, "-");
-    return new Response(html, { headers: attachment("text/html; charset=utf-8", filename) });
+    return new Response(html, { headers: attachment("text/html; charset=utf-8", `${stem}.html`) });
   }
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }

@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
-import { PageHeader, Card } from "@/components/ui";
-import { listProofRuns } from "@/lib/proof-round-report";
+import { PageHeader, Card, EmptyState } from "@/components/ui";
+import { getRoundReport, listProofRuns } from "@/lib/proof-round-report";
+import { RoundReportView } from "@/components/RoundReportView";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,71 +22,69 @@ export default async function RoundCompareReportPage({
   const isEbv = type === "ebv";
 
   const runs = await listProofRuns();
-  // Sensible defaults: newest round as the "to", the one before it as the "from".
-  const defTo = runs[0] ?? "";
-  const defFrom = runs[1] ?? runs[0] ?? "";
+  const from = runs.includes(searchParams.from ?? "") ? searchParams.from! : (runs[1] ?? runs[0] ?? "");
+  const to = runs.includes(searchParams.to ?? "") ? searchParams.to! : (runs[0] ?? "");
 
-  const title = isEbv
-    ? "Proof Change Report — Daughter-Proven (EBV)"
-    : "Proof Change Report — Genomic (PA)";
-  const subtitle = isEbv
-    ? "How the daughter-proven (EBV) NAAB Holstein bulls moved between any two proof rounds — as a self-contained HTML file you can open in any browser or email."
-    : "How the genomic (PA) NAAB Holstein bulls moved between any two proof rounds — as a self-contained HTML file you can open in any browser or email.";
+  const title = isEbv ? "Proof Change Report — Daughter-Proven (EBV)" : "Proof Change Report — Genomic (PA)";
+  const subtitle = `How the ${isEbv ? "daughter-proven (EBV)" : "genomic (PA)"} NAAB Holstein bulls moved between two proof rounds. Compare any two rounds on file; download as CSV or a self-contained HTML file.`;
+
+  const enough = runs.length >= 2 && from && to;
+  const report = enough && from !== to ? await getRoundReport({ fromRun: from, toRun: to, type }) : null;
+
+  const base = `/reports/round-compare/export?type=${type}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const csvHref = `${base}&format=csv`;
+  const htmlHref = `${base}&download=1`;
 
   return (
     <div>
-      <PageHeader title={title} subtitle={subtitle} />
-
-      {runs.length < 2 ? (
-        <Card title={title}>
-          <p className="text-sm text-slate-600">
-            At least two proof rounds must be on file to compare. Only {runs.length} round is loaded so far.
-          </p>
-        </Card>
-      ) : (
-        <Card title={`Generate the ${isEbv ? "EBV" : "PA"} comparison`}>
-          <form action="/reports/round-compare/export" method="get" className="space-y-4">
-            {/* Type is fixed by which report you opened. */}
-            <input type="hidden" name="type" value={type} />
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <label className="label" htmlFor="from">From round</label>
-                <select id="from" name="from" defaultValue={defFrom} className="input min-w-[180px]">
-                  {runs.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="to">To round</label>
-                <select id="to" name="to" defaultValue={defTo} className="input min-w-[180px]">
-                  {runs.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        actions={
+          report ? (
+            <div className="flex gap-2">
+              <a href={csvHref} className="btn-primary">⬇ CSV</a>
+              <a href={htmlHref} className="btn-secondary" title="A single self-contained file you can email — opens in any browser, no login needed">⬇ HTML</a>
             </div>
+          ) : undefined
+        }
+      />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" formTarget="_blank" className="btn-primary">Open report in a new tab</button>
-              <button type="submit" name="download" value="1" className="btn-secondary">Download .html</button>
-            </div>
+      {/* Which two rounds to compare. Every round on file, interim or official. */}
+      <form method="get" className="card card-pad flex flex-wrap items-end gap-3">
+        <input type="hidden" name="type" value={type} />
+        <div>
+          <label className="label" htmlFor="from">From round</label>
+          <select id="from" name="from" defaultValue={from} className="input min-w-[180px]">
+            {runs.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="to">To round</label>
+          <select id="to" name="to" defaultValue={to} className="input min-w-[180px]">
+            {runs.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <button type="submit" className="btn-primary">Compare rounds</button>
+      </form>
 
-            <p className="text-[11px] leading-relaxed text-slate-500">
-              {isEbv ? (
-                <>This report covers the <strong>daughter-proven (EBV)</strong> bulls and adds two &ldquo;newly
-                proven&rdquo; sections at the top — bulls that went from genomic (PA) to their first daughter proof
-                between the two rounds. </>
-              ) : (
-                <>This report covers the <strong>genomic (PA)</strong> bulls. </>
-              )}
-              It shows the breed-wide average change boxes, the LPI and Conformation gainers/losers, and the full Top-100
-              table, with an All&nbsp;Breed / Top&nbsp;1,000 / Top&nbsp;200 toggle. The file is self-contained — the
-              toggle works even when opened from your desktop, and it needs no login to view or email.
-            </p>
-          </form>
-        </Card>
-      )}
+      <div className="mt-4">
+        {runs.length < 2 ? (
+          <Card title={title}>
+            <EmptyState message={`At least two proof rounds must be on file to compare — only ${runs.length} is loaded so far.`} />
+          </Card>
+        ) : from === to ? (
+          <Card title={title}>
+            <EmptyState message="Pick two different rounds to compare." />
+          </Card>
+        ) : report && report.universe === 0 ? (
+          <Card title={title}>
+            <EmptyState message={`No NAAB Holstein bulls were found in ${from} or ${to}.`} />
+          </Card>
+        ) : report ? (
+          <RoundReportView report={report} />
+        ) : null}
+      </div>
     </div>
   );
 }
