@@ -13,6 +13,8 @@ import { sireRoleCounts } from "@/lib/sire-rank";
 import { getActiveBreeds, getAllSources, getGeneticTraitDefsForFilters } from "@/lib/reference";
 import { specialistTraits, specialistFilter, parseLevel, SPECIALIST_LEVELS } from "@/lib/specialists";
 import { SpecialistPicker } from "@/components/SpecialistPicker";
+import FavouriteStar from "@/components/FavouriteStar";
+import SavedSearches from "@/components/SavedSearches";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +74,8 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   if (sp.missingId === "1") AND.push({ identifiers: { none: { isPrimary: true, active: true } } });
   if (sp.pendingReview === "1") AND.push({ reviewItems: { some: { status: { in: ["pending", "conflict_review", "needs_more_info"] } } } });
   if (sp.noProof === "1") AND.push({ evaluations: { none: {} } });
+  // "My favourites" — restrict to the signed-in user's watchlist.
+  if (sp.fav === "1" && user) AND.push({ watchers: { some: { userId: user.uid } } });
 
   // Specialists: narrow to bulls that are solidly positive for every picked trait.
   // The bar is set against the whole breed population (a stable reference), then
@@ -145,6 +149,29 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
       : [],
   );
 
+  // The signed-in user's favourites among the shown rows, and their saved views.
+  const favIds = user && rows.length
+    ? new Set((await prisma.watchlist.findMany({ where: { userId: user.uid, animalId: { in: rows.map((r) => r.id) } }, select: { animalId: true } })).map((w) => w.animalId))
+    : new Set<string>();
+  const savedSearches = user
+    ? await prisma.savedSearch.findMany({ where: { userId: user.uid, path: "/animals" }, orderBy: { createdAt: "desc" }, select: { id: true, name: true, query: true } })
+    : [];
+
+  // The current filter state as a querystring (page dropped), for "save this view"
+  // and the favourites toggle.
+  const currentQuery = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "page") p.set(k, v);
+    return p.toString();
+  })();
+  const favHref = (() => {
+    const p = new URLSearchParams(currentQuery);
+    if (sp.fav === "1") p.delete("fav"); else p.set("fav", "1");
+    p.delete("page");
+    const s = p.toString();
+    return s ? `/animals?${s}` : "/animals";
+  })();
+
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const qs = (p: number) => {
     const params = new URLSearchParams();
@@ -178,6 +205,18 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
       </div>
       <SireRolePills basePath="/animals" sp={sp} counts={roleCounts} />
 
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <Link
+          href={favHref}
+          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
+            sp.fav === "1" ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-300 text-slate-600 hover:border-amber-300 hover:text-amber-700"
+          }`}
+        >
+          {sp.fav === "1" ? "★ Showing your favourites" : "☆ My favourites"}
+        </Link>
+        <SavedSearches path="/animals" currentQuery={currentQuery} searches={savedSearches} />
+      </div>
+
       {rows.length === 0 ? (
         <EmptyState message="No animals match. Try widening your filters or add a new animal.">
           {can(user?.role, "animal:write") && <Link href="/animals/new" className="btn-primary">+ New animal</Link>}
@@ -186,6 +225,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
         <>
           <div className="card">
             <Table head={<>
+              <th className="th" aria-label="Favourite"></th>
               <th className="th">Name</th>
               <th className="th">Breed</th>
               <th className="th">Sire role</th>
@@ -204,6 +244,7 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
                 const shown = sortCol ? a.__sortVal : (preferredEval?.lpi ?? null);
                 return (
                   <tr key={a.id} className="hover:bg-slate-50">
+                    <td className="td text-center"><FavouriteStar animalId={a.id} initial={favIds.has(a.id)} size="sm" /></td>
                     <td className="td">
                       <Link href={`/animals/${a.id}`} className="link font-medium">{a.primaryName}</Link>
                       {a.shortName && <span className="ml-1 text-xs text-slate-400">({a.shortName})</span>}

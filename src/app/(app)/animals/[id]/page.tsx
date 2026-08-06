@@ -15,6 +15,7 @@ import { LinearGraph, type LinearGroup, type LinearTraitDatum } from "@/componen
 import { TraitTrendChart, type TrendSeries } from "@/components/TraitTrendChart";
 import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from "@/lib/rollback";
 import { getRollbackTraitScales } from "@/lib/reference";
+import FavouriteStar from "@/components/FavouriteStar";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { PedigreeTree } from "@/components/PedigreeTree";
 import {
@@ -218,6 +219,11 @@ export default async function AnimalProfile({
   ) : null;
   const latestLactation = profile?.lactations?.length ? profile.lactations[profile.lactations.length - 1] : null;
 
+  // Whether the signed-in user has favourited this bull.
+  const isFav = user
+    ? !!(await prisma.watchlist.findUnique({ where: { userId_animalId: { userId: user.uid, animalId: a.id } }, select: { id: true } }))
+    : false;
+
   return (
     <div>
       <PageHeader
@@ -242,8 +248,9 @@ export default async function AnimalProfile({
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <FavouriteStar animalId={a.id} initial={isFav} size="lg" />
             {writable && caReg && <RefreshHolstein reg={caReg} />}
-            <Link href={`/analysis?view=charts&bulls=${a.id}`} className="btn-secondary">Compare</Link>
+            <Link href={`/compare?bulls=${a.id}`} className="btn-secondary">Compare</Link>
             {writable && <Link href={`/animals/${a.id}/edit`} className="btn-secondary">Edit</Link>}
             {writable && (
               <form action={archiveAnimal}>

@@ -41,6 +41,9 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  watchlist     Watchlist[]
+  savedSearches SavedSearch[]
 }
 
 // Reference table so the Admin > Roles screen can describe each role.
@@ -225,6 +228,7 @@ model Animal {
   attachments     FileAttachment[]
   captures        SourceCapture[]
   reviewItems     ImportReviewQueue[]
+  watchers        Watchlist[]
 
   @@index([primaryName])
   @@index([breedId])
@@ -583,4 +587,34 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Per-user conveniences: favourite bulls (a watchlist) and saved searches.
+// ---------------------------------------------------------------------------
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  animalId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, animalId]) // a bull is favourited at most once per user
+  @@index([userId])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  path      String // the page the query belongs to, e.g. "/animals"
+  query     String // the raw querystring, e.g. "spec=MSPD,DF&specLevel=solid"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
