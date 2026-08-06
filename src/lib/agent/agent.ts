@@ -88,7 +88,8 @@ export async function askGeneticsAgent(
   const tools = activeTools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema as Anthropic.Tool.InputSchema }));
 
   const messages: Anthropic.MessageParam[] = [
-    ...history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
+    // Recent memory: the last ~20 turns of this user's 30-day history.
+    ...history.slice(-20).map((h) => ({ role: h.role, content: h.content })),
     { role: "user", content: question },
   ];
 

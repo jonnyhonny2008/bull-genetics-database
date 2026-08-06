@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { purgeDeniedImports } from "@/lib/import-staging";
+import { purgeOldChat } from "@/lib/chat-history";
 import { logAppError } from "@/lib/error-log";
 
 export const runtime = "nodejs";
@@ -22,8 +23,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await purgeDeniedImports(new Date());
-    return NextResponse.json({ ok: true, ...result });
+    const now = new Date();
+    const result = await purgeDeniedImports(now);
+    // Also self-delete Dann.ai chat histories untouched for over 30 days.
+    const chatRowsPurged = await purgeOldChat(now);
+    return NextResponse.json({ ok: true, ...result, chatRowsPurged });
   } catch (e) {
     await logAppError("cron/purge-denied", e);
     return NextResponse.json({ ok: false, error: String((e as Error)?.message ?? e) }, { status: 500 });

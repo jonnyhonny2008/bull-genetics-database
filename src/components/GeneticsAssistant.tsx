@@ -1,6 +1,6 @@
 "use client";
 
-// Floating assistant "Little Dan" — a button (his headshot) fixed lower-right on every page that
+// Floating assistant "Dann.ai" — a button (his headshot) fixed lower-right on every page that
 // opens a slide-out chat panel. Talks to POST /api/agent. Shows a "thinking"
 // state, then the answer + any charts the agent drew + the database records it
 // used + suggested follow-ups. Charts open full screen.
@@ -52,7 +52,11 @@ export function GeneticsAssistant() {
 
   useEffect(() => {
     if (open && configured === null) {
-      fetch("/api/agent").then((r) => (r.ok ? r.json() : { configured: false })).then((d) => setConfigured(!!d.configured)).catch(() => setConfigured(false));
+      fetch("/api/agent").then((r) => (r.ok ? r.json() : { configured: false })).then((d) => {
+        setConfigured(!!d.configured);
+        // Restore this user's recent conversation — Dann.ai's 30-day memory.
+        if (Array.isArray(d.history) && d.history.length) setMessages((cur) => (cur.length ? cur : (d.history as Msg[])));
+      }).catch(() => setConfigured(false));
     }
   }, [open, configured]);
 
@@ -82,12 +86,12 @@ export function GeneticsAssistant() {
   async function ask(question: string) {
     const q = question.trim();
     if (!q || loading) return;
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
     setMessages((m) => [...m, { role: "user", content: q }]);
     setInput("");
     setLoading(true);
     try {
-      const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: q, history }) });
+      // History is server-side (Dann.ai's persistent memory), so we only send the question.
+      const res = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: q }) });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({} as { message?: string }));
         if (res.status === 503) setConfigured(false);
@@ -124,22 +128,32 @@ export function GeneticsAssistant() {
     }
   }
 
+  // Dann.ai's little headshot avatar, shown beside each of his messages.
+  const dannAvatar = (
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-700 text-[11px] font-bold text-white ring-1 ring-slate-200">
+      {iconOk ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src="/dann-ai.png" alt="Dann.ai" className="h-full w-full object-cover" onError={() => setIconOk(false)} />
+      ) : "D"}
+    </div>
+  );
+
   return (
     <>
-      {/* Floating action button — Little Dan's headshot */}
+      {/* Floating action button — Dann.ai's headshot */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label="Open Little Dan, the genetics assistant"
-        title="Little Dan"
+        aria-label="Open Dann.ai, the genetics assistant"
+        title="Dann.ai"
         className="group fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-brand-700 text-white shadow-lg shadow-brand-900/20 ring-2 ring-white transition hover:scale-105 active:scale-95"
       >
         {iconOk ? (
-          // Headshot lives at public/little-dan.png; falls back to "LD" if it's not there yet.
+          // Headshot lives at public/dann-ai.png; falls back to "D" if it's not there yet.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/little-dan.png" alt="Little Dan" className="h-full w-full object-cover" onError={() => setIconOk(false)} />
+          <img src="/dann-ai.png" alt="Dann.ai" className="h-full w-full object-cover" onError={() => setIconOk(false)} />
         ) : (
-          <span className="text-lg font-extrabold tracking-tight">LD</span>
+          <span className="text-lg font-extrabold tracking-tight">D</span>
         )}
       </button>
 
@@ -147,7 +161,7 @@ export function GeneticsAssistant() {
       <div className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-md transform flex-col bg-white shadow-2xl transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`} role="dialog" aria-hidden={!open}>
         <header className="flex items-center justify-between border-b border-slate-200 bg-brand-900 px-4 py-3 text-white">
           <div>
-            <div className="text-sm font-bold">Little Dan</div>
+            <div className="text-sm font-bold">Dann.ai</div>
             <div className="text-[11px] text-brand-300">Your Blondin genetics analyst</div>
           </div>
           <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-brand-200 hover:bg-brand-800 hover:text-white" aria-label="Close">
@@ -158,12 +172,12 @@ export function GeneticsAssistant() {
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">
           {configured === false && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Little Dan isn&apos;t switched on yet. An administrator can add an Anthropic API key in <span className="font-semibold">Admin Settings → AI Genetics Assistant</span> to activate him.
+              Dann.ai isn&apos;t switched on yet. An administrator can add an Anthropic API key in <span className="font-semibold">Admin Settings → AI Genetics Assistant</span> to activate it.
             </div>
           )}
           {messages.length === 0 && configured !== false && (
             <div className="space-y-2">
-              <p className="text-sm text-slate-500">Ask Little Dan about sires, proofs, rankings, pedigree or trends — or ask him to make a change (add a note, record a proof, edit an animal). He does what your account is allowed to, and confirms before anything is saved. Try:</p>
+              <p className="text-sm text-slate-500">Ask Dann.ai about sires, proofs, rankings, pedigree or trends — or ask it to make a change (add a note, record a proof, edit an animal). It does what your account is allowed to, and confirms before anything is saved. Try:</p>
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => ask(s)} className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50">{s}</button>
               ))}
@@ -171,7 +185,12 @@ export function GeneticsAssistant() {
           )}
 
           {messages.map((m, i) => {
-            if (m.role === "user") return <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">{m.content}</div>;
+            if (m.role === "user") return (
+              <div key={i} className="flex flex-col items-end">
+                <span className="mb-0.5 mr-1 text-[10px] font-medium text-slate-400">Me</span>
+                <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">{m.content}</div>
+              </div>
+            );
             const streaming = !!m.streaming;
             // Mid-stream, hide any half-emitted ```chart block and don't parse
             // charts/follow-ups until the final "done" arrives.
@@ -182,42 +201,51 @@ export function GeneticsAssistant() {
             const clean = body;
             const prevUser = i > 0 && messages[i - 1]?.role === "user" ? messages[i - 1].content : undefined;
             return (
-              <div key={i} className="max-w-[92%] space-y-2">
-                <div className={`rounded-2xl rounded-bl-sm border px-3 py-2 text-sm ${m.error ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-800"}`}>
-                  {streaming && m.status && !clean && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-400" />{m.status}</div>
-                  )}
-                  <div className="whitespace-pre-wrap leading-relaxed">{clean}{streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand-400 align-middle" />}</div>
-                  {!m.error && !streaming && (
-                    <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-1.5 text-[11px] text-slate-400">
-                      <button onClick={() => navigator.clipboard?.writeText(clean)} className="hover:text-brand-600">Copy</button>
-                      {m.tools && m.tools.length > 0 && <RecordsToggle tools={m.tools} records={m.records ?? []} />}
-                      <ExportMenu report={{ question: prevUser, answer: clean, tools: m.tools, records: m.records, charts }} />
+              <div key={i} className="flex items-start gap-2">
+                {dannAvatar}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <span className="block text-[10px] font-medium text-slate-400">Dann.ai</span>
+                  <div className={`rounded-2xl rounded-bl-sm border px-3 py-2 text-sm ${m.error ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-800"}`}>
+                    {streaming && m.status && !clean && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-400" />{m.status}</div>
+                    )}
+                    <div className="whitespace-pre-wrap leading-relaxed">{clean}{streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand-400 align-middle" />}</div>
+                    {!m.error && !streaming && (
+                      <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-1.5 text-[11px] text-slate-400">
+                        <button onClick={() => navigator.clipboard?.writeText(clean)} className="hover:text-brand-600">Copy</button>
+                        {m.tools && m.tools.length > 0 && <RecordsToggle tools={m.tools} records={m.records ?? []} />}
+                        <ExportMenu report={{ question: prevUser, answer: clean, tools: m.tools, records: m.records, charts }} />
+                      </div>
+                    )}
+                  </div>
+                  {charts.map((spec, ci) => (
+                    <div key={ci} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-600">{spec.title ?? "Chart"}</span>
+                        <button type="button" onClick={() => setFullChart(spec)} className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-brand-600" title="View full screen">
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m0 8v3a2 2 0 0 0 2 2h3m8-18h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3" /></svg>
+                          Full screen
+                        </button>
+                      </div>
+                      <AgentChart spec={spec} />
+                    </div>
+                  ))}
+                  {followups.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {followups.map((f) => { const fc = cleanText(f); return <button key={f} onClick={() => ask(fc)} className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-brand-300 hover:bg-brand-50">{fc}</button>; })}
                     </div>
                   )}
                 </div>
-                {charts.map((spec, ci) => (
-                  <div key={ci} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-600">{spec.title ?? "Chart"}</span>
-                      <button type="button" onClick={() => setFullChart(spec)} className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-brand-600" title="View full screen">
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m0 8v3a2 2 0 0 0 2 2h3m8-18h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3" /></svg>
-                        Full screen
-                      </button>
-                    </div>
-                    <AgentChart spec={spec} />
-                  </div>
-                ))}
-                {followups.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {followups.map((f) => { const fc = cleanText(f); return <button key={f} onClick={() => ask(fc)} className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-brand-300 hover:bg-brand-50">{fc}</button>; })}
-                  </div>
-                )}
               </div>
             );
           })}
 
-          {loading && !messages[messages.length - 1]?.streaming && <div className="flex items-center gap-2 text-sm text-slate-400"><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" /><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" style={{ animationDelay: "0.15s" }} /><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" style={{ animationDelay: "0.3s" }} /> investigating…</div>}
+          {loading && !messages[messages.length - 1]?.streaming && (
+            <div className="flex items-start gap-2">
+              {dannAvatar}
+              <div className="flex items-center gap-2 pt-1.5 text-sm text-slate-400"><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" /><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" style={{ animationDelay: "0.15s" }} /><span className="h-2 w-2 animate-bounce rounded-full bg-brand-400" style={{ animationDelay: "0.3s" }} /> investigating…</div>
+            </div>
+          )}
         </div>
 
         <form onSubmit={(e) => { e.preventDefault(); ask(input); }} className="border-t border-slate-200 bg-white p-3">
@@ -227,7 +255,7 @@ export function GeneticsAssistant() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); } }}
               rows={1}
-              placeholder={configured === false ? "Little Dan isn't set up yet" : "Ask Little Dan…"}
+              placeholder={configured === false ? "Dann.ai isn't set up yet" : "Ask Dann.ai…"}
               disabled={configured === false || loading}
               className="max-h-32 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50"
             />
