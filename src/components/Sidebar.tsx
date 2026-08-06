@@ -35,6 +35,9 @@ const NAV_ICONS: Record<string, ReactNode> = {
   // Cow / bull head — this is a cattle app, so Animals gets a cow, not a paw.
   "/animals": <NavIcon><path d="M3.5 5c2.2 0 3.9 1 4.9 2.8" /><path d="M20.5 5c-2.2 0-3.9 1-4.9 2.8" /><path d="M6.5 7.5h11V10a5.5 5.5 0 0 1-11 0z" /><path d="M9 13.7c0-1.4 1.3-2.3 3-2.3s3 .9 3 2.3-1.3 2.4-3 2.4-3-1-3-2.4z" /><path d="M11 13.8v.01" /><path d="M13 13.8v.01" /></NavIcon>,
   "/analysis": <NavIcon><path d="M4 16l5-5 4 4 7-7" /><path d="M17 8h4v4" /></NavIcon>,
+  // Two side-by-side panels — a split view for comparing bulls, distinct from the
+  // dashboard's bar chart and the analysis trend line.
+  "/compare": <NavIcon><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /><path d="M6.5 9h2M6.5 12h2M6.5 15h2" /><path d="M15.5 9h2M15.5 12h2M15.5 15h2" /></NavIcon>,
   "/parent-average": <NavIcon><circle cx="6" cy="6" r="2.2" /><circle cx="6" cy="18" r="2.2" /><circle cx="18" cy="12" r="2.2" /><path d="M8.1 6.9c3 1 5.4 2.4 7.8 4.1M8.1 17.1c3-1 5.4-2.4 7.8-4.1" /></NavIcon>,
   "/reports": <NavIcon><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></NavIcon>,
   "/uploads": <NavIcon><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /><path d="M12 4v11" /><path d="M8 8l4-4 4 4" /></NavIcon>,
