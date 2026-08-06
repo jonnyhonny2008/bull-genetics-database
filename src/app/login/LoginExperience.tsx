@@ -107,10 +107,7 @@ export function LoginExperience() {
       {/* strapline + Blondin logo, bottom left */}
       <div className={`absolute bottom-6 left-6 z-20 transition-all duration-1000 sm:bottom-9 sm:left-10 ${panelIn ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}>
         <div className="mb-4 max-w-xs">
-          <p className="text-[13px] font-medium leading-relaxed text-slate-300/80">
-            Every proof, every daughter, every round —
-          </p>
-          <p className="font-serif text-2xl italic leading-tight text-white sm:text-3xl">one complete animal.</p>
+          <p className="font-serif text-2xl italic leading-tight text-white sm:text-3xl">The Art of Breeding!</p>
         </div>
         {/* The logo PNG is already 75% transparent, so it needs no panel behind
             it — but its greens are dark and would vanish against this
