@@ -1,0 +1,4682 @@
+[
+ {
+  "naab": "236JE05006",
+  "id17": "JEDNK000000304608",
+  "name": "ISDK VJ HOEMLUND GISLEV GIANT",
+  "publishedJpi": 147,
+  "traits": {
+   "PRO": 6,
+   "FAT": 47,
+   "PL": 2.4,
+   "CCR": 2.6,
+   "DPR": 1.1,
+   "SCS": 2.6,
+   "MAS": -0.2,
+   "UDP": 1.1,
+   "FUA": -0.5,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "236JE05167",
+  "id17": "JEDNK000000305167",
+  "name": "VJ DROSTRUPGAARD JOJO JABRA",
+  "publishedJpi": 148,
+  "traits": {
+   "PRO": 14,
+   "FAT": 30,
+   "PL": 1.4,
+   "CCR": 3.5,
+   "DPR": 3.6,
+   "SCS": 2.7,
+   "MAS": -0.2,
+   "UDP": 1.1,
+   "FUA": -0.4,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "200JE01333",
+  "id17": "JE840003218042551",
+  "name": "JX PROGENESIS MONARCH {5}-ET",
+  "publishedJpi": 148,
+  "traits": {
+   "PRO": 27,
+   "FAT": 48,
+   "PL": 3.3,
+   "CCR": 1.1,
+   "DPR": 0.1,
+   "SCS": 2.94,
+   "MAS": -3.5,
+   "UDP": 0,
+   "FUA": 0.6,
+   "RUH": 1.6
+  }
+ },
+ {
+  "naab": "029JE04444",
+  "id17": "JEUSA000067975200",
+  "name": "JX CAL-MART DINO {6}-ET",
+  "publishedJpi": 149,
+  "traits": {
+   "PRO": 33,
+   "FAT": 47,
+   "PL": 3,
+   "CCR": -1.6,
+   "DPR": -1.6,
+   "SCS": 2.86,
+   "MAS": -1.7,
+   "UDP": 1.6,
+   "FUA": 1.8,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "236JE05029",
+  "id17": "JEDNK000000305029",
+  "name": "DNK VJ GL KROGAARD SORT SPLASH",
+  "publishedJpi": 150,
+  "traits": {
+   "PRO": 18,
+   "FAT": 52,
+   "PL": 1.9,
+   "CCR": -1.2,
+   "DPR": 1.1,
+   "SCS": 2.59,
+   "MAS": 0.6,
+   "UDP": 1.1,
+   "FUA": 0.1,
+   "RUH": -1.5
+  }
+ },
+ {
+  "naab": "551JE01874",
+  "id17": "JE840003213126087",
+  "name": "JX SEXING G GARLAND {5}-ET",
+  "publishedJpi": 152,
+  "traits": {
+   "PRO": 22,
+   "FAT": 43,
+   "PL": 2.6,
+   "CCR": 1.6,
+   "DPR": 1.2,
+   "SCS": 2.94,
+   "MAS": -1.1,
+   "UDP": 0.8,
+   "FUA": 0.7,
+   "RUH": 1.9
+  }
+ },
+ {
+  "naab": "007JE01985",
+  "id17": "JE840003213753879",
+  "name": "AHLEM GIFTED GEPPETTO {6}-ET",
+  "publishedJpi": 155,
+  "traits": {
+   "PRO": 40,
+   "FAT": 52,
+   "PL": 3.8,
+   "CCR": 1.9,
+   "DPR": -0.1,
+   "SCS": 3.05,
+   "MAS": -1.3,
+   "UDP": -3.4,
+   "FUA": -1.7,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "007JE01879",
+  "id17": "JE840003148507743",
+  "name": "JX AVI-LANCHE HOTLINE RHODES {5}",
+  "publishedJpi": 155,
+  "traits": {
+   "PRO": 37,
+   "FAT": 48,
+   "PL": 1.8,
+   "CCR": 0.5,
+   "DPR": -0.7,
+   "SCS": 2.8,
+   "MAS": 1,
+   "UDP": -1,
+   "FUA": -0.2,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "001JE07427",
+  "id17": "JE840003248055799",
+  "name": "JX PEAK STARBUCKZ {4}-ET",
+  "publishedJpi": 156,
+  "traits": {
+   "PRO": 18,
+   "FAT": 47,
+   "PL": 4.2,
+   "CCR": 0.5,
+   "DPR": -0.4,
+   "SCS": 3.03,
+   "MAS": 0.8,
+   "UDP": 1.8,
+   "FUA": 1.4,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "007JE01758",
+  "id17": "JE840003006436075",
+  "name": "JX CDF JLS PILGRIM THRASHER {6}-ET",
+  "publishedJpi": 156,
+  "traits": {
+   "PRO": 41,
+   "FAT": 38,
+   "PL": 3,
+   "CCR": 1.2,
+   "DPR": 1.1,
+   "SCS": 2.95,
+   "MAS": -2.7,
+   "UDP": -0.3,
+   "FUA": 0.6,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "236JE04984",
+  "id17": "JEDNK000000304984",
+  "name": "ISDK VJ BIRKELYGAARD SORT SUPERB",
+  "publishedJpi": 157,
+  "traits": {
+   "PRO": -2,
+   "FAT": 37,
+   "PL": 2.6,
+   "CCR": 4.1,
+   "DPR": 5.6,
+   "SCS": 2.68,
+   "MAS": 0.8,
+   "UDP": 2.6,
+   "FUA": -0.1,
+   "RUH": -1.2
+  }
+ },
+ {
+  "naab": "029JE04407",
+  "id17": "JEUSA000067975083",
+  "name": "JX CAL-MART DUDE {6}-ET",
+  "publishedJpi": 162,
+  "traits": {
+   "PRO": 27,
+   "FAT": 54,
+   "PL": 3.5,
+   "CCR": -0.4,
+   "DPR": -0.9,
+   "SCS": 2.78,
+   "MAS": 0.1,
+   "UDP": 0.5,
+   "FUA": 0.4,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "029JE04421",
+  "id17": "JEUSA000067975159",
+  "name": "JX CAL-MART DELL {6}-ET",
+  "publishedJpi": 164,
+  "traits": {
+   "PRO": 50,
+   "FAT": 59,
+   "PL": 2.5,
+   "CCR": -1.5,
+   "DPR": -1.1,
+   "SCS": 2.9,
+   "MAS": -2.4,
+   "UDP": -0.2,
+   "FUA": 0,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "029JE04422",
+  "id17": "JEUSA000067975168",
+  "name": "JX CAL-MART DEALER {6}-ET",
+  "publishedJpi": 167,
+  "traits": {
+   "PRO": 36,
+   "FAT": 56,
+   "PL": 2.5,
+   "CCR": 1.4,
+   "DPR": 0.6,
+   "SCS": 2.89,
+   "MAS": -2.7,
+   "UDP": 0.1,
+   "FUA": 0.3,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "007JE01789",
+  "id17": "JE840003200210433",
+  "name": "JX PRIMUS ENZO CHATHAM {4}-ET",
+  "publishedJpi": 167,
+  "traits": {
+   "PRO": 23,
+   "FAT": 44,
+   "PL": 3.6,
+   "CCR": 1.4,
+   "DPR": 0.2,
+   "SCS": 2.85,
+   "MAS": 0,
+   "UDP": 1.3,
+   "FUA": 1.8,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "029JE04433",
+  "id17": "JE840003250244909",
+  "name": "JX ABS AVJ MACHO {6}-ET",
+  "publishedJpi": 170,
+  "traits": {
+   "PRO": 42,
+   "FAT": 53,
+   "PL": 3,
+   "CCR": 0.7,
+   "DPR": -0.4,
+   "SCS": 2.83,
+   "MAS": -2.3,
+   "UDP": -0.2,
+   "FUA": -0.2,
+   "RUH": 0.9
+  }
+ },
+ {
+  "naab": "014JE01921",
+  "id17": "JE840003213193850",
+  "name": "JX PRIMUS THRASHER CRISPIN {5}-ET",
+  "publishedJpi": 170,
+  "traits": {
+   "PRO": 23,
+   "FAT": 31,
+   "PL": 5,
+   "CCR": 3.5,
+   "DPR": 3.1,
+   "SCS": 3.03,
+   "MAS": -1.3,
+   "UDP": 1.2,
+   "FUA": 0.9,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "029JE04305",
+  "id17": "JEUSA000067504833",
+  "name": "CAL-MART JAMMER-ET",
+  "publishedJpi": 189,
+  "traits": {
+   "PRO": 46,
+   "FAT": 65,
+   "PL": 2.5,
+   "CCR": 0.4,
+   "DPR": 0.2,
+   "SCS": 2.76,
+   "MAS": -1.9,
+   "UDP": -0.1,
+   "FUA": -0.1,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "029JE04432",
+  "id17": "JE840003250244874",
+  "name": "JX ABS AVJ STRICKER {6}-ET",
+  "publishedJpi": 161,
+  "traits": {
+   "PRO": 40,
+   "FAT": 33,
+   "PL": 3.8,
+   "CCR": 2.1,
+   "DPR": 1.8,
+   "SCS": 2.82,
+   "MAS": -3,
+   "UDP": -1.7,
+   "FUA": -0.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "029JE04263",
+  "id17": "JE840003133376034",
+  "name": "JX RDO REDROCK {4}-ET",
+  "publishedJpi": 150,
+  "traits": {
+   "PRO": 21,
+   "FAT": 23,
+   "PL": 4.7,
+   "CCR": 0.1,
+   "DPR": 1.1,
+   "SCS": 2.76,
+   "MAS": 1.1,
+   "UDP": 0.9,
+   "FUA": 0.4,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "200JE01220",
+  "id17": "JE840003200644168",
+  "name": "JX VIERRA SINATRA {4}-ET",
+  "publishedJpi": 146,
+  "traits": {
+   "PRO": 39,
+   "FAT": 41,
+   "PL": 2.7,
+   "CCR": -1.7,
+   "DPR": -2.1,
+   "SCS": 2.93,
+   "MAS": -1.3,
+   "UDP": 1.3,
+   "FUA": 1.5,
+   "RUH": 1.5
+  }
+ },
+ {
+  "naab": "551JE01812",
+  "id17": "JE840003143701936",
+  "name": "JX FARIA JIGGY KELLEN {5}-ET",
+  "publishedJpi": 144,
+  "traits": {
+   "PRO": 35,
+   "FAT": 32,
+   "PL": 4,
+   "CCR": 1.5,
+   "DPR": -2.8,
+   "SCS": 2.96,
+   "MAS": 1,
+   "UDP": -0.4,
+   "FUA": -0.3,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "007JE01726",
+  "id17": "JE840003141725644",
+  "name": "PRIMUS CRAZE STARLORD-ET",
+  "publishedJpi": 141,
+  "traits": {
+   "PRO": -3,
+   "FAT": 19,
+   "PL": 5.3,
+   "CCR": 2.6,
+   "DPR": 1.8,
+   "SCS": 2.94,
+   "MAS": 2.9,
+   "UDP": 1.6,
+   "FUA": 1.2,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "236JE04827",
+  "id17": "JEDNK000000304827",
+  "name": "ISDK VJ BOWMAN LASKY LASTER-ET",
+  "publishedJpi": 139,
+  "traits": {
+   "PRO": -12,
+   "FAT": 7,
+   "PL": 2,
+   "CCR": 8,
+   "DPR": 6.7,
+   "SCS": 2.69,
+   "MAS": 1.1,
+   "UDP": 2,
+   "FUA": -0.2,
+   "RUH": -1.7
+  }
+ },
+ {
+  "naab": "011JE07144",
+  "id17": "JE840003206191721",
+  "name": "JX FARIA BROTHERS ALTAKELCE {4}-ET",
+  "publishedJpi": 137,
+  "traits": {
+   "PRO": 37,
+   "FAT": 51,
+   "PL": 1,
+   "CCR": -1.1,
+   "DPR": -1.5,
+   "SCS": 2.88,
+   "MAS": -0.3,
+   "UDP": -0.6,
+   "FUA": -0.1,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "001JE07419",
+  "id17": "JE840003242794359",
+  "name": "JX PEAK KEEPSAKE {6}-ET",
+  "publishedJpi": 136,
+  "traits": {
+   "PRO": 18,
+   "FAT": 38,
+   "PL": 3,
+   "CCR": 0.4,
+   "DPR": -0.4,
+   "SCS": 2.9,
+   "MAS": 0.2,
+   "UDP": 0.1,
+   "FUA": 1.2,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "007JE01715",
+  "id17": "JE840003149514416",
+  "name": "JX FARIA BROTHERS JAYLEN {4}-ET",
+  "publishedJpi": 134,
+  "traits": {
+   "PRO": 12,
+   "FAT": 9,
+   "PL": 3.8,
+   "CCR": 1.7,
+   "DPR": 2.7,
+   "SCS": 3.02,
+   "MAS": 3.4,
+   "UDP": 0.8,
+   "FUA": 0.4,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "001JE07398",
+  "id17": "JE840003229908351",
+  "name": "JX PEAK DROGON {6}-ET",
+  "publishedJpi": 133,
+  "traits": {
+   "PRO": 28,
+   "FAT": 48,
+   "PL": 2.7,
+   "CCR": -0.9,
+   "DPR": -1.5,
+   "SCS": 2.79,
+   "MAS": -1.9,
+   "UDP": 0.3,
+   "FUA": -0.2,
+   "RUH": -1
+  }
+ },
+ {
+  "naab": "007JE01965",
+  "id17": "JE840003126987947",
+  "name": "VALSIGNA PINE BLIZZARD",
+  "publishedJpi": 131,
+  "traits": {
+   "PRO": 31,
+   "FAT": 40,
+   "PL": 2.3,
+   "CCR": 0.7,
+   "DPR": -0.6,
+   "SCS": 3.14,
+   "MAS": -1.2,
+   "UDP": -0.3,
+   "FUA": 0.5,
+   "RUH": 0.9
+  }
+ },
+ {
+  "naab": "007JE01773",
+  "id17": "JE840003200210422",
+  "name": "JX SF JLS ENZO STRATFORD {4}-ET",
+  "publishedJpi": 130,
+  "traits": {
+   "PRO": 37,
+   "FAT": 52,
+   "PL": 1.1,
+   "CCR": -1.5,
+   "DPR": -1.5,
+   "SCS": 3.1,
+   "MAS": -0.2,
+   "UDP": -0.7,
+   "FUA": 0.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "200JE01343",
+  "id17": "JE840003209774710",
+  "name": "JX PROGENESIS WICHITA {5}-ET",
+  "publishedJpi": 129,
+  "traits": {
+   "PRO": 70,
+   "FAT": 77,
+   "PL": -0.6,
+   "CCR": -5.3,
+   "DPR": -5.1,
+   "SCS": 3.16,
+   "MAS": -5.1,
+   "UDP": -0.3,
+   "FUA": -0.2,
+   "RUH": 1.5
+  }
+ },
+ {
+  "naab": "236JE05032",
+  "id17": "JEDNK000000305032",
+  "name": "VJ ADELGAARD KANTONA KASINO-ET",
+  "publishedJpi": 127,
+  "traits": {
+   "PRO": 3,
+   "FAT": 21,
+   "PL": 2.6,
+   "CCR": 2.8,
+   "DPR": 2.7,
+   "SCS": 2.81,
+   "MAS": 0.2,
+   "UDP": 1.4,
+   "FUA": 0.3,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "200JE00245",
+  "id17": "JEUSA000067485211",
+  "name": "DUTCH HOLLOW DILLAN-P",
+  "publishedJpi": 126,
+  "traits": {
+   "PRO": -11,
+   "FAT": 2,
+   "PL": 3,
+   "CCR": 6.7,
+   "DPR": 5.6,
+   "SCS": 2.86,
+   "MAS": 1.6,
+   "UDP": 0.7,
+   "FUA": -0.2,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "097JE00212",
+  "id17": "JE840003203346681",
+  "name": "TOG ISNER-P-ET",
+  "publishedJpi": 124,
+  "traits": {
+   "PRO": 13,
+   "FAT": -1,
+   "PL": 3.9,
+   "CCR": 3.2,
+   "DPR": 3.3,
+   "SCS": 2.95,
+   "MAS": -0.2,
+   "UDP": 0.6,
+   "FUA": -0.1,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "029JE04275",
+  "id17": "JEUSA000067424764",
+  "name": "JX CAL-MART BOOTS {5}-ET",
+  "publishedJpi": 123,
+  "traits": {
+   "PRO": 29,
+   "FAT": 40,
+   "PL": 0.7,
+   "CCR": -0.2,
+   "DPR": -1.5,
+   "SCS": 2.98,
+   "MAS": -1.5,
+   "UDP": 1,
+   "FUA": 1.3,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "200JE01299",
+  "id17": "JE840003218042382",
+  "name": "JX PROGENESIS BELMONT {5}-ET",
+  "publishedJpi": 122,
+  "traits": {
+   "PRO": 29,
+   "FAT": 59,
+   "PL": 0.7,
+   "CCR": -1.5,
+   "DPR": -1.9,
+   "SCS": 2.92,
+   "MAS": -0.4,
+   "UDP": -1.5,
+   "FUA": -0.1,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "014JE02030",
+  "id17": "JE840003223296495",
+  "name": "PRIMUS CALIBAN FLEMING-ET",
+  "publishedJpi": 121,
+  "traits": {
+   "PRO": 16,
+   "FAT": 35,
+   "PL": 3.2,
+   "CCR": -0.9,
+   "DPR": -1.5,
+   "SCS": 2.87,
+   "MAS": -0.9,
+   "UDP": 0.7,
+   "FUA": 1,
+   "RUH": 1.7
+  }
+ },
+ {
+  "naab": "011JE07368",
+  "id17": "JE840003206581246",
+  "name": "JX DUPAT ALTAKENO {6}-ET",
+  "publishedJpi": 120,
+  "traits": {
+   "PRO": 41,
+   "FAT": 33,
+   "PL": 1,
+   "CCR": -0.2,
+   "DPR": -0.6,
+   "SCS": 3.03,
+   "MAS": -3.3,
+   "UDP": -0.5,
+   "FUA": 0.4,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "777JE10073",
+  "id17": "JE840003217183045",
+  "name": "JX RIVER VALLEY MAYHEM {5}-ET",
+  "publishedJpi": 119,
+  "traits": {
+   "PRO": 31,
+   "FAT": 22,
+   "PL": 2.5,
+   "CCR": 0.2,
+   "DPR": -0.4,
+   "SCS": 2.92,
+   "MAS": -1.3,
+   "UDP": -1.4,
+   "FUA": 0.1,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "236JE04721",
+  "id17": "JEDNK000000304721",
+  "name": "ISDK VJRAVINGGAARD SVITZER SVICK",
+  "publishedJpi": 118,
+  "traits": {
+   "PRO": -10,
+   "FAT": 25,
+   "PL": 1,
+   "CCR": 3.8,
+   "DPR": 4.9,
+   "SCS": 2.77,
+   "MAS": 2.1,
+   "UDP": 0.1,
+   "FUA": -0.8,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "001JE07322",
+  "id17": "JE840003218483953",
+  "name": "PEAK GOLDROYAL-ET",
+  "publishedJpi": 117,
+  "traits": {
+   "PRO": 46,
+   "FAT": 64,
+   "PL": -0.2,
+   "CCR": -2.9,
+   "DPR": -2.7,
+   "SCS": 3.01,
+   "MAS": -3.5,
+   "UDP": -2.1,
+   "FUA": 0.1,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "029JE04405",
+  "id17": "JEUSA000067650622",
+  "name": "JX FOREST GLEN SALEM {4}-ET",
+  "publishedJpi": 117,
+  "traits": {
+   "PRO": 7,
+   "FAT": 35,
+   "PL": 3.6,
+   "CCR": -0.1,
+   "DPR": -0.4,
+   "SCS": 2.94,
+   "MAS": 0.8,
+   "UDP": 0.4,
+   "FUA": 0,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "029JE04202",
+  "id17": "JE840003137788997",
+  "name": "JX RDO TAGGERES {4}-ET",
+  "publishedJpi": 115,
+  "traits": {
+   "PRO": 7,
+   "FAT": -12,
+   "PL": 3.3,
+   "CCR": 3.2,
+   "DPR": 2.3,
+   "SCS": 2.81,
+   "MAS": 0,
+   "UDP": 1.7,
+   "FUA": 1.1,
+   "RUH": 1.1
+  }
+ },
+ {
+  "naab": "001JE00934",
+  "id17": "JEUSA000074067453",
+  "name": "JX AHLEM BADGER CRUISER {4}-ET",
+  "publishedJpi": 115,
+  "traits": {
+   "PRO": 16,
+   "FAT": 40,
+   "PL": 1.4,
+   "CCR": 1,
+   "DPR": 0.9,
+   "SCS": 3.02,
+   "MAS": 1.6,
+   "UDP": -1.5,
+   "FUA": -1.1,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "001JE07289",
+  "id17": "JE840003215564964",
+  "name": "JX PEAK DOUBLE PLAY {5}-ET",
+  "publishedJpi": 114,
+  "traits": {
+   "PRO": 32,
+   "FAT": 40,
+   "PL": 1.7,
+   "CCR": -2.1,
+   "DPR": -2.8,
+   "SCS": 2.83,
+   "MAS": -1.5,
+   "UDP": -0.2,
+   "FUA": 0,
+   "RUH": -0.1
+  }
+ },
+ {
+  "naab": "007JE01800",
+  "id17": "JE840003203866923",
+  "name": "S-S-I VICTORY DASHIELL RENFROW-ET",
+  "publishedJpi": 113,
+  "traits": {
+   "PRO": 23,
+   "FAT": 46,
+   "PL": 1.4,
+   "CCR": 1.7,
+   "DPR": 0.1,
+   "SCS": 3.06,
+   "MAS": -1.8,
+   "UDP": -2.2,
+   "FUA": -0.9,
+   "RUH": -1.1
+  }
+ },
+ {
+  "naab": "001JE01074",
+  "id17": "JEUSA000119966684",
+  "name": "JX PVF WC ZINC {5}-ET",
+  "publishedJpi": 113,
+  "traits": {
+   "PRO": 30,
+   "FAT": 56,
+   "PL": -1.4,
+   "CCR": -0.8,
+   "DPR": -0.9,
+   "SCS": 3.04,
+   "MAS": -0.6,
+   "UDP": -0.6,
+   "FUA": 0,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "236JE00224",
+  "id17": "JEDNK000000304164",
+  "name": "ISDK VJ HAVDAL LAPPE DEE {6}",
+  "publishedJpi": 112,
+  "traits": {
+   "PRO": -1,
+   "FAT": 51,
+   "PL": -0.3,
+   "CCR": 2.3,
+   "DPR": 2.8,
+   "SCS": 2.87,
+   "MAS": -0.4,
+   "UDP": -0.1,
+   "FUA": -1,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "011JE07333",
+  "id17": "JE840003228352351",
+  "name": "JX PEAK ALTAFIREOPAL {6}-ET",
+  "publishedJpi": 111,
+  "traits": {
+   "PRO": 21,
+   "FAT": 18,
+   "PL": 3.9,
+   "CCR": -0.9,
+   "DPR": -1.3,
+   "SCS": 2.85,
+   "MAS": -0.2,
+   "UDP": -0.4,
+   "FUA": 0.2,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "014JE01876",
+  "id17": "JE840003202631159",
+  "name": "JX AHLEM CHROME COLGATE {6}",
+  "publishedJpi": 110,
+  "traits": {
+   "PRO": 19,
+   "FAT": 27,
+   "PL": 2,
+   "CCR": 0.4,
+   "DPR": -0.5,
+   "SCS": 2.94,
+   "MAS": -1.5,
+   "UDP": 0.1,
+   "FUA": 0.7,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "007JE01710",
+  "id17": "JE840003144724412",
+  "name": "JX FARIA BROTHERS DARRELL {4}",
+  "publishedJpi": 109,
+  "traits": {
+   "PRO": -9,
+   "FAT": 5,
+   "PL": 2.5,
+   "CCR": 4,
+   "DPR": 3.8,
+   "SCS": 2.75,
+   "MAS": 0,
+   "UDP": 0.9,
+   "FUA": 0.1,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "001JE00856",
+  "id17": "JEUSA000118275545",
+  "name": "CAL-MART HENRICO SYSCO",
+  "publishedJpi": 109,
+  "traits": {
+   "PRO": 16,
+   "FAT": 30,
+   "PL": 0.7,
+   "CCR": 0.5,
+   "DPR": 1.1,
+   "SCS": 2.79,
+   "MAS": 2.4,
+   "UDP": -1.9,
+   "FUA": -1.6,
+   "RUH": -1.7
+  }
+ },
+ {
+  "naab": "014JE02075",
+  "id17": "JE840003232103066",
+  "name": "VICTORY LISTOWEL PEBBLE {6}-P",
+  "publishedJpi": 108,
+  "traits": {
+   "PRO": 32,
+   "FAT": 39,
+   "PL": 1.6,
+   "CCR": -2.2,
+   "DPR": -2.4,
+   "SCS": 2.79,
+   "MAS": 0.4,
+   "UDP": -3.1,
+   "FUA": -1.5,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "001JE01106",
+  "id17": "JE840003144724626",
+  "name": "JX FARIA BROTHERS STACKHOUSE {4}-ET",
+  "publishedJpi": 107,
+  "traits": {
+   "PRO": 33,
+   "FAT": 41,
+   "PL": 1,
+   "CCR": -1.1,
+   "DPR": -1.8,
+   "SCS": 3.04,
+   "MAS": -2.1,
+   "UDP": 0.2,
+   "FUA": -0.9,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "007JE02019",
+  "id17": "JE840003219498190",
+  "name": "DG BAR WINDSOR-ET",
+  "publishedJpi": 107,
+  "traits": {
+   "PRO": 44,
+   "FAT": 64,
+   "PL": -0.3,
+   "CCR": -3.5,
+   "DPR": -3.5,
+   "SCS": 3.06,
+   "MAS": -4.1,
+   "UDP": -0.6,
+   "FUA": 0,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "001JE07294",
+  "id17": "JE840003215564967",
+  "name": "JX PEAK DREAMCHASER {5}-ET",
+  "publishedJpi": 106,
+  "traits": {
+   "PRO": 23,
+   "FAT": 42,
+   "PL": 1,
+   "CCR": -1.5,
+   "DPR": -2.1,
+   "SCS": 2.89,
+   "MAS": -0.5,
+   "UDP": -0.1,
+   "FUA": 0.1,
+   "RUH": -0.6
+  }
+ },
+ {
+  "naab": "014JE02003",
+  "id17": "JE840003126987952",
+  "name": "VALSIGNA ROWAN ROSSI-ET",
+  "publishedJpi": 105,
+  "traits": {
+   "PRO": 19,
+   "FAT": 12,
+   "PL": 0.9,
+   "CCR": 0.7,
+   "DPR": 0.5,
+   "SCS": 2.89,
+   "MAS": 0.4,
+   "UDP": 0.2,
+   "FUA": 0.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003231727152",
+  "name": "JX TAYLOR BROTHERS HUXFORD 9628 {5}-ET",
+  "publishedJpi": 105,
+  "traits": {
+   "PRO": 16,
+   "FAT": 27,
+   "PL": 2.2,
+   "CCR": -0.9,
+   "DPR": -1.4,
+   "SCS": 2.83,
+   "MAS": 1.6,
+   "UDP": -1.3,
+   "FUA": -0.6,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "001JE07108",
+  "id17": "JE840003200650040",
+  "name": "JX FARIA BROTHERS TORYN {5}-ET",
+  "publishedJpi": 104,
+  "traits": {
+   "PRO": 34,
+   "FAT": 34,
+   "PL": 0.5,
+   "CCR": -0.7,
+   "DPR": -1.3,
+   "SCS": 3.2,
+   "MAS": -1.5,
+   "UDP": -0.1,
+   "FUA": 0.5,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "014JE02168",
+  "id17": "JE840003242639116",
+  "name": "DUPAT FEARNOT-ET",
+  "publishedJpi": 104,
+  "traits": {
+   "PRO": 18,
+   "FAT": 42,
+   "PL": 1,
+   "CCR": -0.5,
+   "DPR": -1.7,
+   "SCS": 3,
+   "MAS": -0.4,
+   "UDP": 0.4,
+   "FUA": -0.6,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "001JE07030",
+  "id17": "JE840003150320968",
+  "name": "JX CROSSWIND PRIX {4}-ET",
+  "publishedJpi": 103,
+  "traits": {
+   "PRO": 4,
+   "FAT": 26,
+   "PL": 2.2,
+   "CCR": -1.6,
+   "DPR": -1.1,
+   "SCS": 2.86,
+   "MAS": 1.5,
+   "UDP": 3.7,
+   "FUA": 2.9,
+   "RUH": 2.3
+  }
+ },
+ {
+  "naab": "097JE00229",
+  "id17": "JE840003240635645",
+  "name": "RIVER VALLEY CRACKERJACK-ET",
+  "publishedJpi": 103,
+  "traits": {
+   "PRO": 22,
+   "FAT": 40,
+   "PL": 1.8,
+   "CCR": -1.9,
+   "DPR": -2.6,
+   "SCS": 2.95,
+   "MAS": -2,
+   "UDP": -0.1,
+   "FUA": 0.6,
+   "RUH": 2
+  }
+ },
+ {
+  "naab": "097JE00165",
+  "id17": "JEUSA000119889365",
+  "name": "JX FOREST GLEN MONUMENT SULLY {6}",
+  "publishedJpi": 103,
+  "traits": {
+   "PRO": 8,
+   "FAT": 6,
+   "PL": 2.2,
+   "CCR": 2.4,
+   "DPR": 2.8,
+   "SCS": 2.97,
+   "MAS": 0.6,
+   "UDP": -1.2,
+   "FUA": 0,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "011JE07335",
+  "id17": "JE840003229908049",
+  "name": "PINE-TREE ALTAEXCELSIOR-ET",
+  "publishedJpi": 102,
+  "traits": {
+   "PRO": 38,
+   "FAT": 27,
+   "PL": 0,
+   "CCR": -1,
+   "DPR": -1.8,
+   "SCS": 3,
+   "MAS": -1.8,
+   "UDP": -0.5,
+   "FUA": 0.4,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "551JE01862",
+  "id17": "JE840003146621465",
+  "name": "SEXING JIG VIKTOR-ET",
+  "publishedJpi": 101,
+  "traits": {
+   "PRO": 23,
+   "FAT": 43,
+   "PL": 1.1,
+   "CCR": -1.9,
+   "DPR": -3.4,
+   "SCS": 3.05,
+   "MAS": -1,
+   "UDP": 1.4,
+   "FUA": 1,
+   "RUH": -0.1
+  }
+ },
+ {
+  "naab": "097JE00218",
+  "id17": "JE840003217483781",
+  "name": "TOG SUPERNEAU-PP-ET",
+  "publishedJpi": 101,
+  "traits": {
+   "PRO": 14,
+   "FAT": 8,
+   "PL": 3,
+   "CCR": -0.1,
+   "DPR": 0.3,
+   "SCS": 2.89,
+   "MAS": 0.7,
+   "UDP": 0.1,
+   "FUA": -0.4,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "007JE01743",
+  "id17": "JE840003149595182",
+  "name": "JX FARIA BROTHERS MANE {3}-P-ET",
+  "publishedJpi": 100,
+  "traits": {
+   "PRO": 14,
+   "FAT": -5,
+   "PL": 2.5,
+   "CCR": 2.5,
+   "DPR": 2.4,
+   "SCS": 3.07,
+   "MAS": 0.7,
+   "UDP": 0.8,
+   "FUA": 0,
+   "RUH": -1.2
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003243328720",
+  "name": "JX TAYLOR BROTHERS SD KRACKLE {5}-ET",
+  "publishedJpi": 100,
+  "traits": {
+   "PRO": 19,
+   "FAT": 43,
+   "PL": 1.6,
+   "CCR": -0.4,
+   "DPR": -1.8,
+   "SCS": 3.04,
+   "MAS": -0.7,
+   "UDP": -1.5,
+   "FUA": -0.3,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "029JE04403",
+  "id17": "JEUSA000067484945",
+  "name": "CAL-MART WELLS-ET",
+  "publishedJpi": 99,
+  "traits": {
+   "PRO": 14,
+   "FAT": 22,
+   "PL": 1.6,
+   "CCR": 1.5,
+   "DPR": 0.8,
+   "SCS": 2.94,
+   "MAS": -1.3,
+   "UDP": -0.8,
+   "FUA": -0.9,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "007JE01843",
+  "id17": "JE840003151455206",
+  "name": "S-S-I VICTORY URLACH HERBSTREIT-ET",
+  "publishedJpi": 98,
+  "traits": {
+   "PRO": 19,
+   "FAT": 18,
+   "PL": 1.8,
+   "CCR": 0.7,
+   "DPR": -0.5,
+   "SCS": 2.91,
+   "MAS": -0.5,
+   "UDP": -0.6,
+   "FUA": -0.1,
+   "RUH": -1.4
+  }
+ },
+ {
+  "naab": "236JE00223",
+  "id17": "JEDNK000000304163",
+  "name": "ISDK VJ GYVELBORG HIHL GYVEL",
+  "publishedJpi": 98,
+  "traits": {
+   "PRO": -2,
+   "FAT": 1,
+   "PL": 1.8,
+   "CCR": 2.6,
+   "DPR": 3.5,
+   "SCS": 2.75,
+   "MAS": 0.2,
+   "UDP": 1.7,
+   "FUA": -0.7,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "011JE07275",
+  "id17": "JE840003206581188",
+  "name": "DUPAT ALTASHANDON-ET",
+  "publishedJpi": 97,
+  "traits": {
+   "PRO": 21,
+   "FAT": 21,
+   "PL": 0.2,
+   "CCR": 1.4,
+   "DPR": 0.3,
+   "SCS": 2.98,
+   "MAS": -2.5,
+   "UDP": 0,
+   "FUA": 0.9,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "200JE10034",
+  "id17": "JEUSA000075341195",
+  "name": "JX RIVER VALLEY CHIEF {6}-ET",
+  "publishedJpi": 97,
+  "traits": {
+   "PRO": 28,
+   "FAT": 56,
+   "PL": 1.2,
+   "CCR": -4.4,
+   "DPR": -5.1,
+   "SCS": 2.93,
+   "MAS": -1.5,
+   "UDP": -1.3,
+   "FUA": 0.1,
+   "RUH": 2.8
+  }
+ },
+ {
+  "naab": "777JE01332",
+  "id17": "JE840003218042550",
+  "name": "JX VIERRA ZZTOP {5}",
+  "publishedJpi": 96,
+  "traits": {
+   "PRO": 20,
+   "FAT": 39,
+   "PL": 2.1,
+   "CCR": -2.3,
+   "DPR": -1.7,
+   "SCS": 3,
+   "MAS": -1.2,
+   "UDP": -0.7,
+   "FUA": -0.8,
+   "RUH": 1.3
+  }
+ },
+ {
+  "naab": "505JE00129",
+  "id17": "JEUSA000173813948",
+  "name": "BW TRADITION",
+  "publishedJpi": 96,
+  "traits": {
+   "PRO": -12,
+   "FAT": 8,
+   "PL": 2.4,
+   "CCR": 2,
+   "DPR": 2.2,
+   "SCS": 2.89,
+   "MAS": 1.9,
+   "UDP": 1.2,
+   "FUA": 1.2,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "054JE00932",
+  "id17": "JE840003217483563",
+  "name": "TOG LAMOURE 39878-PP-ET",
+  "publishedJpi": 95,
+  "traits": {
+   "PRO": 1,
+   "FAT": -25,
+   "PL": 3.6,
+   "CCR": 3.8,
+   "DPR": 2.8,
+   "SCS": 2.78,
+   "MAS": -0.5,
+   "UDP": 0.8,
+   "FUA": 0.2,
+   "RUH": 0.9
+  }
+ },
+ {
+  "naab": "001JE07054",
+  "id17": "JE840003205030381",
+  "name": "JX CO-OP LINDORZ {4}-ET",
+  "publishedJpi": 94,
+  "traits": {
+   "PRO": 12,
+   "FAT": 13,
+   "PL": 1.6,
+   "CCR": -0.4,
+   "DPR": -1,
+   "SCS": 2.9,
+   "MAS": 0.8,
+   "UDP": 1.3,
+   "FUA": 0.3,
+   "RUH": 0.9
+  }
+ },
+ {
+  "naab": "551JE01818",
+  "id17": "JEUSA000075812261",
+  "name": "PINE-TREE VDEE JAKE {6}-ET",
+  "publishedJpi": 94,
+  "traits": {
+   "PRO": 14,
+   "FAT": 31,
+   "PL": 0.9,
+   "CCR": 0.7,
+   "DPR": 1.1,
+   "SCS": 3.03,
+   "MAS": -1.3,
+   "UDP": -1.2,
+   "FUA": -0.6,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "011JE01377",
+  "id17": "JE840003144724539",
+  "name": "JX FARIA BROTHERS ALTABAYNES {3}-ET",
+  "publishedJpi": 93,
+  "traits": {
+   "PRO": 6,
+   "FAT": 29,
+   "PL": 1.1,
+   "CCR": 1.3,
+   "DPR": 0.7,
+   "SCS": 3.03,
+   "MAS": -0.6,
+   "UDP": 0.4,
+   "FUA": -0.7,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "001JE07299",
+  "id17": "JEUSA000067762389",
+  "name": "JX PINE-TREE NUEVO {5}-P",
+  "publishedJpi": 93,
+  "traits": {
+   "PRO": 17,
+   "FAT": 16,
+   "PL": 1.4,
+   "CCR": -1,
+   "DPR": -1,
+   "SCS": 3.14,
+   "MAS": 2,
+   "UDP": 1.2,
+   "FUA": 0.8,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "029JE04270",
+  "id17": "JE840003146074465",
+  "name": "ABS 4465 LAWSON-ET",
+  "publishedJpi": 92,
+  "traits": {
+   "PRO": 18,
+   "FAT": 27,
+   "PL": 1.3,
+   "CCR": -0.4,
+   "DPR": -0.3,
+   "SCS": 3.08,
+   "MAS": -2.8,
+   "UDP": 0.6,
+   "FUA": 1.4,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "777JE01237",
+  "id17": "JEUSA000067771986",
+  "name": "JX PINE-TREE CRAYON {4}-ET",
+  "publishedJpi": 92,
+  "traits": {
+   "PRO": 1,
+   "FAT": 32,
+   "PL": 2.2,
+   "CCR": -1,
+   "DPR": -1.2,
+   "SCS": 3.02,
+   "MAS": 0.3,
+   "UDP": 1.7,
+   "FUA": 1,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "011JE07326",
+  "id17": "JE840003228352384",
+  "name": "PEAK ALTACOPACABANA-ET",
+  "publishedJpi": 91,
+  "traits": {
+   "PRO": 34,
+   "FAT": 41,
+   "PL": -0.3,
+   "CCR": -1.8,
+   "DPR": -2.4,
+   "SCS": 3.09,
+   "MAS": -2.4,
+   "UDP": -0.9,
+   "FUA": 0,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "566JE00111",
+  "id17": "JEUSA000174022208",
+  "name": "BROOKVIEW MEGASTAR-ET",
+  "publishedJpi": 91,
+  "traits": {
+   "PRO": 15,
+   "FAT": 40,
+   "PL": 1.4,
+   "CCR": -1.4,
+   "DPR": -2,
+   "SCS": 3.07,
+   "MAS": -1,
+   "UDP": -0.5,
+   "FUA": 0.3,
+   "RUH": 1.1
+  }
+ },
+ {
+  "naab": "100JE07398",
+  "id17": "JE840003131274413",
+  "name": "YOSEMITE KW MASTERS DEGREE-ET",
+  "publishedJpi": 90,
+  "traits": {
+   "PRO": 1,
+   "FAT": 8,
+   "PL": -0.8,
+   "CCR": 2.1,
+   "DPR": 2,
+   "SCS": 2.83,
+   "MAS": -0.3,
+   "UDP": 1.1,
+   "FUA": 1.5,
+   "RUH": 1.7
+  }
+ },
+ {
+  "naab": "007JE01549",
+  "id17": "JEUSA000067823028",
+  "name": "JX AHLEM BARKSDALE SHOCKWAVE {3}",
+  "publishedJpi": 90,
+  "traits": {
+   "PRO": -14,
+   "FAT": -23,
+   "PL": 3,
+   "CCR": 4.1,
+   "DPR": 3.7,
+   "SCS": 2.68,
+   "MAS": 3.4,
+   "UDP": 0.5,
+   "FUA": -0.5,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "029JE04219",
+  "id17": "JE840003146074410",
+  "name": "JX ABS TLD DAWSON {5}-ET",
+  "publishedJpi": 89,
+  "traits": {
+   "PRO": 2,
+   "FAT": 26,
+   "PL": 0.6,
+   "CCR": -0.1,
+   "DPR": 0.5,
+   "SCS": 2.97,
+   "MAS": 0.6,
+   "UDP": 0.3,
+   "FUA": 0.7,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "054JE00900",
+  "id17": "JE840003209969259",
+  "name": "TOG ALEKNAGIK 38317-ET",
+  "publishedJpi": 89,
+  "traits": {
+   "PRO": 20,
+   "FAT": 41,
+   "PL": 0.8,
+   "CCR": -3.4,
+   "DPR": -2,
+   "SCS": 2.84,
+   "MAS": -0.4,
+   "UDP": -0.8,
+   "FUA": -0.5,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "007JE02111",
+  "id17": "JE840003242648625",
+  "name": "MFW TUCKER ST GALLEN-ET",
+  "publishedJpi": 89,
+  "traits": {
+   "PRO": 11,
+   "FAT": 15,
+   "PL": 2.6,
+   "CCR": -0.9,
+   "DPR": -1.2,
+   "SCS": 2.89,
+   "MAS": -0.5,
+   "UDP": 0.3,
+   "FUA": 0.3,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "014JE01647",
+  "id17": "JE840003139851986",
+  "name": "TOG ALTABLITZ AMES-ET",
+  "publishedJpi": 88,
+  "traits": {
+   "PRO": -6,
+   "FAT": 6,
+   "PL": 2.3,
+   "CCR": 2.3,
+   "DPR": 2,
+   "SCS": 2.82,
+   "MAS": 1.9,
+   "UDP": -0.7,
+   "FUA": -1.1,
+   "RUH": -0.6
+  }
+ },
+ {
+  "naab": "200JE10071",
+  "id17": "JE840003217183027",
+  "name": "RIVER VALLEY MASERATI-ET",
+  "publishedJpi": 88,
+  "traits": {
+   "PRO": 24,
+   "FAT": 1,
+   "PL": 2.4,
+   "CCR": -1,
+   "DPR": -1.6,
+   "SCS": 2.86,
+   "MAS": 0,
+   "UDP": -0.3,
+   "FUA": -0.1,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "200JE10033",
+  "id17": "JEUSA000075341176",
+  "name": "RIVER VALLEY MAC MOVER-ET",
+  "publishedJpi": 88,
+  "traits": {
+   "PRO": 4,
+   "FAT": 19,
+   "PL": 0.3,
+   "CCR": -0.2,
+   "DPR": -0.5,
+   "SCS": 3.04,
+   "MAS": 1.8,
+   "UDP": 2.4,
+   "FUA": 2,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "014JE02114",
+  "id17": "JE840003242648559",
+  "name": "MFW TUCKER URI-ET",
+  "publishedJpi": 87,
+  "traits": {
+   "PRO": 25,
+   "FAT": 36,
+   "PL": 0.3,
+   "CCR": -0.8,
+   "DPR": -1.6,
+   "SCS": 3.14,
+   "MAS": -2.2,
+   "UDP": -1.2,
+   "FUA": -0.7,
+   "RUH": 2.5
+  }
+ },
+ {
+  "naab": "551JE01824",
+  "id17": "JE840003146619661",
+  "name": "JX SEXING BERRARA GO ON {4}-ET",
+  "publishedJpi": 86,
+  "traits": {
+   "PRO": 5,
+   "FAT": 25,
+   "PL": 2.6,
+   "CCR": -3.5,
+   "DPR": -3.7,
+   "SCS": 2.87,
+   "MAS": 1.3,
+   "UDP": 2.1,
+   "FUA": 1.7,
+   "RUH": 1.8
+  }
+ },
+ {
+  "naab": "250JE01917",
+  "id17": "JE840003210010771",
+  "name": "VICTORY URLACHER PROAM-ET",
+  "publishedJpi": 86,
+  "traits": {
+   "PRO": 10,
+   "FAT": 11,
+   "PL": 1,
+   "CCR": -1.4,
+   "DPR": -1.5,
+   "SCS": 2.9,
+   "MAS": 1.6,
+   "UDP": 1.2,
+   "FUA": 1.7,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "007JE01787",
+  "id17": "JE840003006436062",
+  "name": "PRIMUS VICEROY CALIBAN-ET",
+  "publishedJpi": 85,
+  "traits": {
+   "PRO": 6,
+   "FAT": 2,
+   "PL": 1.7,
+   "CCR": 1.6,
+   "DPR": 0.1,
+   "SCS": 2.93,
+   "MAS": -1.7,
+   "UDP": 1.4,
+   "FUA": 1.3,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "777JE01301",
+  "id17": "JE840003218042425",
+  "name": "VIERRA BILLYJOEL-ET",
+  "publishedJpi": 85,
+  "traits": {
+   "PRO": 8,
+   "FAT": -10,
+   "PL": 2.2,
+   "CCR": 0.7,
+   "DPR": -0.5,
+   "SCS": 2.88,
+   "MAS": 1.1,
+   "UDP": 1,
+   "FUA": 1.6,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "151JE01613",
+  "id17": "JE840003010363495",
+  "name": "JX SEXING CRIS GORDON 59748 {4}-ET",
+  "publishedJpi": 84,
+  "traits": {
+   "PRO": -19,
+   "FAT": -16,
+   "PL": 3.4,
+   "CCR": 3.3,
+   "DPR": 2.4,
+   "SCS": 2.77,
+   "MAS": 2.9,
+   "UDP": 0.9,
+   "FUA": 0.2,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "001JE07513",
+  "id17": "JE840003217483596",
+  "name": "TOG PARKER 39911-PP-ET",
+  "publishedJpi": 84,
+  "traits": {
+   "PRO": 12,
+   "FAT": 21,
+   "PL": 1.9,
+   "CCR": 0.7,
+   "DPR": 0.3,
+   "SCS": 2.89,
+   "MAS": -1,
+   "UDP": -2.2,
+   "FUA": -2,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "011JE07038",
+  "id17": "JE840003149595323",
+  "name": "JX FARIA BROTHERS ALTATEXACO {4}",
+  "publishedJpi": 83,
+  "traits": {
+   "PRO": 18,
+   "FAT": 23,
+   "PL": 0.6,
+   "CCR": -1.2,
+   "DPR": -1.1,
+   "SCS": 3.03,
+   "MAS": 0.7,
+   "UDP": -0.5,
+   "FUA": -0.3,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "029JE04104",
+  "id17": "JEUSA000067384595",
+  "name": "JX CAL-MART LUKE DANNY {3}-ET",
+  "publishedJpi": 83,
+  "traits": {
+   "PRO": 10,
+   "FAT": 15,
+   "PL": 0.6,
+   "CCR": -0.1,
+   "DPR": 0.5,
+   "SCS": 3.08,
+   "MAS": -0.3,
+   "UDP": 1.3,
+   "FUA": 0.6,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "007JE01788",
+  "id17": "JE840003202630924",
+  "name": "JX AHLEM AMP HEIST {6}-ET",
+  "publishedJpi": 82,
+  "traits": {
+   "PRO": 28,
+   "FAT": 21,
+   "PL": 1.4,
+   "CCR": -4.2,
+   "DPR": -3.3,
+   "SCS": 2.92,
+   "MAS": -2,
+   "UDP": 1.2,
+   "FUA": 0.5,
+   "RUH": 1.8
+  }
+ },
+ {
+  "naab": "007JE02135",
+  "id17": "JE840003242639091",
+  "name": "JX RED TOP JLS TUCKER GRETZKY {5}-ET",
+  "publishedJpi": 82,
+  "traits": {
+   "PRO": -1,
+   "FAT": -6,
+   "PL": 1.9,
+   "CCR": 1.3,
+   "DPR": 1.3,
+   "SCS": 3.01,
+   "MAS": 0.4,
+   "UDP": 1.9,
+   "FUA": 1.5,
+   "RUH": 1.6
+  }
+ },
+ {
+  "naab": "137JE05030",
+  "id17": "JE840003136807511",
+  "name": "TOG JAVIER S743 8117-ET",
+  "publishedJpi": 81,
+  "traits": {
+   "PRO": 2,
+   "FAT": 9,
+   "PL": 0.9,
+   "CCR": 1,
+   "DPR": 0.8,
+   "SCS": 2.76,
+   "MAS": 1.9,
+   "UDP": -1.1,
+   "FUA": -0.9,
+   "RUH": -1.1
+  }
+ },
+ {
+  "naab": "777JE01365",
+  "id17": "JE840003218042665",
+  "name": "PROGENESIS SUE-P-ET",
+  "publishedJpi": 81,
+  "traits": {
+   "PRO": 31,
+   "FAT": 20,
+   "PL": 1.8,
+   "CCR": -2.2,
+   "DPR": -1.8,
+   "SCS": 3.09,
+   "MAS": -4.3,
+   "UDP": 0.1,
+   "FUA": 0,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "100JE07394",
+  "id17": "JEUSA000073409477",
+  "name": "AHLEM AXIS BREGO 22516-ET",
+  "publishedJpi": 81,
+  "traits": {
+   "PRO": 13,
+   "FAT": 7,
+   "PL": 0.6,
+   "CCR": -0.8,
+   "DPR": -0.5,
+   "SCS": 2.91,
+   "MAS": 1.3,
+   "UDP": 0,
+   "FUA": 0.1,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "551JE01717",
+  "id17": "JE840003138463636",
+  "name": "JX KASH-IN GOT JIGGY {6}-ET",
+  "publishedJpi": 80,
+  "traits": {
+   "PRO": 27,
+   "FAT": 37,
+   "PL": 1.3,
+   "CCR": -1.9,
+   "DPR": -4.5,
+   "SCS": 2.96,
+   "MAS": -0.9,
+   "UDP": -1.7,
+   "FUA": -1.5,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "007JE01717",
+  "id17": "JEUSA000067650294",
+  "name": "JX FOREST GLEN GOT MAID BRAZEN {6}-ET",
+  "publishedJpi": 80,
+  "traits": {
+   "PRO": 30,
+   "FAT": 18,
+   "PL": 1,
+   "CCR": -2.3,
+   "DPR": -3.2,
+   "SCS": 2.88,
+   "MAS": -0.9,
+   "UDP": -0.6,
+   "FUA": -0.5,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "551JE01819",
+  "id17": "JE840003146619631",
+  "name": "SEXING CHROME BOYCE-ET",
+  "publishedJpi": 79,
+  "traits": {
+   "PRO": 14,
+   "FAT": 27,
+   "PL": -0.7,
+   "CCR": -0.7,
+   "DPR": -0.9,
+   "SCS": 3.09,
+   "MAS": -1,
+   "UDP": 0.7,
+   "FUA": 1,
+   "RUH": 1.4
+  }
+ },
+ {
+  "naab": "029JE04220",
+  "id17": "JE840003207770464",
+  "name": "JX FARIA BROTHERS JACOBS {6}-ET",
+  "publishedJpi": 79,
+  "traits": {
+   "PRO": 16,
+   "FAT": 20,
+   "PL": 0.2,
+   "CCR": -1.2,
+   "DPR": -1.7,
+   "SCS": 2.97,
+   "MAS": 0.5,
+   "UDP": 0.1,
+   "FUA": -0.1,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "029JE04182",
+  "id17": "JEUSA000067801269",
+  "name": "JX SHOT OF NAT ALVIN {4}-ET",
+  "publishedJpi": 79,
+  "traits": {
+   "PRO": -2,
+   "FAT": -6,
+   "PL": 3.4,
+   "CCR": -0.6,
+   "DPR": -0.7,
+   "SCS": 2.88,
+   "MAS": 1.7,
+   "UDP": 1.4,
+   "FUA": 1.4,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "014JE01762",
+  "id17": "JE840003151584695",
+  "name": "BAR MB CRAZE CASTRO",
+  "publishedJpi": 78,
+  "traits": {
+   "PRO": 12,
+   "FAT": 12,
+   "PL": 3,
+   "CCR": -2.4,
+   "DPR": -2.8,
+   "SCS": 2.97,
+   "MAS": 1.3,
+   "UDP": -0.4,
+   "FUA": 0.2,
+   "RUH": 1.6
+  }
+ },
+ {
+  "naab": "011JE07305",
+  "id17": "JE840003215564910",
+  "name": "JX PEAK ALTABOWLINE {6}-ET",
+  "publishedJpi": 78,
+  "traits": {
+   "PRO": 16,
+   "FAT": 46,
+   "PL": -1.3,
+   "CCR": -1.8,
+   "DPR": -2,
+   "SCS": 2.99,
+   "MAS": -2,
+   "UDP": 0.1,
+   "FUA": 0.6,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "007JE01565",
+  "id17": "JE840003131651304",
+  "name": "JX D&E AVON PECOS {3}",
+  "publishedJpi": 77,
+  "traits": {
+   "PRO": 1,
+   "FAT": -12,
+   "PL": 1.5,
+   "CCR": 2.8,
+   "DPR": 1.9,
+   "SCS": 3.01,
+   "MAS": 1.1,
+   "UDP": 0.8,
+   "FUA": 0.9,
+   "RUH": -1.9
+  }
+ },
+ {
+  "naab": "007JE01822",
+  "id17": "JE840003151456032",
+  "name": "VICTORY S-S-I MIAMI FRINGE-ET",
+  "publishedJpi": 77,
+  "traits": {
+   "PRO": -4,
+   "FAT": -11,
+   "PL": 1.9,
+   "CCR": 2,
+   "DPR": 1.8,
+   "SCS": 3.04,
+   "MAS": 1,
+   "UDP": 1,
+   "FUA": 1.7,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "014JE02067",
+  "id17": "JE840003232102541",
+  "name": "S-S-I VICTORY RASH-ET",
+  "publishedJpi": 77,
+  "traits": {
+   "PRO": 3,
+   "FAT": 8,
+   "PL": 1.6,
+   "CCR": 0.2,
+   "DPR": 0.3,
+   "SCS": 3,
+   "MAS": -1.6,
+   "UDP": 1.6,
+   "FUA": 0.8,
+   "RUH": 1.3
+  }
+ },
+ {
+  "naab": "007JE01591",
+  "id17": "JEUSA000067823307",
+  "name": "AHLEM DIMENSION HOST 23307-ET",
+  "publishedJpi": 77,
+  "traits": {
+   "PRO": 1,
+   "FAT": 4,
+   "PL": 1.1,
+   "CCR": 1.4,
+   "DPR": 1.4,
+   "SCS": 2.8,
+   "MAS": 1.9,
+   "UDP": -1.5,
+   "FUA": -1.1,
+   "RUH": -1.6
+  }
+ },
+ {
+  "naab": "200JE01338",
+  "id17": "JE840003210484172",
+  "name": "SANDCREEKS KOLONEL-PP-ET",
+  "publishedJpi": 76,
+  "traits": {
+   "PRO": 24,
+   "FAT": 5,
+   "PL": 2.8,
+   "CCR": -1.7,
+   "DPR": -1.9,
+   "SCS": 2.96,
+   "MAS": -0.7,
+   "UDP": -1.2,
+   "FUA": -0.8,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "200JE01034",
+  "id17": "JEUSA000118981925",
+  "name": "ALL LYNNS VAST-ET",
+  "publishedJpi": 76,
+  "traits": {
+   "PRO": -3,
+   "FAT": -19,
+   "PL": 1.5,
+   "CCR": 2.6,
+   "DPR": 1.7,
+   "SCS": 2.82,
+   "MAS": 1.3,
+   "UDP": 1.3,
+   "FUA": 0.2,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "014JE02087",
+  "id17": "JE840003209721996",
+  "name": "DUPAT DIMITRI MADEON-ET",
+  "publishedJpi": 75,
+  "traits": {
+   "PRO": 10,
+   "FAT": 24,
+   "PL": 0.7,
+   "CCR": -1.7,
+   "DPR": -2.7,
+   "SCS": 2.96,
+   "MAS": 0.8,
+   "UDP": 0.4,
+   "FUA": 0.6,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "777JE10059",
+  "id17": "JEUSA000067861364",
+  "name": "RIVER VALLEY MACMELODY-ET",
+  "publishedJpi": 75,
+  "traits": {
+   "PRO": -4,
+   "FAT": -13,
+   "PL": 2.1,
+   "CCR": 1.8,
+   "DPR": 0.7,
+   "SCS": 2.79,
+   "MAS": 0.8,
+   "UDP": 0.7,
+   "FUA": 0.4,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "007JE01870",
+  "id17": "JE840003148508518",
+  "name": "JX AVI-LANCHE DSH HOLT {5}-ET",
+  "publishedJpi": 74,
+  "traits": {
+   "PRO": -3,
+   "FAT": 5,
+   "PL": 3.3,
+   "CCR": 1.4,
+   "DPR": 1,
+   "SCS": 3.11,
+   "MAS": -0.4,
+   "UDP": 0,
+   "FUA": 0,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "029JE04090",
+  "id17": "JEUSA000067693234",
+  "name": "JX AJ ZEKE {3}-ET",
+  "publishedJpi": 74,
+  "traits": {
+   "PRO": 11,
+   "FAT": 7,
+   "PL": 1,
+   "CCR": -0.7,
+   "DPR": 0.3,
+   "SCS": 3,
+   "MAS": 1,
+   "UDP": -0.8,
+   "FUA": -0.1,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "551JE01686",
+  "id17": "JE840003132350838",
+  "name": "JX SEXING TI WALT {3}-ET",
+  "publishedJpi": 73,
+  "traits": {
+   "PRO": 9,
+   "FAT": 1,
+   "PL": 0.3,
+   "CCR": -0.7,
+   "DPR": -0.3,
+   "SCS": 2.98,
+   "MAS": 0.8,
+   "UDP": 2.3,
+   "FUA": 1.5,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "007JE01781",
+  "id17": "JEUSA000067771825",
+  "name": "PINE-TREE 1625 PLYMOUTH 1825-ET",
+  "publishedJpi": 73,
+  "traits": {
+   "PRO": 17,
+   "FAT": 1,
+   "PL": -0.2,
+   "CCR": 0.6,
+   "DPR": 0.3,
+   "SCS": 3.03,
+   "MAS": 0,
+   "UDP": -0.2,
+   "FUA": 0.1,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "551JE01808",
+  "id17": "JE840003143701931",
+  "name": "JX TAYLOR JIGGY RIVER {5}-ET",
+  "publishedJpi": 72,
+  "traits": {
+   "PRO": 11,
+   "FAT": 17,
+   "PL": 1.5,
+   "CCR": -0.6,
+   "DPR": -2.3,
+   "SCS": 2.96,
+   "MAS": 0.6,
+   "UDP": -0.7,
+   "FUA": -0.5,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "200JE01074",
+  "id17": "JECAN000109266057",
+  "name": "PROGENESIS HILLMAN",
+  "publishedJpi": 72,
+  "traits": {
+   "PRO": -6,
+   "FAT": 2,
+   "PL": 0.7,
+   "CCR": 2.3,
+   "DPR": 1.5,
+   "SCS": 2.86,
+   "MAS": 1.7,
+   "UDP": -0.7,
+   "FUA": -0.5,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "007JE01728",
+  "id17": "JE840003006436090",
+  "name": "JX AHLEM BROS JLS CRAZE KARPIEL {6}-ET",
+  "publishedJpi": 71,
+  "traits": {
+   "PRO": 20,
+   "FAT": 36,
+   "PL": -1.3,
+   "CCR": -1.4,
+   "DPR": -0.9,
+   "SCS": 3.17,
+   "MAS": -1.1,
+   "UDP": -0.5,
+   "FUA": -1.1,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "029JE04154",
+  "id17": "JE840003149595637",
+  "name": "JX FARIA BROTHERS KUDLOW {5}-ET",
+  "publishedJpi": 71,
+  "traits": {
+   "PRO": 0,
+   "FAT": 8,
+   "PL": 0.6,
+   "CCR": -0.6,
+   "DPR": -0.3,
+   "SCS": 2.85,
+   "MAS": -0.5,
+   "UDP": 1.6,
+   "FUA": 1.3,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "001JE00933",
+  "id17": "JEUSA000074067452",
+  "name": "JX AHLEM BADGER CORDOBA {4}-ET",
+  "publishedJpi": 71,
+  "traits": {
+   "PRO": 2,
+   "FAT": 12,
+   "PL": 0,
+   "CCR": 0.6,
+   "DPR": 0.6,
+   "SCS": 2.91,
+   "MAS": 1.8,
+   "UDP": -0.5,
+   "FUA": -0.8,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "014JE01729",
+  "id17": "JE840003146582161",
+  "name": "PRIMUS CHANGEUP HITTER-ET",
+  "publishedJpi": 70,
+  "traits": {
+   "PRO": 3,
+   "FAT": 5,
+   "PL": 1.3,
+   "CCR": 0.1,
+   "DPR": -0.2,
+   "SCS": 2.74,
+   "MAS": -1.4,
+   "UDP": -0.6,
+   "FUA": 0.1,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "200JE01162",
+  "id17": "JEUSA000067273623",
+  "name": "JX TLJ MOTOR {6}-P-ET",
+  "publishedJpi": 70,
+  "traits": {
+   "PRO": 21,
+   "FAT": -7,
+   "PL": 2.6,
+   "CCR": -1.2,
+   "DPR": -1.5,
+   "SCS": 3.05,
+   "MAS": -0.7,
+   "UDP": -0.1,
+   "FUA": 0.1,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "200JE00913",
+  "id17": "JE840003124526297",
+  "name": "JX FARIA BROTHERS MESSI {4}-ET",
+  "publishedJpi": 69,
+  "traits": {
+   "PRO": 20,
+   "FAT": 34,
+   "PL": 0.9,
+   "CCR": -5.5,
+   "DPR": -4.3,
+   "SCS": 2.94,
+   "MAS": -0.8,
+   "UDP": 0.8,
+   "FUA": 0.5,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "007JE01650",
+  "id17": "JE840003140986505",
+  "name": "TOG LISTOWEL QUARTZ-ET",
+  "publishedJpi": 69,
+  "traits": {
+   "PRO": 24,
+   "FAT": 12,
+   "PL": 0.9,
+   "CCR": -2,
+   "DPR": -2.3,
+   "SCS": 2.94,
+   "MAS": 0,
+   "UDP": -1.7,
+   "FUA": -1.2,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "011JE07026",
+  "id17": "JE840003200373379",
+  "name": "JX ELM-J ALTAALLOY {4}-ET",
+  "publishedJpi": 69,
+  "traits": {
+   "PRO": 40,
+   "FAT": 59,
+   "PL": -2.3,
+   "CCR": -3.8,
+   "DPR": -3.1,
+   "SCS": 3.4,
+   "MAS": -1.9,
+   "UDP": -1.7,
+   "FUA": -1.3,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "014JE01626",
+  "id17": "JEUSA000119873803",
+  "name": "SUN VALLEY MARCIN JERONIMO-ET",
+  "publishedJpi": 69,
+  "traits": {
+   "PRO": 21,
+   "FAT": 4,
+   "PL": -0.9,
+   "CCR": -0.6,
+   "DPR": -1.1,
+   "SCS": 3.01,
+   "MAS": -0.5,
+   "UDP": 0.4,
+   "FUA": 1.1,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "029JE04098",
+  "id17": "JEUSA000067384557",
+  "name": "JX CAL-MART SWOOSH {5}-ET",
+  "publishedJpi": 68,
+  "traits": {
+   "PRO": 14,
+   "FAT": -14,
+   "PL": 1.5,
+   "CCR": -1.4,
+   "DPR": -0.3,
+   "SCS": 2.98,
+   "MAS": -0.4,
+   "UDP": 1.5,
+   "FUA": 1.5,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "011JE01379",
+  "id17": "JE840003149514358",
+  "name": "JX FARIA BROTHERS ALTAZIDANE {4}-ET",
+  "publishedJpi": 67,
+  "traits": {
+   "PRO": 16,
+   "FAT": 21,
+   "PL": 0,
+   "CCR": -0.5,
+   "DPR": 0,
+   "SCS": 3.16,
+   "MAS": -1.8,
+   "UDP": -1.1,
+   "FUA": -0.1,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "007JE02046",
+  "id17": "JE840003232101776",
+  "name": "JX VICTORY HOLEINONE BERMUDA {5}-ET",
+  "publishedJpi": 67,
+  "traits": {
+   "PRO": 26,
+   "FAT": 12,
+   "PL": 1.1,
+   "CCR": -1.4,
+   "DPR": -1.6,
+   "SCS": 3.07,
+   "MAS": -2.2,
+   "UDP": -1.7,
+   "FUA": -0.6,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "014JE01908",
+  "id17": "JEUSA000067801412",
+  "name": "CLOVER FARMS JACKS POTOGOLD",
+  "publishedJpi": 67,
+  "traits": {
+   "PRO": -3,
+   "FAT": -4,
+   "PL": 0.7,
+   "CCR": 2.1,
+   "DPR": 0.9,
+   "SCS": 2.83,
+   "MAS": -1.1,
+   "UDP": -0.1,
+   "FUA": 0.6,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "147JE06229",
+  "id17": "JE840003141725606",
+  "name": "JX DUPAT JLS STRMCLD DORSAI {5}-ET",
+  "publishedJpi": 66,
+  "traits": {
+   "PRO": 21,
+   "FAT": 11,
+   "PL": 1.5,
+   "CCR": 0,
+   "DPR": 0,
+   "SCS": 3.1,
+   "MAS": -3.2,
+   "UDP": -1.4,
+   "FUA": -1.2,
+   "RUH": -1
+  }
+ },
+ {
+  "naab": "001JE07116",
+  "id17": "JE840003206963166",
+  "name": "JX PEAK FREEFALL {5}-ET",
+  "publishedJpi": 66,
+  "traits": {
+   "PRO": 23,
+   "FAT": 21,
+   "PL": -0.7,
+   "CCR": -1.5,
+   "DPR": -0.9,
+   "SCS": 3.09,
+   "MAS": -1.7,
+   "UDP": -0.9,
+   "FUA": -0.1,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "777JE10058",
+  "id17": "JEUSA000067861371",
+  "name": "RIVER VALLEY B BRONSON-ET",
+  "publishedJpi": 66,
+  "traits": {
+   "PRO": 16,
+   "FAT": 34,
+   "PL": -0.5,
+   "CCR": -2.1,
+   "DPR": -2.2,
+   "SCS": 2.99,
+   "MAS": -1.9,
+   "UDP": -0.7,
+   "FUA": -0.2,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "007JE01622",
+  "id17": "JE840003006436210",
+  "name": "YOSEMITE MILTON RAGNAROK",
+  "publishedJpi": 65,
+  "traits": {
+   "PRO": 13,
+   "FAT": 21,
+   "PL": -0.3,
+   "CCR": 0.7,
+   "DPR": 1.1,
+   "SCS": 3.03,
+   "MAS": -2.3,
+   "UDP": -1.9,
+   "FUA": -1.4,
+   "RUH": -1.4
+  }
+ },
+ {
+  "naab": "001JE07209",
+  "id17": "JE840003149120924",
+  "name": "JX CO-OP XSTATIC {5}-ET",
+  "publishedJpi": 65,
+  "traits": {
+   "PRO": 10,
+   "FAT": 37,
+   "PL": -0.5,
+   "CCR": -0.8,
+   "DPR": -1.7,
+   "SCS": 3.18,
+   "MAS": -2.9,
+   "UDP": 0,
+   "FUA": 1.1,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "007JE01490",
+  "id17": "JEUSA000067198214",
+  "name": "O.F. BALLISTIC GREG",
+  "publishedJpi": 65,
+  "traits": {
+   "PRO": 11,
+   "FAT": -9,
+   "PL": 1.5,
+   "CCR": 0.3,
+   "DPR": -1.3,
+   "SCS": 3.05,
+   "MAS": 2.2,
+   "UDP": 0,
+   "FUA": -0.5,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "007JE01538",
+  "id17": "JE840003130320847",
+  "name": "JX MULTI-ROSE REGENCY RAMBO {5}-ET",
+  "publishedJpi": 64,
+  "traits": {
+   "PRO": 20,
+   "FAT": -3,
+   "PL": 0.3,
+   "CCR": 0,
+   "DPR": -0.2,
+   "SCS": 3.28,
+   "MAS": 0.5,
+   "UDP": 0.8,
+   "FUA": -0.3,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "001JE07045",
+  "id17": "JE840003200824335",
+  "name": "PEAK ENLITE-ET",
+  "publishedJpi": 64,
+  "traits": {
+   "PRO": 36,
+   "FAT": 48,
+   "PL": -2.6,
+   "CCR": -2.6,
+   "DPR": -3.3,
+   "SCS": 3.24,
+   "MAS": -4.3,
+   "UDP": -1.5,
+   "FUA": 0.2,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "029JE04231",
+  "id17": "JEUSA000067650499",
+  "name": "FOREST GLEN VICEROY CONDOR-ET",
+  "publishedJpi": 64,
+  "traits": {
+   "PRO": 1,
+   "FAT": 31,
+   "PL": 0,
+   "CCR": -0.1,
+   "DPR": -0.7,
+   "SCS": 3.17,
+   "MAS": -1.8,
+   "UDP": 0.3,
+   "FUA": 0.8,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "007JE01641",
+  "id17": "JE840003138463617",
+  "name": "JX JARS OF CLAY BODE {4}-ET",
+  "publishedJpi": 63,
+  "traits": {
+   "PRO": 15,
+   "FAT": 4,
+   "PL": -0.2,
+   "CCR": -1.8,
+   "DPR": -1.5,
+   "SCS": 2.91,
+   "MAS": 1.2,
+   "UDP": -0.2,
+   "FUA": -0.1,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "029JE04044",
+  "id17": "JEUSA000067384455",
+  "name": "CAL-MART BARRICADE",
+  "publishedJpi": 63,
+  "traits": {
+   "PRO": -8,
+   "FAT": -1,
+   "PL": -1,
+   "CCR": 2.2,
+   "DPR": 1.9,
+   "SCS": 2.79,
+   "MAS": 1.6,
+   "UDP": 0.1,
+   "FUA": -0.2,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "224JE02480",
+  "id17": "JEUSA000119413681",
+  "name": "GRAZELAND LEMONHEAD DEVINCI",
+  "publishedJpi": 63,
+  "traits": {
+   "PRO": -6,
+   "FAT": 6,
+   "PL": -0.4,
+   "CCR": 0.8,
+   "DPR": 1.1,
+   "SCS": 2.85,
+   "MAS": 2.4,
+   "UDP": -0.1,
+   "FUA": -0.7,
+   "RUH": -0.6
+  }
+ },
+ {
+  "naab": "007JE01701",
+  "id17": "JE840003141725612",
+  "name": "JX DUPAT FEVER {5}-P-ET",
+  "publishedJpi": 62,
+  "traits": {
+   "PRO": -2,
+   "FAT": -1,
+   "PL": 2.8,
+   "CCR": 1.5,
+   "DPR": 0.8,
+   "SCS": 3.15,
+   "MAS": -0.9,
+   "UDP": 0.6,
+   "FUA": -0.9,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "001JE00944",
+  "id17": "JEUSA000067294424",
+  "name": "CAL-MART PILGRIM TAD",
+  "publishedJpi": 62,
+  "traits": {
+   "PRO": 15,
+   "FAT": 4,
+   "PL": 0.3,
+   "CCR": 0.6,
+   "DPR": 1.3,
+   "SCS": 3.17,
+   "MAS": 0.1,
+   "UDP": -1.9,
+   "FUA": -0.6,
+   "RUH": -1.7
+  }
+ },
+ {
+  "naab": "100JE07381",
+  "id17": "JEUSA000119410053",
+  "name": "JX SUNSET CANYON MAID WELL {5}-ET",
+  "publishedJpi": 62,
+  "traits": {
+   "PRO": 11,
+   "FAT": 10,
+   "PL": 0.5,
+   "CCR": -1.7,
+   "DPR": -1.8,
+   "SCS": 2.91,
+   "MAS": 0.8,
+   "UDP": -0.1,
+   "FUA": -0.3,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "011JE01368",
+  "id17": "JE840003142181559",
+  "name": "JX PEAK ALTAARAGORN {3}-ET",
+  "publishedJpi": 61,
+  "traits": {
+   "PRO": 9,
+   "FAT": 20,
+   "PL": 0.3,
+   "CCR": -2.4,
+   "DPR": -2,
+   "SCS": 2.95,
+   "MAS": 0.4,
+   "UDP": -0.7,
+   "FUA": 0.2,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "236JE00213",
+  "id17": "JEDNK000000304129",
+  "name": "ISDK VJ DONGSGAARDEN HALEY",
+  "publishedJpi": 61,
+  "traits": {
+   "PRO": -9,
+   "FAT": 11,
+   "PL": -1.4,
+   "CCR": 1,
+   "DPR": 0,
+   "SCS": 2.77,
+   "MAS": 0,
+   "UDP": 1.7,
+   "FUA": 1,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "551JE01678",
+  "id17": "JE840003132350031",
+  "name": "JX SEXING AVON BELLMAN {3}-ET",
+  "publishedJpi": 60,
+  "traits": {
+   "PRO": -5,
+   "FAT": -21,
+   "PL": 3.2,
+   "CCR": 0.7,
+   "DPR": 1.3,
+   "SCS": 3.06,
+   "MAS": -0.8,
+   "UDP": 2.7,
+   "FUA": 2.8,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "029JE03972",
+  "id17": "JEUSA000073409415",
+  "name": "JX AHLEM PASSPORT {5}",
+  "publishedJpi": 60,
+  "traits": {
+   "PRO": 3,
+   "FAT": -20,
+   "PL": 1.2,
+   "CCR": 1.5,
+   "DPR": 0.7,
+   "SCS": 3.02,
+   "MAS": 0.8,
+   "UDP": 0.6,
+   "FUA": 0.3,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "007JE02112",
+  "id17": "JEUSA000174452951",
+  "name": "BROOKVIEW BOOGEYMAN-ET",
+  "publishedJpi": 60,
+  "traits": {
+   "PRO": 17,
+   "FAT": 2,
+   "PL": 1.6,
+   "CCR": -1.4,
+   "DPR": -1.5,
+   "SCS": 3.2,
+   "MAS": -2.6,
+   "UDP": 0.9,
+   "FUA": 0.7,
+   "RUH": 2.2
+  }
+ },
+ {
+  "naab": "551JE01807",
+  "id17": "JE840003149286926",
+  "name": "KASH-IN SLICK-ET",
+  "publishedJpi": 59,
+  "traits": {
+   "PRO": 17,
+   "FAT": 17,
+   "PL": 0.4,
+   "CCR": -1.3,
+   "DPR": -3,
+   "SCS": 3.05,
+   "MAS": -0.6,
+   "UDP": -1,
+   "FUA": -0.2,
+   "RUH": -0.1
+  }
+ },
+ {
+  "naab": "200JE10061",
+  "id17": "JEUSA000067801417",
+  "name": "RIVER VALLEY CHATEAU-ET",
+  "publishedJpi": 59,
+  "traits": {
+   "PRO": 5,
+   "FAT": 19,
+   "PL": 0.6,
+   "CCR": -0.3,
+   "DPR": -1.1,
+   "SCS": 3.13,
+   "MAS": -2.2,
+   "UDP": 0,
+   "FUA": 1,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "014JE00740",
+  "id17": "JE840003126823312",
+  "name": "SANDCREEKS REGENCY ZENON-P-ET",
+  "publishedJpi": 58,
+  "traits": {
+   "PRO": 11,
+   "FAT": 19,
+   "PL": -0.6,
+   "CCR": -1.2,
+   "DPR": -1.6,
+   "SCS": 3.17,
+   "MAS": 0.7,
+   "UDP": -0.3,
+   "FUA": 0.2,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "007JE02120",
+  "id17": "JE840003232102810",
+  "name": "VICTORY RHONDAS BIG RED-ET",
+  "publishedJpi": 58,
+  "traits": {
+   "PRO": 5,
+   "FAT": -8,
+   "PL": 0.6,
+   "CCR": -0.2,
+   "DPR": -0.4,
+   "SCS": 3.02,
+   "MAS": 0.2,
+   "UDP": 0.8,
+   "FUA": 1.2,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "029JE04013",
+  "id17": "JEUSA000119241794",
+  "name": "SUNSET CANYON MOTIVATION",
+  "publishedJpi": 58,
+  "traits": {
+   "PRO": -4,
+   "FAT": -11,
+   "PL": -0.4,
+   "CCR": 2.4,
+   "DPR": 2.1,
+   "SCS": 2.88,
+   "MAS": -0.1,
+   "UDP": -0.2,
+   "FUA": 0.5,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "551JE01737",
+  "id17": "JE840003144724308",
+  "name": "JX FARIA BROTHERS MAHREZ {5}-ET",
+  "publishedJpi": 57,
+  "traits": {
+   "PRO": 13,
+   "FAT": -1,
+   "PL": -1,
+   "CCR": 0.5,
+   "DPR": 0.5,
+   "SCS": 2.99,
+   "MAS": 0.6,
+   "UDP": -1.1,
+   "FUA": -0.6,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "014JE00749",
+  "id17": "JEUSA000067823081",
+  "name": "JX AHLEM DENTINE {3}-ET",
+  "publishedJpi": 57,
+  "traits": {
+   "PRO": -7,
+   "FAT": -16,
+   "PL": 2,
+   "CCR": -1.1,
+   "DPR": -0.2,
+   "SCS": 2.95,
+   "MAS": 2.6,
+   "UDP": 2.2,
+   "FUA": 1.5,
+   "RUH": 1.1
+  }
+ },
+ {
+  "naab": "007JE01670",
+  "id17": "JEUSA000119987371",
+  "name": "SUNSET CANYON MOCHINYA-ET",
+  "publishedJpi": 57,
+  "traits": {
+   "PRO": 6,
+   "FAT": -5,
+   "PL": 0.1,
+   "CCR": 0.2,
+   "DPR": 0.5,
+   "SCS": 2.91,
+   "MAS": 1.2,
+   "UDP": -0.7,
+   "FUA": -0.4,
+   "RUH": -1.5
+  }
+ },
+ {
+  "naab": "777JE01197",
+  "id17": "JEUSA000067671699",
+  "name": "JX PINE-TREE PROTOTYPE {5}-ET",
+  "publishedJpi": 56,
+  "traits": {
+   "PRO": 8,
+   "FAT": 20,
+   "PL": -0.5,
+   "CCR": -2,
+   "DPR": -2.2,
+   "SCS": 2.84,
+   "MAS": 0.4,
+   "UDP": -0.6,
+   "FUA": -0.4,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "029JE04137",
+  "id17": "JEUSA000173175006",
+  "name": "ALL LYNNS LISTOWEL DALTON-P-ET",
+  "publishedJpi": 56,
+  "traits": {
+   "PRO": 5,
+   "FAT": -13,
+   "PL": 0.4,
+   "CCR": 1.5,
+   "DPR": 0.8,
+   "SCS": 2.93,
+   "MAS": 0.6,
+   "UDP": -0.1,
+   "FUA": -0.5,
+   "RUH": -1.7
+  }
+ },
+ {
+  "naab": "551JE01696",
+  "id17": "JE840003132350493",
+  "name": "JX SEXING TI MAMBA {3}-ET",
+  "publishedJpi": 55,
+  "traits": {
+   "PRO": 2,
+   "FAT": 4,
+   "PL": -0.6,
+   "CCR": 1.5,
+   "DPR": 2.2,
+   "SCS": 3.33,
+   "MAS": -2.1,
+   "UDP": 1.2,
+   "FUA": 0.8,
+   "RUH": 1.8
+  }
+ },
+ {
+  "naab": "007JE01629",
+  "id17": "JE840003006436128",
+  "name": "CDF JLS COMANCHE TRIBUNE-ET",
+  "publishedJpi": 54,
+  "traits": {
+   "PRO": 9,
+   "FAT": 17,
+   "PL": -2.1,
+   "CCR": 0.3,
+   "DPR": -0.5,
+   "SCS": 3.06,
+   "MAS": 1.1,
+   "UDP": -0.6,
+   "FUA": -0.9,
+   "RUH": -1.1
+  }
+ },
+ {
+  "naab": "029JE04271",
+  "id17": "JEUSA000067762325",
+  "name": "PINE-TREE VACUUM-PP",
+  "publishedJpi": 54,
+  "traits": {
+   "PRO": -9,
+   "FAT": -22,
+   "PL": 0.6,
+   "CCR": 1.6,
+   "DPR": 2.2,
+   "SCS": 2.93,
+   "MAS": 1.4,
+   "UDP": 1.4,
+   "FUA": 0.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "011JE07295",
+  "id17": "JE840003206581216",
+  "name": "DUPAT ALTAEMBRACIVE-ET",
+  "publishedJpi": 53,
+  "traits": {
+   "PRO": 10,
+   "FAT": 1,
+   "PL": 1.1,
+   "CCR": -0.1,
+   "DPR": -0.8,
+   "SCS": 3.13,
+   "MAS": -1.9,
+   "UDP": 0.4,
+   "FUA": 0.4,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "097JE00148",
+  "id17": "JEUSA000119266841",
+  "name": "JX GYPOS J CELTIC {5}",
+  "publishedJpi": 53,
+  "traits": {
+   "PRO": 6,
+   "FAT": 5,
+   "PL": -1.7,
+   "CCR": -0.6,
+   "DPR": -0.5,
+   "SCS": 2.94,
+   "MAS": 0,
+   "UDP": 0.6,
+   "FUA": 0.5,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "097JE00150",
+  "id17": "JEUSA000067609471",
+  "name": "FOREST GLEN PREMIUM GOLD",
+  "publishedJpi": 52,
+  "traits": {
+   "PRO": 13,
+   "FAT": 29,
+   "PL": -0.9,
+   "CCR": -1.3,
+   "DPR": -1.7,
+   "SCS": 3.15,
+   "MAS": -1.3,
+   "UDP": -1,
+   "FUA": -1.3,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "007JE01816",
+  "id17": "JE840003201928443",
+  "name": "ROWLEYS 1996 DANIEL TUCKER {6}-ET",
+  "publishedJpi": 51,
+  "traits": {
+   "PRO": -1,
+   "FAT": -9,
+   "PL": 1.8,
+   "CCR": -0.2,
+   "DPR": -0.1,
+   "SCS": 3.13,
+   "MAS": -1.2,
+   "UDP": 2,
+   "FUA": 1,
+   "RUH": 1.7
+  }
+ },
+ {
+  "naab": "551JE01654",
+  "id17": "JEUSA000074067613",
+  "name": "JX AHLEM BRUNO {5}-ET",
+  "publishedJpi": 51,
+  "traits": {
+   "PRO": -2,
+   "FAT": -8,
+   "PL": 0.4,
+   "CCR": 1,
+   "DPR": 0.4,
+   "SCS": 3.11,
+   "MAS": 1.3,
+   "UDP": 1.3,
+   "FUA": 0.3,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "007JE01735",
+  "id17": "JE840003141725655",
+  "name": "JX DUPAT CRAZE WYLDE {5}-ET",
+  "publishedJpi": 50,
+  "traits": {
+   "PRO": 11,
+   "FAT": 0,
+   "PL": 0.7,
+   "CCR": -3.2,
+   "DPR": -2.7,
+   "SCS": 3.03,
+   "MAS": -1.1,
+   "UDP": 1.8,
+   "FUA": 1.3,
+   "RUH": 2.5
+  }
+ },
+ {
+  "naab": "007JE01654",
+  "id17": "JEUSA000172565141",
+  "name": "JX PVF WORLD CUP ZUP {5}-ET",
+  "publishedJpi": 50,
+  "traits": {
+   "PRO": -4,
+   "FAT": 17,
+   "PL": -2.5,
+   "CCR": 0.2,
+   "DPR": 0.2,
+   "SCS": 3.02,
+   "MAS": 0.9,
+   "UDP": 0.7,
+   "FUA": 0.1,
+   "RUH": 0.8
+  }
+ },
+ {
+  "naab": "551JE01806",
+  "id17": "JE840003149286915",
+  "name": "KASH-IN SUPERIOR-ET",
+  "publishedJpi": 49,
+  "traits": {
+   "PRO": 23,
+   "FAT": 25,
+   "PL": -0.4,
+   "CCR": -2.3,
+   "DPR": -3.5,
+   "SCS": 3.02,
+   "MAS": -1.8,
+   "UDP": -2.3,
+   "FUA": -1.1,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "007JE01477",
+  "id17": "JE840003124526245",
+  "name": "JX FARIA BROTHERS SAINT {4}-ET",
+  "publishedJpi": 48,
+  "traits": {
+   "PRO": 1,
+   "FAT": 4,
+   "PL": -0.7,
+   "CCR": 1.3,
+   "DPR": 0.8,
+   "SCS": 3.04,
+   "MAS": -1.4,
+   "UDP": 0.1,
+   "FUA": -0.7,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "007JE01817",
+  "id17": "JE840003201928449",
+  "name": "REDROW 5710 DASHIELL POBOY {6}-ET",
+  "publishedJpi": 48,
+  "traits": {
+   "PRO": -2,
+   "FAT": 6,
+   "PL": 1.2,
+   "CCR": -0.2,
+   "DPR": -0.9,
+   "SCS": 2.98,
+   "MAS": -1.4,
+   "UDP": -0.2,
+   "FUA": 0,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "001JE00931",
+  "id17": "JEUSA000074067432",
+  "name": "AHLEM CHUCK CONFIDENTIAL-ET",
+  "publishedJpi": 48,
+  "traits": {
+   "PRO": -10,
+   "FAT": 11,
+   "PL": 0,
+   "CCR": -0.1,
+   "DPR": 0.2,
+   "SCS": 2.94,
+   "MAS": 2.4,
+   "UDP": -0.5,
+   "FUA": -0.8,
+   "RUH": -1.7
+  }
+ },
+ {
+  "naab": "200JE01225",
+  "id17": "JEUSA000067781352",
+  "name": "JX SHOT OF NAT ANSWER {4}-ET",
+  "publishedJpi": 47,
+  "traits": {
+   "PRO": -6,
+   "FAT": -4,
+   "PL": 1.4,
+   "CCR": -1.1,
+   "DPR": -1.1,
+   "SCS": 3.11,
+   "MAS": 1.1,
+   "UDP": 1.4,
+   "FUA": 1.6,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "011JE01366",
+  "id17": "JE840003144724346",
+  "name": "JX FARIA BROTHERS ALTARASHFORD {4}-ET",
+  "publishedJpi": 46,
+  "traits": {
+   "PRO": 19,
+   "FAT": 14,
+   "PL": -0.9,
+   "CCR": -5.1,
+   "DPR": -4.2,
+   "SCS": 2.85,
+   "MAS": -0.4,
+   "UDP": 0.3,
+   "FUA": 0.8,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "011JE01288",
+  "id17": "JEUSA000119225758",
+  "name": "JX HILMAR GOLDA RING {4}-ET",
+  "publishedJpi": 46,
+  "traits": {
+   "PRO": 7,
+   "FAT": 0,
+   "PL": -0.2,
+   "CCR": -0.8,
+   "DPR": -0.4,
+   "SCS": 2.95,
+   "MAS": -1.2,
+   "UDP": 0.3,
+   "FUA": -0.8,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "011JE07268",
+  "id17": "JE840003215564929",
+  "name": "PEAK ALTATHADDEUS-ET",
+  "publishedJpi": 45,
+  "traits": {
+   "PRO": -2,
+   "FAT": 32,
+   "PL": -0.8,
+   "CCR": -2.4,
+   "DPR": -2.1,
+   "SCS": 3.1,
+   "MAS": -1.7,
+   "UDP": 0.8,
+   "FUA": 1.2,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "007JE01774",
+  "id17": "JEUSA000173502448",
+  "name": "JX ALL LYNNS KLAY DESTINY {4}-P-ET",
+  "publishedJpi": 45,
+  "traits": {
+   "PRO": 2,
+   "FAT": -6,
+   "PL": 0.4,
+   "CCR": -0.1,
+   "DPR": 0.1,
+   "SCS": 3.11,
+   "MAS": -1.4,
+   "UDP": 1.4,
+   "FUA": 1.1,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "007JE01820",
+  "id17": "JE840003151455737",
+  "name": "VICTORY S-S-I MIAMI HOLEINONE-ET",
+  "publishedJpi": 44,
+  "traits": {
+   "PRO": 23,
+   "FAT": 23,
+   "PL": -0.8,
+   "CCR": -3.8,
+   "DPR": -3.2,
+   "SCS": 3.17,
+   "MAS": -3.4,
+   "UDP": -0.7,
+   "FUA": 0.5,
+   "RUH": 2
+  }
+ },
+ {
+  "naab": "011JE01287",
+  "id17": "JEUSA000074067506",
+  "name": "JX AHLEM JUMBO SPROUT {5}",
+  "publishedJpi": 44,
+  "traits": {
+   "PRO": 4,
+   "FAT": -12,
+   "PL": -0.3,
+   "CCR": 1.1,
+   "DPR": 1.4,
+   "SCS": 3.06,
+   "MAS": -1,
+   "UDP": 0,
+   "FUA": -0.5,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "001JE01098",
+  "id17": "JE840003134637613",
+  "name": "JX SANDCREEK SOLDIER {4}-ET",
+  "publishedJpi": 43,
+  "traits": {
+   "PRO": 9,
+   "FAT": 16,
+   "PL": -1.1,
+   "CCR": -1.1,
+   "DPR": -0.7,
+   "SCS": 3.13,
+   "MAS": 0.6,
+   "UDP": -1.4,
+   "FUA": -1.3,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "007JE01520",
+  "id17": "JEUSA000119408894",
+  "name": "NORSE STAR FIERCE VOLCANO-ET",
+  "publishedJpi": 43,
+  "traits": {
+   "PRO": 2,
+   "FAT": -21,
+   "PL": 0.8,
+   "CCR": -0.3,
+   "DPR": -0.8,
+   "SCS": 2.92,
+   "MAS": 1.4,
+   "UDP": -0.1,
+   "FUA": 0.5,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "200JE01064",
+  "id17": "JECAN000109411770",
+  "name": "VERJATIN WESTSTAR-ET",
+  "publishedJpi": 42,
+  "traits": {
+   "PRO": 15,
+   "FAT": 14,
+   "PL": -2.1,
+   "CCR": -2.2,
+   "DPR": -2.1,
+   "SCS": 2.98,
+   "MAS": -1.5,
+   "UDP": -0.3,
+   "FUA": 0.1,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "001JE00952",
+  "id17": "JE840003012658818",
+  "name": "JX CO-OP AD FRMDBL HESTON {4}-ET",
+  "publishedJpi": 41,
+  "traits": {
+   "PRO": -9,
+   "FAT": -14,
+   "PL": 1.2,
+   "CCR": 1.6,
+   "DPR": 2,
+   "SCS": 2.96,
+   "MAS": -1.3,
+   "UDP": -0.7,
+   "FUA": -0.6,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "624JE08001",
+  "id17": "JEDEU000539873046",
+  "name": "DEU RC SOL-PP",
+  "publishedJpi": 41,
+  "traits": {
+   "PRO": -3,
+   "FAT": -5,
+   "PL": -1.6,
+   "CCR": 0.8,
+   "DPR": 0.7,
+   "SCS": 2.96,
+   "MAS": 0.2,
+   "UDP": 0.9,
+   "FUA": 0.1,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "200JE01072",
+  "id17": "JECAN000109498923",
+  "name": "ALPENROSE MACMILLER",
+  "publishedJpi": 40,
+  "traits": {
+   "PRO": -7,
+   "FAT": 17,
+   "PL": -2.1,
+   "CCR": -1.4,
+   "DPR": -0.4,
+   "SCS": 2.85,
+   "MAS": 1.1,
+   "UDP": -0.7,
+   "FUA": -0.1,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "551JE01643",
+  "id17": "JE840003010364630",
+  "name": "JX SEXING VALIDATE 60883 {5}-ET",
+  "publishedJpi": 39,
+  "traits": {
+   "PRO": 27,
+   "FAT": 19,
+   "PL": -1.7,
+   "CCR": -4,
+   "DPR": -4,
+   "SCS": 2.93,
+   "MAS": 0,
+   "UDP": -2.4,
+   "FUA": -1.8,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "097JE42034",
+  "id17": "JEDNK005344803387",
+  "name": "ISDK ADELGAARD PRIMERO PRIMAL",
+  "publishedJpi": 39,
+  "traits": {
+   "PRO": -29,
+   "FAT": -12,
+   "PL": -0.1,
+   "CCR": 3.3,
+   "DPR": 3.3,
+   "SCS": 3.11,
+   "MAS": 1.4,
+   "UDP": 2,
+   "FUA": 0.8,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "551JE01642",
+  "id17": "JE840003010364537",
+  "name": "JX SEXING WALTER CRANSTON 60790 {5}",
+  "publishedJpi": 38,
+  "traits": {
+   "PRO": 5,
+   "FAT": 23,
+   "PL": -2.4,
+   "CCR": -4,
+   "DPR": -1.9,
+   "SCS": 2.88,
+   "MAS": 0.5,
+   "UDP": -0.4,
+   "FUA": 0.2,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "202JE00609",
+  "id17": "JE840003202129292",
+  "name": "COVINGTON COJACK LUKE-PP",
+  "publishedJpi": 38,
+  "traits": {
+   "PRO": 7,
+   "FAT": -18,
+   "PL": 0.3,
+   "CCR": -2.3,
+   "DPR": -1.8,
+   "SCS": 2.96,
+   "MAS": 1,
+   "UDP": 0.8,
+   "FUA": 0.8,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "097JE00175",
+  "id17": "JE840003135124349",
+  "name": "JX FARIA BROTHERS IGNATIUS {4}-ET",
+  "publishedJpi": 37,
+  "traits": {
+   "PRO": 2,
+   "FAT": -7,
+   "PL": -0.3,
+   "CCR": 0.3,
+   "DPR": 0.1,
+   "SCS": 3.08,
+   "MAS": -0.8,
+   "UDP": 0.4,
+   "FUA": -0.4,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "200JE01140",
+  "id17": "JEUSA000067823718",
+  "name": "AHLEM WHISTLER-ET",
+  "publishedJpi": 37,
+  "traits": {
+   "PRO": 7,
+   "FAT": 8,
+   "PL": -0.7,
+   "CCR": -3.8,
+   "DPR": -3,
+   "SCS": 2.95,
+   "MAS": -0.6,
+   "UDP": 1,
+   "FUA": 1.1,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "029JE04218",
+  "id17": "JEUSA000067374694",
+  "name": "JX CAL-MART RUSSELL WIZARD {5}-ET",
+  "publishedJpi": 36,
+  "traits": {
+   "PRO": 3,
+   "FAT": 16,
+   "PL": -2.3,
+   "CCR": -1.1,
+   "DPR": -1.8,
+   "SCS": 3.08,
+   "MAS": -0.7,
+   "UDP": 1,
+   "FUA": 0.3,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "522JE01726",
+  "id17": "JEGBR543178302905",
+  "name": "ISGB GRAHAMS GOLD-P-ET",
+  "publishedJpi": 35,
+  "traits": {
+   "PRO": -18,
+   "FAT": -8,
+   "PL": 0.2,
+   "CCR": 1.7,
+   "DPR": 2.7,
+   "SCS": 2.9,
+   "MAS": 0.7,
+   "UDP": -1,
+   "FUA": -1.2,
+   "RUH": -1.3
+  }
+ },
+ {
+  "naab": "097JE00173",
+  "id17": "JEUSA000172565169",
+  "name": "JX PVF WORLD CUP ZANDER {5}",
+  "publishedJpi": 35,
+  "traits": {
+   "PRO": -24,
+   "FAT": -15,
+   "PL": 0.2,
+   "CCR": 1.7,
+   "DPR": 2.1,
+   "SCS": 2.93,
+   "MAS": 1.6,
+   "UDP": 0.5,
+   "FUA": 0.3,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "007JE01628",
+  "id17": "JEUSA000172581329",
+  "name": "DP KILOWATT AMP-ET",
+  "publishedJpi": 34,
+  "traits": {
+   "PRO": -1,
+   "FAT": -1,
+   "PL": 0.8,
+   "CCR": -0.7,
+   "DPR": -0.8,
+   "SCS": 3.05,
+   "MAS": -1.2,
+   "UDP": -0.6,
+   "FUA": -0.7,
+   "RUH": 0.7
+  }
+ },
+ {
+  "naab": "777JE01322",
+  "id17": "JE840003218042518",
+  "name": "JX VIERRA OZZY {5}-ET",
+  "publishedJpi": 33,
+  "traits": {
+   "PRO": 13,
+   "FAT": 19,
+   "PL": 0.2,
+   "CCR": -2.5,
+   "DPR": -3.2,
+   "SCS": 3.09,
+   "MAS": -3.2,
+   "UDP": -2,
+   "FUA": -0.7,
+   "RUH": 0.9
+  }
+ },
+ {
+  "naab": "007JE01604",
+  "id17": "JE840003135124483",
+  "name": "JX FARIA BROTHERS MALDINI {4}-ET",
+  "publishedJpi": 32,
+  "traits": {
+   "PRO": -4,
+   "FAT": 27,
+   "PL": -1.4,
+   "CCR": -3.1,
+   "DPR": -2.4,
+   "SCS": 2.87,
+   "MAS": -1.1,
+   "UDP": -0.2,
+   "FUA": 0.2,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "200JE01107",
+  "id17": "JEUSA000119734375",
+  "name": "SCHOENE KUH MOOFASA-ET",
+  "publishedJpi": 32,
+  "traits": {
+   "PRO": 22,
+   "FAT": 34,
+   "PL": -1.9,
+   "CCR": -3.4,
+   "DPR": -3.3,
+   "SCS": 3.14,
+   "MAS": -1.4,
+   "UDP": -2.9,
+   "FUA": -2.3,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "014JE00697",
+  "id17": "JEUSA000118923635",
+  "name": "SPRING CREEK JUSTIFIED-ET",
+  "publishedJpi": 31,
+  "traits": {
+   "PRO": 8,
+   "FAT": 6,
+   "PL": -2.7,
+   "CCR": -0.5,
+   "DPR": 0.3,
+   "SCS": 3.02,
+   "MAS": -0.8,
+   "UDP": -1.3,
+   "FUA": -1.2,
+   "RUH": -0.5
+  }
+ },
+ {
+  "naab": "200JE01306",
+  "id17": "JECAN000120219769",
+  "name": "LAITJOIE LIGHTNING-ET",
+  "publishedJpi": 30,
+  "traits": {
+   "PRO": -11,
+   "FAT": 26,
+   "PL": 0.6,
+   "CCR": -3,
+   "DPR": -2.4,
+   "SCS": 2.92,
+   "MAS": 0.8,
+   "UDP": -2.1,
+   "FUA": -1.1,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "007JE05040",
+  "id17": "JE840003126479438",
+  "name": "RIVER VALLEY FLASH-ET",
+  "publishedJpi": 29,
+  "traits": {
+   "PRO": 14,
+   "FAT": -5,
+   "PL": -2.1,
+   "CCR": -2.6,
+   "DPR": -2.3,
+   "SCS": 3.05,
+   "MAS": 0,
+   "UDP": 0.4,
+   "FUA": 0.9,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "097JE00178",
+  "id17": "JEUSA000067742198",
+  "name": "JX OAK LANE WHODAT {4}-P-ET",
+  "publishedJpi": 29,
+  "traits": {
+   "PRO": -20,
+   "FAT": -22,
+   "PL": 1.5,
+   "CCR": 0.9,
+   "DPR": 0.8,
+   "SCS": 3.06,
+   "MAS": 0.6,
+   "UDP": 2.4,
+   "FUA": 1.1,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "097JE00168",
+  "id17": "JEUSA000067742173",
+  "name": "JX OAK LANE WINGMAN {5}-ET",
+  "publishedJpi": 28,
+  "traits": {
+   "PRO": -3,
+   "FAT": 4,
+   "PL": -0.1,
+   "CCR": -3.1,
+   "DPR": -2.1,
+   "SCS": 3.04,
+   "MAS": 0.5,
+   "UDP": 1.2,
+   "FUA": 0.9,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "014JE00696",
+  "id17": "JEUSA000118923626",
+  "name": "SPRING CREEK AMAZING LAZER",
+  "publishedJpi": 27,
+  "traits": {
+   "PRO": -5,
+   "FAT": 0,
+   "PL": -2.2,
+   "CCR": 0.8,
+   "DPR": 0.4,
+   "SCS": 2.93,
+   "MAS": -1,
+   "UDP": -0.4,
+   "FUA": -0.9,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "011JE01256",
+  "id17": "JEUSA000073409441",
+  "name": "JX AHLEM WYATT FRITZ {5}-ET",
+  "publishedJpi": 26,
+  "traits": {
+   "PRO": -6,
+   "FAT": -23,
+   "PL": -1.2,
+   "CCR": -0.1,
+   "DPR": 1.1,
+   "SCS": 2.95,
+   "MAS": 1.3,
+   "UDP": 0.3,
+   "FUA": 0,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "029JE04086",
+  "id17": "JEUSA000067384551",
+  "name": "JX CAL-MART DINERO {4}",
+  "publishedJpi": 25,
+  "traits": {
+   "PRO": -13,
+   "FAT": -10,
+   "PL": -0.8,
+   "CCR": -0.7,
+   "DPR": 0.3,
+   "SCS": 2.94,
+   "MAS": 0.3,
+   "UDP": 0.6,
+   "FUA": 0.8,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "777JE01370",
+  "id17": "JECAN000120345574",
+  "name": "LENCREST BROADBAND-P-ET",
+  "publishedJpi": 24,
+  "traits": {
+   "PRO": -4,
+   "FAT": 2,
+   "PL": -0.3,
+   "CCR": -2.4,
+   "DPR": -1.6,
+   "SCS": 3.08,
+   "MAS": 1.1,
+   "UDP": -0.4,
+   "FUA": 0.5,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "200JE01068",
+  "id17": "JEUSA000119339673",
+  "name": "SUN VALLEY PANORAMA",
+  "publishedJpi": 24,
+  "traits": {
+   "PRO": -6,
+   "FAT": -11,
+   "PL": 0,
+   "CCR": -1.5,
+   "DPR": -0.5,
+   "SCS": 2.9,
+   "MAS": -0.2,
+   "UDP": -0.2,
+   "FUA": 0.2,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "029JE04016",
+  "id17": "JEUSA000119258051",
+  "name": "ORTHRIDGE DEFOREST-PP-ET",
+  "publishedJpi": 23,
+  "traits": {
+   "PRO": -12,
+   "FAT": -2,
+   "PL": 0.2,
+   "CCR": -0.9,
+   "DPR": -0.3,
+   "SCS": 3.03,
+   "MAS": 1.5,
+   "UDP": 0,
+   "FUA": -1.5,
+   "RUH": -0.7
+  }
+ },
+ {
+  "naab": "014JE00716",
+  "id17": "JEUSA000119222670",
+  "name": "JX BRADYS SAMSON SALSA {5}",
+  "publishedJpi": 22,
+  "traits": {
+   "PRO": 8,
+   "FAT": 27,
+   "PL": -1.5,
+   "CCR": -4.1,
+   "DPR": -2.7,
+   "SCS": 3.21,
+   "MAS": -0.4,
+   "UDP": -0.5,
+   "FUA": -1.2,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "029JE04019",
+  "id17": "JEUSA000067731180",
+  "name": "JX NORMANDELL HARRIS WESLEY {5}",
+  "publishedJpi": 21,
+  "traits": {
+   "PRO": 21,
+   "FAT": 8,
+   "PL": -1.4,
+   "CCR": -3.8,
+   "DPR": -4.2,
+   "SCS": 3.02,
+   "MAS": -1,
+   "UDP": -1.3,
+   "FUA": -1.1,
+   "RUH": -1
+  }
+ },
+ {
+  "naab": "200JE01128",
+  "id17": "JECAN000110194382",
+  "name": "GUIMO JUDO",
+  "publishedJpi": 20,
+  "traits": {
+   "PRO": -14,
+   "FAT": -18,
+   "PL": -0.1,
+   "CCR": 0.4,
+   "DPR": 1.4,
+   "SCS": 3.15,
+   "MAS": -0.2,
+   "UDP": 1.1,
+   "FUA": 0.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "100JE07414",
+  "id17": "JEUSA000173345263",
+  "name": "SUNSET CANYON BERLIN-ET",
+  "publishedJpi": 20,
+  "traits": {
+   "PRO": -11,
+   "FAT": 8,
+   "PL": -2.6,
+   "CCR": -1.1,
+   "DPR": -0.7,
+   "SCS": 3.08,
+   "MAS": 0,
+   "UDP": 1.2,
+   "FUA": 0.7,
+   "RUH": 0.6
+  }
+ },
+ {
+  "naab": "151JE00009",
+  "id17": "JEUSA000117203756",
+  "name": "BUTTERCREST GLASGOW-ET",
+  "publishedJpi": 19,
+  "traits": {
+   "PRO": -15,
+   "FAT": -8,
+   "PL": -1.2,
+   "CCR": -0.4,
+   "DPR": 0.2,
+   "SCS": 2.99,
+   "MAS": 2.6,
+   "UDP": -0.4,
+   "FUA": -0.5,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "029JE03997",
+  "id17": "JEUSA000119110252",
+  "name": "JX WILSONVIEW AXIS STOKED {5}",
+  "publishedJpi": 18,
+  "traits": {
+   "PRO": 8,
+   "FAT": -19,
+   "PL": -0.7,
+   "CCR": -3.2,
+   "DPR": -2.7,
+   "SCS": 2.91,
+   "MAS": 2.3,
+   "UDP": -0.9,
+   "FUA": -0.5,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "250JE01807",
+  "id17": "JE840003200533645",
+  "name": "PRIMUS VICEROY FOLEY-ET",
+  "publishedJpi": 17,
+  "traits": {
+   "PRO": -11,
+   "FAT": 4,
+   "PL": -1.3,
+   "CCR": 0.3,
+   "DPR": -0.4,
+   "SCS": 3.23,
+   "MAS": -2.1,
+   "UDP": 0.7,
+   "FUA": 1.4,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "202JE00601",
+  "id17": "JEUSA000118612153",
+  "name": "ALL LYNNS VERNON MACARTHUR-ET",
+  "publishedJpi": 17,
+  "traits": {
+   "PRO": -11,
+   "FAT": -2,
+   "PL": -1.4,
+   "CCR": 0.6,
+   "DPR": 0.8,
+   "SCS": 3.06,
+   "MAS": 0.3,
+   "UDP": -1.1,
+   "FUA": -1.4,
+   "RUH": -0.9
+  }
+ },
+ {
+  "naab": "011JE01250",
+  "id17": "JEUSA000073409418",
+  "name": "AHLEM APPLEJACK MYRON",
+  "publishedJpi": 16,
+  "traits": {
+   "PRO": -19,
+   "FAT": -32,
+   "PL": -0.4,
+   "CCR": 1.9,
+   "DPR": 2.2,
+   "SCS": 3.03,
+   "MAS": 1.9,
+   "UDP": -0.3,
+   "FUA": -0.7,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "007JE01698",
+  "id17": "JE840003140371463",
+  "name": "JX FARIA BROTHERS COLLINS {4}-ET",
+  "publishedJpi": 15,
+  "traits": {
+   "PRO": -5,
+   "FAT": -14,
+   "PL": 0.2,
+   "CCR": -2.2,
+   "DPR": -1.8,
+   "SCS": 3.07,
+   "MAS": -0.1,
+   "UDP": 1.2,
+   "FUA": 0.6,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "001JE01101",
+  "id17": "JE840003144724329",
+  "name": "JX FARIA BROTHERS LAWSON {4}",
+  "publishedJpi": 14,
+  "traits": {
+   "PRO": 22,
+   "FAT": 18,
+   "PL": -3.3,
+   "CCR": -5,
+   "DPR": -4.7,
+   "SCS": 2.89,
+   "MAS": -1.6,
+   "UDP": -2,
+   "FUA": -0.8,
+   "RUH": -0.6
+  }
+ },
+ {
+  "naab": "250JE01543",
+  "id17": "JECAN000109219334",
+  "name": "REYLA BARNABAS CHANNING",
+  "publishedJpi": 13,
+  "traits": {
+   "PRO": -15,
+   "FAT": 9,
+   "PL": -2,
+   "CCR": -1.2,
+   "DPR": -0.7,
+   "SCS": 3,
+   "MAS": 0,
+   "UDP": 0.2,
+   "FUA": -0.7,
+   "RUH": 0.5
+  }
+ },
+ {
+  "naab": "011JE01292",
+  "id17": "JEUSA000074067580",
+  "name": "JX AHLEM LEONEL ROCKNROLL {4}-ET",
+  "publishedJpi": 12,
+  "traits": {
+   "PRO": 7,
+   "FAT": 2,
+   "PL": 0.3,
+   "CCR": -6,
+   "DPR": -4.3,
+   "SCS": 3.06,
+   "MAS": 0.7,
+   "UDP": 0.4,
+   "FUA": -0.2,
+   "RUH": -0.3
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003218816853",
+  "name": "DEMENTS CASINO JACKPOT",
+  "publishedJpi": 11,
+  "traits": {
+   "PRO": -26,
+   "FAT": -34,
+   "PL": 0.9,
+   "CCR": 2,
+   "DPR": 1.7,
+   "SCS": 3.06,
+   "MAS": -0.1,
+   "UDP": 0.8,
+   "FUA": 1,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "007JE01533",
+  "id17": "JEUSA000067609797",
+  "name": "JX FOREST GLEN HARRIS RHUMBA {5}",
+  "publishedJpi": 10,
+  "traits": {
+   "PRO": 4,
+   "FAT": -13,
+   "PL": -1,
+   "CCR": -2.2,
+   "DPR": -2,
+   "SCS": 2.89,
+   "MAS": 0.2,
+   "UDP": -1.5,
+   "FUA": -1.3,
+   "RUH": -0.6
+  }
+ },
+ {
+  "naab": "007JE01724",
+  "id17": "JE840003141725638",
+  "name": "JX DUPAT DISCO BENELLI {6}-ET",
+  "publishedJpi": 9,
+  "traits": {
+   "PRO": -4,
+   "FAT": -30,
+   "PL": 0.6,
+   "CCR": -0.9,
+   "DPR": -1.7,
+   "SCS": 3.11,
+   "MAS": 1.1,
+   "UDP": 0.1,
+   "FUA": 0.3,
+   "RUH": -0.2
+  }
+ },
+ {
+  "naab": "250JE01456",
+  "id17": "JE840003125325348",
+  "name": "IGL SANTANA TORPEDO-ET",
+  "publishedJpi": 7,
+  "traits": {
+   "PRO": -8,
+   "FAT": -16,
+   "PL": 0.5,
+   "CCR": -4,
+   "DPR": -3.3,
+   "SCS": 2.93,
+   "MAS": 0.8,
+   "UDP": 3,
+   "FUA": 1.4,
+   "RUH": 0.4
+  }
+ },
+ {
+  "naab": "551JE01693",
+  "id17": "JECAN000109960092",
+  "name": "LAMARIA WILBERT-ET",
+  "publishedJpi": 6,
+  "traits": {
+   "PRO": -20,
+   "FAT": -27,
+   "PL": -1.4,
+   "CCR": -0.5,
+   "DPR": -0.1,
+   "SCS": 2.88,
+   "MAS": 1.9,
+   "UDP": 2.3,
+   "FUA": 0.5,
+   "RUH": 0.3
+  }
+ },
+ {
+  "naab": "147JE06208",
+  "id17": "JECAN000106797219",
+  "name": "GABYS ALAN-ET",
+  "publishedJpi": 5,
+  "traits": {
+   "PRO": -19,
+   "FAT": 7,
+   "PL": -3.1,
+   "CCR": 0.2,
+   "DPR": 1.1,
+   "SCS": 2.96,
+   "MAS": 1,
+   "UDP": -2.5,
+   "FUA": -1.5,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "200JE01047",
+  "id17": "JE840003126052036",
+  "name": "JX FARIA BROTHERS COURTOIS {5}",
+  "publishedJpi": 3,
+  "traits": {
+   "PRO": 8,
+   "FAT": -1,
+   "PL": -2.9,
+   "CCR": -3.4,
+   "DPR": -3.2,
+   "SCS": 3.06,
+   "MAS": 0.2,
+   "UDP": -0.4,
+   "FUA": -0.5,
+   "RUH": -0.1
+  }
+ },
+ {
+  "naab": "200JE01295",
+  "id17": "JECAN000111602145",
+  "name": "LENCREST MOONLIGHT",
+  "publishedJpi": 2,
+  "traits": {
+   "PRO": -15,
+   "FAT": 13,
+   "PL": -2.9,
+   "CCR": -2,
+   "DPR": -1.6,
+   "SCS": 3.1,
+   "MAS": 0.6,
+   "UDP": -0.7,
+   "FUA": 0.5,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "007JE05041",
+  "id17": "JE840003131639877",
+  "name": "JX RIVER VALLEY TRIUMPH {5}-ET",
+  "publishedJpi": 0,
+  "traits": {
+   "PRO": 27,
+   "FAT": 14,
+   "PL": -3.6,
+   "CCR": -3.1,
+   "DPR": -3.3,
+   "SCS": 3.09,
+   "MAS": -5.3,
+   "UDP": -2.5,
+   "FUA": -2.7,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "014JE00721",
+  "id17": "JE840003126920569",
+  "name": "DUTCH HOLLOW MACCOY-ET",
+  "publishedJpi": -2,
+  "traits": {
+   "PRO": 23,
+   "FAT": 16,
+   "PL": -4.6,
+   "CCR": -4.2,
+   "DPR": -3.3,
+   "SCS": 3.15,
+   "MAS": -2.8,
+   "UDP": -1.7,
+   "FUA": -1.6,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "200JE01075",
+  "id17": "JECAN000109862276",
+  "name": "PROGENESIS MAGNUS-P-ET",
+  "publishedJpi": -4,
+  "traits": {
+   "PRO": -5,
+   "FAT": -18,
+   "PL": -2.4,
+   "CCR": 0.3,
+   "DPR": -0.3,
+   "SCS": 3.02,
+   "MAS": -3,
+   "UDP": 0.1,
+   "FUA": -0.3,
+   "RUH": -0.4
+  }
+ },
+ {
+  "naab": "200JE01029",
+  "id17": "JECAN000108820219",
+  "name": "TRAILBLAZER CCCJ BARRACUDA-ET",
+  "publishedJpi": -7,
+  "traits": {
+   "PRO": -32,
+   "FAT": -41,
+   "PL": -0.4,
+   "CCR": 1.1,
+   "DPR": -0.2,
+   "SCS": 2.88,
+   "MAS": 1.3,
+   "UDP": 1.2,
+   "FUA": 1.5,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "007JE01725",
+  "id17": "JE840003141725636",
+  "name": "JX DUPAT DISCO BROWNING {6}-ET",
+  "publishedJpi": -10,
+  "traits": {
+   "PRO": -15,
+   "FAT": -34,
+   "PL": 0.2,
+   "CCR": -1.4,
+   "DPR": -1.7,
+   "SCS": 3.11,
+   "MAS": 2.1,
+   "UDP": 0.9,
+   "FUA": 0.3,
+   "RUH": -1
+  }
+ },
+ {
+  "naab": "200JE01407",
+  "id17": "JECAN000120767577",
+  "name": "LENCREST HORIZON-ET",
+  "publishedJpi": -13,
+  "traits": {
+   "PRO": -23,
+   "FAT": -16,
+   "PL": -2.2,
+   "CCR": -0.4,
+   "DPR": 0,
+   "SCS": 3.07,
+   "MAS": 0.5,
+   "UDP": -0.5,
+   "FUA": 0.5,
+   "RUH": 0.1
+  }
+ },
+ {
+  "naab": "200JE01049",
+  "id17": "JE124000012302897",
+  "name": "JX PROGENESIS TOTALLY {6}-ET",
+  "publishedJpi": -15,
+  "traits": {
+   "PRO": -18,
+   "FAT": -23,
+   "PL": 0.6,
+   "CCR": -4.9,
+   "DPR": -2.4,
+   "SCS": 2.91,
+   "MAS": 1.5,
+   "UDP": 0.4,
+   "FUA": 0.2,
+   "RUH": 0
+  }
+ },
+ {
+  "naab": "777JE01376",
+  "id17": "JE840003224438237",
+  "name": "VIERRA STING-ET",
+  "publishedJpi": -17,
+  "traits": {
+   "PRO": -40,
+   "FAT": -52,
+   "PL": -0.3,
+   "CCR": 2.6,
+   "DPR": 2.8,
+   "SCS": 3.23,
+   "MAS": 1.9,
+   "UDP": 2.4,
+   "FUA": 1.6,
+   "RUH": 1.2
+  }
+ },
+ {
+  "naab": "200JE10011",
+  "id17": "JE840003126479085",
+  "name": "RIVER VALLEY JOYRIDE-ET",
+  "publishedJpi": -21,
+  "traits": {
+   "PRO": -27,
+   "FAT": -27,
+   "PL": -1.6,
+   "CCR": -0.6,
+   "DPR": -0.2,
+   "SCS": 3.17,
+   "MAS": 0.1,
+   "UDP": 1.3,
+   "FUA": 1.1,
+   "RUH": 1.5
+  }
+ },
+ {
+  "naab": "097JE17517",
+  "id17": "JENZL000000317517",
+  "name": "ISNZ GLEN LEITH QUIGLEY SJ2 {6}-ET",
+  "publishedJpi": -24,
+  "traits": {
+   "PRO": -29,
+   "FAT": -29,
+   "PL": -2.6,
+   "CCR": 2.4,
+   "DPR": 4.2,
+   "SCS": 3.14,
+   "MAS": 1.2,
+   "UDP": -2.2,
+   "FUA": -2.1,
+   "RUH": -2.4
+  }
+ },
+ {
+  "naab": "007JE01808",
+  "id17": "JE840003201335576",
+  "name": "KASH-IN RECKLESS-ET",
+  "publishedJpi": -29,
+  "traits": {
+   "PRO": -55,
+   "FAT": -49,
+   "PL": 1.5,
+   "CCR": 1.5,
+   "DPR": 0.2,
+   "SCS": 3.06,
+   "MAS": 2.8,
+   "UDP": 3.1,
+   "FUA": 2.2,
+   "RUH": 1
+  }
+ },
+ {
+  "naab": "091JE05867",
+  "id17": "JE840003124766079",
+  "name": "HER-MAN BARNABAS 210-ET",
+  "publishedJpi": -38,
+  "traits": {
+   "PRO": -39,
+   "FAT": -37,
+   "PL": -1.1,
+   "CCR": -1.6,
+   "DPR": -0.8,
+   "SCS": 2.94,
+   "MAS": 0.6,
+   "UDP": 1.3,
+   "FUA": 1,
+   "RUH": 1.3
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003229118816",
+  "name": "PACIFIC EDGE RVV PRICE-ET",
+  "publishedJpi": -53,
+  "traits": {
+   "PRO": -52,
+   "FAT": -60,
+   "PL": 0.6,
+   "CCR": -0.4,
+   "DPR": 0.3,
+   "SCS": 3.06,
+   "MAS": 1.4,
+   "UDP": 2.8,
+   "FUA": 2.5,
+   "RUH": 1.3
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003229065816",
+  "name": "COWAN FARMS BELIEVERS GRAND-ET",
+  "publishedJpi": -78,
+  "traits": {
+   "PRO": -60,
+   "FAT": -56,
+   "PL": -1.6,
+   "CCR": 2.6,
+   "DPR": 4.3,
+   "SCS": 3.25,
+   "MAS": 2,
+   "UDP": -1.9,
+   "FUA": -1.3,
+   "RUH": -2.2
+  }
+ },
+ {
+  "naab": "100JE07486",
+  "id17": "JE840003140929543",
+  "name": "WF JOEL GOLDDUST",
+  "publishedJpi": -97,
+  "traits": {
+   "PRO": -45,
+   "FAT": -78,
+   "PL": -3.4,
+   "CCR": -0.4,
+   "DPR": 0.7,
+   "SCS": 3.24,
+   "MAS": 0.3,
+   "UDP": 1.8,
+   "FUA": 1.5,
+   "RUH": 0.2
+  }
+ },
+ {
+  "naab": "777JE10023",
+  "id17": "JEUSA000075341116",
+  "name": "RIVER VALLEY LOLALALA-ET",
+  "publishedJpi": -108,
+  "traits": {
+   "PRO": -54,
+   "FAT": -74,
+   "PL": -3.1,
+   "CCR": -1.1,
+   "DPR": -0.8,
+   "SCS": 3.18,
+   "MAS": 0.8,
+   "UDP": 2.8,
+   "FUA": 2.2,
+   "RUH": 1.3
+  }
+ },
+ {
+  "naab": "",
+  "id17": "JE840003229065808",
+  "name": "COWAN FARMS BELIEVERS BELIEVER-ET",
+  "publishedJpi": -123,
+  "traits": {
+   "PRO": -70,
+   "FAT": -79,
+   "PL": -2.5,
+   "CCR": 0.7,
+   "DPR": 3,
+   "SCS": 3.27,
+   "MAS": 2,
+   "UDP": -0.7,
+   "FUA": -0.5,
+   "RUH": -0.8
+  }
+ },
+ {
+  "naab": "094JE04114",
+  "id17": "JE840003145690547",
+  "name": "KIMBALL-WAY VENETIAN",
+  "publishedJpi": -145,
+  "traits": {
+   "PRO": -74,
+   "FAT": -75,
+   "PL": -4.4,
+   "CCR": 0.9,
+   "DPR": 0.2,
+   "SCS": 3.48,
+   "MAS": 0.6,
+   "UDP": 2.5,
+   "FUA": 1.6,
+   "RUH": 0.8
+  }
+ }
+]
