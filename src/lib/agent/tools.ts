@@ -401,6 +401,19 @@ function ancestorLabel(n: { generation: number; side: "sire" | "dam" }): string 
   return n.generation === 2 ? `${p} grand-parent` : `${p} great-grand-parent`;
 }
 
+/** The animal's best (highest-scoring) classification, e.g. EX-94. */
+function bestClassification(rows: { date: string | null; code: string | null; score: number | null }[]): { code: string | null; score: number | null; date: string | null } | null {
+  if (!rows?.length) return null;
+  const scored = rows.filter((r) => r.score != null);
+  const pick = (scored.length ? scored : rows).reduce((b, r) => ((r.score ?? -1) > (b.score ?? -1) ? r : b));
+  return { code: pick.code, score: pick.score, date: pick.date };
+}
+/** Short label like "EX-94" from a classification, or null. */
+function classLabel(c: { code: string | null; score: number | null } | null): string | null {
+  if (!c) return null;
+  return [c.code, c.score].filter((x) => x != null && x !== "").join("-") || null;
+}
+
 async function externalAnimalProfile(reg: string): Promise<{ summary: string; records: unknown }> {
   const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
   const ref = parseReg(reg);
@@ -423,12 +436,18 @@ async function externalAnimalProfile(reg: string): Promise<{ summary: string; re
   const sire = gen1("sire"), dam = gen1("dam");
   const pedigree = ft.map((n) => ({ relation: ancestorLabel(n), generation: n.generation, side: n.side, name: n.name, reg: n.reg, birthDate: n.birthDate }));
   const progRows = parsed.profile.progeny.slice(0, 25);
+  // Classifications (EX/VG/GP + section scores) and lactations — females carry
+  // their own; bulls don't. This is what makes "look up her classification" work.
+  const classifications = parsed.profile.classifications.map((c) => ({ date: c.date, code: c.code, score: c.score, lactation: c.lactation, sections: c.sections }));
+  const best = bestClassification(parsed.profile.classifications);
+  const lactations = parsed.profile.lactations.map((l) => ({ lactation: l.lactationNumber, dim: l.dim, milk: l.milk, fat: l.fat, fatPct: l.fatPct, prot: l.prot, protPct: l.protPct }));
 
   return {
-    summary: `${parsed.identity.name ?? ref.reg} — pulled LIVE from Lactanet, NOT saved. Sire: ${sire?.name ?? "unknown"}. ${traits.length} traits, ${ft.length} pedigree ancestors, ${parsed.progenyTotal ?? progRows.length} progeny. For the deep maternal line use trace_maternal_line; to save this animal use import_animals.`,
+    summary: `${parsed.identity.name ?? ref.reg} — pulled LIVE from Lactanet, NOT saved.${classLabel(best) ? ` Classified ${classLabel(best)}.` : ""} Sire: ${sire?.name ?? "unknown"}. ${traits.length} traits, ${ft.length} pedigree ancestors, ${classifications.length} classification(s), ${parsed.progenyTotal ?? progRows.length} progeny. For the deep maternal line use trace_maternal_line; to save this animal use import_animals.`,
     records: {
       found: true, source: "lactanet", externallySourced: true, savedToDatabase: false,
       animal: { name: parsed.identity.name ?? null, reg: ref.reg, sex: ref.sex, birthDate: parsed.identity.birthDate ?? null, naab: parsed.identity.naab ?? null, inbreeding: parsed.identity.inbreeding ?? null },
+      classification: best, classifications, lactations,
       sire, dam,
       pedigree, // 3 generations from Lactanet's pedigree page (sire + dam sides)
       evaluation: { basis: parsed.evaluation.basis, reliabilityOverall: parsed.evaluation.reliability, proofRun: parsed.evaluation.runLabel, traitCount: traits.length, traits },
@@ -446,15 +465,17 @@ async function externalAnimalProfile(reg: string): Promise<{ summary: string; re
  * ends), or when a wall-clock budget is hit (so it stays under the route limit),
  * and reports how far it reached.
  */
-async function traceMaternalLine(startReg: string, generations: number): Promise<{ summary: string; records: unknown }> {
+async function traceMaternalLine(startReg: string, generations: number, includeClassifications = false): Promise<{ summary: string; records: unknown }> {
   const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
-  const { parsePedigree } = await import("@/lib/lactanet-parse");
+  const { parsePedigree, parseClassifications } = await import("@/lib/lactanet-parse");
   const start = parseReg(startReg);
   if (!start) return { summary: `"${startReg}" is not a registration number (expected e.g. HOCANF12345678).`, records: null };
-  const maxGen = Math.max(1, Math.min(Math.round(generations) || 15, 15));
+  // With classifications we fetch TWICE per dam (pedigree + classification), so
+  // cap the depth lower to stay inside the time budget.
+  const maxGen = Math.max(1, Math.min(Math.round(generations) || 15, includeClassifications ? 8 : 15));
   const BUDGET_MS = 40000; // stay well under the 60s route limit
   const t0 = Date.now();
-  const line: { generation: number; name: string | null; reg: string | null; birthDate: string | null }[] = [];
+  const line: { generation: number; name: string | null; reg: string | null; birthDate: string | null; classification?: { code: string | null; score: number | null; date: string | null } | null }[] = [];
   let cur: string | null = start.reg;
   let stopped: string | null = null;
   for (let gen = 1; gen <= maxGen; gen++) {
@@ -466,14 +487,22 @@ async function traceMaternalLine(startReg: string, generations: number): Promise
     if (fetched.error || !fetched.tabs.pedigree) { stopped = `Lactanet returned no pedigree at generation ${gen}${fetched.error ? `: ${fetched.error}` : ""}`; break; }
     const dam = parsePedigree(fetched.tabs.pedigree).find((n) => n.side === "dam" && n.generation === 1);
     if (!dam || (!dam.name && !dam.reg)) { stopped = `the maternal line ends — Lactanet shows no dam at generation ${gen}`; break; }
-    line.push({ generation: gen, name: dam.name, reg: dam.reg, birthDate: dam.birthDate });
+    // Optionally look up this dam's own classification (she's female).
+    let classification: { code: string | null; score: number | null; date: string | null } | null = null;
+    if (includeClassifications && dam.reg && Date.now() - t0 <= BUDGET_MS) {
+      try {
+        const cf = await fetchLactanetAnimal(dam.reg, ["classification"]);
+        if (!cf.error && cf.tabs.classification) classification = bestClassification(parseClassifications(cf.tabs.classification, "F"));
+      } catch { /* classification is best-effort — don't fail the trace */ }
+    }
+    line.push({ generation: gen, name: dam.name, reg: dam.reg, birthDate: dam.birthDate, ...(includeClassifications ? { classification } : {}) });
     if (!dam.reg) { stopped = `the trail ends at generation ${gen} — Lactanet has no registration number for ${dam.name ?? "the next dam"}, so it can't go further back`; break; }
     cur = dam.reg;
   }
   const reachedAll = line.length >= maxGen && !stopped;
   return {
-    summary: `Maternal (tail-female) line for ${start.reg}: traced ${line.length} generation(s)${reachedAll ? ` — the ${maxGen} requested` : stopped ? ` — ${stopped}` : ""}. Each generation is the previous dam's dam.`,
-    records: { startReg: start.reg, requested: maxGen, generationsTraced: line.length, line, stoppedReason: stopped, source: "lactanet", note: "Each entry is a dam in the tail-female line (the animal's dam, then her dam, and so on). Live from Lactanet; nothing saved." },
+    summary: `Maternal (tail-female) line for ${start.reg}: traced ${line.length} generation(s)${reachedAll ? ` — the ${maxGen} requested` : stopped ? ` — ${stopped}` : ""}${includeClassifications ? " with each dam's classification" : ""}. Each generation is the previous dam's dam.`,
+    records: { startReg: start.reg, requested: maxGen, generationsTraced: line.length, includeClassifications, line, stoppedReason: stopped, source: "lactanet", note: "Each entry is a dam in the tail-female line (the animal's dam, then her dam, and so on). Live from Lactanet; nothing saved." },
   };
 }
 
@@ -1388,12 +1417,13 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "trace_maternal_line",
     description:
-      "Trace an animal's MATERNAL (tail-female) line — its dam, then the dam's dam, and so on — up to 15 generations, LIVE from Lactanet. Needs a registration number (works for any animal, whether or not it's in the database). Read-only; nothing is saved. Each generation is one live Lactanet fetch, so it stops at the requested depth (max 15), when Lactanet has no registration for the next dam (the trail ends), or when a time budget is hit — and it tells you exactly how far it reached and why it stopped. Use this when the user asks for the deep maternal line or 'N generations back on the dam side'. For the SIRE and the immediate 3-generation pedigree, use get_animal_full_profile instead.",
+      "Trace an animal's MATERNAL (tail-female) line — its dam, then the dam's dam, and so on — up to 15 generations, LIVE from Lactanet. Needs a registration number (works for any animal, whether or not it's in the database). Read-only; nothing is saved. Each generation is one live Lactanet fetch, so it stops at the requested depth, when Lactanet has no registration for the next dam (the trail ends), or when a time budget is hit — and it tells you how far it reached and why it stopped. Set includeClassifications:true to ALSO fetch each dam's classification (EX/VG score) — useful for a cow-family view — but that doubles the fetches, so the depth is capped at 8 generations when it's on. Use this for the deep maternal line or 'N generations back on the dam side'. For the SIRE and the immediate 3-generation pedigree, use get_animal_full_profile or pedigree_index.",
     input_schema: {
       type: "object",
       properties: {
         reg: { type: "string", description: "registration number, e.g. HOCANF12345678" },
-        generations: { type: "integer", description: "how many generations back on the dam side (default 15, max 15)" },
+        generations: { type: "integer", description: "how many generations back on the dam side (default 15, max 15; max 8 when includeClassifications is on)" },
+        includeClassifications: { type: "boolean", description: "also fetch each dam's classification (EX/VG score) — slower, capped at 8 generations" },
       },
       required: ["reg"],
     },
@@ -1401,7 +1431,8 @@ export const AGENT_TOOLS: AgentTool[] = [
       requireCap(ctx, "animal:read", "trace a maternal line on Lactanet");
       const reg = str(input.reg);
       if (!reg) return { summary: "Provide a registration number to trace the maternal line.", records: null };
-      return traceMaternalLine(reg, clamp(input.generations, 1, 15, 15));
+      const inclClass = input.includeClassifications === true;
+      return traceMaternalLine(reg, clamp(input.generations, 1, 15, inclClass ? 8 : 15), inclClass);
     },
   },
 
