@@ -229,6 +229,8 @@ model Animal {
   captures        SourceCapture[]
   reviewItems     ImportReviewQueue[]
   watchers        Watchlist[]
+  usEvaluations   UsEvaluation[]
+  usAiStatus      UsAiStatus[]
 
   @@index([primaryName])
   @@index([breedId])
@@ -604,6 +606,158 @@ model Watchlist {
 
   @@unique([userId, animalId]) // a bull is favourited at most once per user
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// THE AMERICAN SIDE — CDCB evaluations.
+//
+// A PARALLEL TABLE, not a country column on GeneticEvaluation. Three reasons,
+// each verified against this codebase:
+//
+//   1. `isPreferred` is global per animal. priority.ts recomputePreferredForAnimal
+//      loads ALL of an animal's evaluations with no system filter and marks
+//      exactly one winner; `isPreferred: true` is the join condition for the whole
+//      read layer (65 usages across 23 files). A CDCB row in the same table would
+//      compete with the Lactanet row and one would silently blank the other.
+//   2. The same trait CODE means different things. TraitDefinition is
+//      @@unique([traitCode, domain]) so only one MILK can exist — but CA MILK is
+//      kilograms and US MILK is pounds, CA linear traits run +/-15 where US run
+//      about +/-4, and CA SCS is a 100-based rating where US SCS is ~3.0.
+//   3. GeneticEvaluation.countrySystem ('CA | US | INT') ALREADY EXISTS and is
+//      filtered on in exactly ZERO queries. The discriminator was added years ago
+//      and the query discipline never followed; a separate model makes a missed
+//      filter a TypeScript error instead of a silent country mix.
+//
+// Deliberately SEX-AGNOSTIC. The public CDCB /bulls/ files are all male, but the
+// female files use the same layout and are expected — nothing here assumes sex.
+// ---------------------------------------------------------------------------
+
+model UsEvaluation {
+  usEvaluationId String   @id @default(cuid())
+  animalId       String
+  // CDCB's 17-char id: 2-char breed + 3-char country + 12-digit herdbook number.
+  id17           String
+
+  // Which CDCB extract this came from — the ONLY reliable source of run kind.
+  sourceFamily   String // all_evaluated | young_pub | new_young | weekly
+  // official (triannual) | provisional (monthly add) | unofficial (weekly add).
+  runKind        String
+  // YYMM — SET ONLY for the triannual families.
+  roundCode      String?
+  // Unique period identity, always set, PREFIXED: R2604 | M2604 | W20260802.
+  // This is the uniqueness axis rather than roundCode because a monthly add and
+  // the official round share a YYMM — New_young_Pub_2604 and all_evaluated_2604
+  // both stamp DATE:2604. Without the prefix a provisional row could displace the
+  // official round for that animal.
+  periodKey      String
+  evaluationDate DateTime
+
+  // From EVAL_BREED — never the id17 prefix, which is the REGISTRY breed (549
+  // animals in the Holstein file carry a non-HO prefix).
+  evalBreed      String?
+  // CDCB's proven-vs-genomic flag, and it is PER TRAIT GROUP, not per animal: a
+  // bull can be daughter-proven for production and parent-average for calving.
+  isPtaMilk      Boolean?
+  isPtaCt        Boolean?
+  // True on the first all_evaluated round after young_pub — a graduating bull
+  // moves ~6x a normal round and must not be scored as ordinary movement.
+  isGraduation   Boolean  @default(false)
+
+  blendCode      String? // S = straightbred, M = crossbred
+  heterosis      Float?
+  naabCode       String?
+  sire17         String?
+  dam17          String?
+
+  genInb         Float?
+  pedInb         Float?
+  genFutInb      Float?
+  expFutInb      Float?
+
+  chip           String?
+  requesterId    String?
+  dateReceived   DateTime?
+  current        String? // 0 | 1 | U (U = unofficial weekly)
+
+  // The five value columns CDCB publishes per trait, each a code -> value map.
+  // GSONS is stored (it is the correct input for a son's parent average) but is
+  // never rendered — it is not a son count.
+  gptaJson       String?
+  relJson        String?
+  gsonsJson      String?
+  dgvJson        String?
+  paJson         String?
+  // Sparse haplotype / genetic-condition calls, code -> 0..4.
+  haplotypesJson String?
+
+  // Indexed columns for sorting and filtering — the US vocabulary, in POUNDS.
+  nmDollar  Float?
+  cmDollar  Float?
+  fmDollar  Float?
+  gmDollar  Float?
+  milk      Float?
+  fat       Float?
+  pro       Float?
+  fatPct    Float?
+  proPct    Float?
+  pl        Float?
+  scs       Float?
+  dpr       Float?
+  ptat      Float?
+  liv       Float?
+  udc       Float?
+  flc       Float?
+
+  // COMPUTED indexes — never an official published figure. The formula version
+  // is stored alongside so a value can always be traced to the formula that was
+  // in force for its round, and so a registry change can invalidate the right rows.
+  tpi               Int?
+  tpiFormulaVersion String?
+  tpiConfidence     String? // verified | inferred | contested
+  jpi               Int?
+  jpiFormulaVersion String?
+
+  // Preferred among the US rows for this animal. Its own recompute over its own
+  // rows — it must never interact with the Canadian isPreferred. ONLY triannual
+  // rows are candidates, so a provisional monthly can never win.
+  isPreferred    Boolean  @default(false)
+
+  sourceFile     String?
+  approvalStatus String   @default("approved") // pending | approved | rejected
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@unique([animalId, periodKey, sourceFamily])
+  @@index([id17])
+  @@index([roundCode, runKind])
+  @@index([isPreferred, tpi])
+  @@index([isPreferred, nmDollar])
+  @@index([isPreferred, ptat])
+  @@index([isPreferred, jpi])
+  @@index([animalId, evaluationDate])
+}
+
+// CDCB's AI status file — the US answer to "is this bull actually marketed".
+//
+// This REPLACES the Canadian rule (active = carries a NAAB code), which does not
+// transfer: 35,190 Holstein bulls carry a NAAB code but only 1,332 are marketed.
+// Status is per ROUND, and the table tolerates orphans — about 5% of aistatus
+// entries match no evaluation in the same round.
+model UsAiStatus {
+  id        String   @id @default(cuid())
+  animalId  String?
+  id17      String
+  roundCode String
+  code      String // A = active AI | G = genomic young bull marketed | F = foreign
+  createdAt DateTime @default(now())
+
+  animal Animal? @relation(fields: [animalId], references: [id], onDelete: SetNull)
+
+  @@unique([id17, roundCode])
+  @@index([animalId])
+  @@index([roundCode, code])
 }
 
 model SavedSearch {
