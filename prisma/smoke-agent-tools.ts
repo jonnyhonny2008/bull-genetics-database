@@ -100,6 +100,13 @@ async function main() {
   const lookupBad = await run("get_animal_full_profile", { reg: "INVALIDREG" }, admin); // not internal, bad format → no network
   check("get_animal_full_profile external fallback rejects a non-registration cleanly", /not a registration number/.test(lookupBad.summary), lookupBad.summary);
 
+  let refusedTrace = false;
+  try { await run("trace_maternal_line", { reg: "HOCANF12345678" }, anon); } catch (e) { refusedTrace = /No signed-in user/.test((e as Error).message); }
+  check("trace_maternal_line requires a read-capable actor", refusedTrace);
+
+  const traceBad = await run("trace_maternal_line", { reg: "NOTAREG" }, admin); // bad format → no network
+  check("trace_maternal_line rejects a non-registration cleanly (no Lactanet fetch)", /not a registration number/.test(traceBad.summary), traceBad.summary);
+
   const failed = results.filter((r) => !r.ok);
   console.log(`\n  ${results.length - failed.length}/${results.length} checks passed`);
   if (failed.length) console.log(`  FAILED: ${failed.map((f) => f.name).join(", ")}`);

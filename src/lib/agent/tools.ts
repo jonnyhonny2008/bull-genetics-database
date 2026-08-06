@@ -117,6 +117,7 @@ const FULL_ANIMAL_SELECT = {
   holsteinProfileJson: true,
   breed: { select: { breedName: true, breedCode: true } },
   identifiers: { where: { active: true }, orderBy: [{ isPrimary: "desc" }, { idType: "asc" }], select: { idType: true, idValue: true, isPrimary: true, issuingOrganization: true } },
+  pedigreeRefs: { select: { notes: true } },
   evaluations: {
     orderBy: { evaluationDate: "desc" },
     select: {
@@ -159,6 +160,10 @@ async function buildFullProfile(a: FullAnimal) {
   const ev = preferredEval(a);
   const traits = traitsFromEval(ev, defMap);
   const prof = parseHolsteinProfileJson(a.holsteinProfileJson);
+  // Stored 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) from PedigreeReference.
+  const pedNotes = a.pedigreeRefs.map((p) => p.notes).find((nn) => nn && /\bSIRE:/i.test(nn)) ?? null;
+  const pedAncestors = parsePedigreeNotes(pedNotes);
+  const relOf = (r: string) => pedAncestors.find((x) => x.relation === r) ?? null;
   return {
     found: true,
     animal: {
@@ -179,7 +184,13 @@ async function buildFullProfile(a: FullAnimal) {
     proofRoundHistory: a.evaluations.map((e) => ({ run: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7), date: e.evaluationDate.toISOString().slice(0, 10), lpi: e.lpi, preferred: e.isPreferred })),
     classifications: a.classifications.map((c) => ({ code: c.classificationCode, score: c.finalScore, date: c.classificationDate ? c.classificationDate.toISOString().slice(0, 10) : null, lactation: c.lactationNumber, sections: c.traitValues.map((t) => ({ code: t.traitCode, name: t.traitName, value: t.traitValue })) })),
     milkRecords: a.milkRecords.map((m) => ({ lactation: m.lactationNumber, dim: m.daysInMilk, milk: m.milkAmount, milkUnit: m.milkUnit, fat: m.fatAmount, fatPct: m.fatPercent, protein: m.proteinAmount, proteinPct: m.proteinPercent, type: m.recordType, calvingDate: m.calvingDate ? m.calvingDate.toISOString().slice(0, 10) : null })),
-    holsteinProfile: prof ? { owners: prof.owners, breeders: prof.breeders, awards: prof.awards, lactationCount: prof.lactations.length, familyTreeCount: prof.familyTree.length, progenyCount: prof.progeny.length } : null,
+    pedigree: {
+      sire: relOf("sire"),
+      dam: relOf("dam"),
+      ancestors: pedAncestors, // sire/dam/MGS/MGD/GMGS/GMGD from the stored 3-gen pedigree
+      note: "3-generation pedigree from stored records. For a deep maternal (tail-female) line — up to 15 generations — use trace_maternal_line with this animal's registration number.",
+    },
+    holsteinProfile: prof ? { owners: prof.owners, breeders: prof.breeders, awards: prof.awards, lactationCount: prof.lactations.length, familyTree: prof.familyTree, progeny: prof.progeny.slice(0, 25), progenyTotal: prof.progeny.length } : null,
   };
 }
 
@@ -383,6 +394,13 @@ async function recomputePreferred(animalId: string): Promise<void> {
  * asks about isn't in the database. To persist an external animal, use the
  * import_animals tool. Reuses the same fetch/parse the mating calculator uses.
  */
+/** A readable relationship label for a pedigree node by generation + side. */
+function ancestorLabel(n: { generation: number; side: "sire" | "dam" }): string {
+  if (n.generation === 1) return n.side === "sire" ? "Sire" : "Dam";
+  const p = n.side === "sire" ? "Paternal" : "Maternal";
+  return n.generation === 2 ? `${p} grand-parent` : `${p} great-grand-parent`;
+}
+
 async function externalAnimalProfile(reg: string): Promise<{ summary: string; records: unknown }> {
   const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
   const ref = parseReg(reg);
@@ -396,15 +414,66 @@ async function externalAnimalProfile(reg: string): Promise<{ summary: string; re
   if (fetched.error) return { summary: `Lactanet: ${fetched.error}`, records: null };
   const { parseLactanetAnimal } = await import("@/lib/lactanet-parse");
   const parsed = parseLactanetAnimal(ref.reg, ref.sex, fetched.tabs, fetched.fetchedAt);
-  const traits = parsed.evaluation.traits.map((t) => ({ code: t.code, value: t.numericValue, text: t.textValue, reliability: t.reliability }));
+
+  // ALL traits (not just genomics) with value, reliability and percentile.
+  const traits = parsed.evaluation.traits.map((t) => ({ code: t.code, value: t.numericValue, text: t.textValue, reliability: t.reliability, percentile: t.percentileRank }));
+  // Sire / dam and the full 3-generation pedigree Lactanet renders on one page.
+  const ft = parsed.profile.familyTree;
+  const gen1 = (side: "sire" | "dam") => { const n = ft.find((x) => x.side === side && x.generation === 1); return n ? { name: n.name, reg: n.reg, birthDate: n.birthDate } : null; };
+  const sire = gen1("sire"), dam = gen1("dam");
+  const pedigree = ft.map((n) => ({ relation: ancestorLabel(n), generation: n.generation, side: n.side, name: n.name, reg: n.reg, birthDate: n.birthDate }));
+  const progRows = parsed.profile.progeny.slice(0, 25);
+
   return {
-    summary: `${parsed.identity.name ?? ref.reg} is NOT in your database — this profile came live from Lactanet (${traits.length} traits) and was NOT saved. To keep it, use import_animals with this registration number.`,
+    summary: `${parsed.identity.name ?? ref.reg} — pulled LIVE from Lactanet, NOT saved. Sire: ${sire?.name ?? "unknown"}. ${traits.length} traits, ${ft.length} pedigree ancestors, ${parsed.progenyTotal ?? progRows.length} progeny. For the deep maternal line use trace_maternal_line; to save this animal use import_animals.`,
     records: {
       found: true, source: "lactanet", externallySourced: true, savedToDatabase: false,
-      animal: { name: parsed.identity.name ?? null, reg: ref.reg, sex: ref.sex, birthDate: parsed.identity.birthDate ?? null },
+      animal: { name: parsed.identity.name ?? null, reg: ref.reg, sex: ref.sex, birthDate: parsed.identity.birthDate ?? null, naab: parsed.identity.naab ?? null, inbreeding: parsed.identity.inbreeding ?? null },
+      sire, dam,
+      pedigree, // 3 generations from Lactanet's pedigree page (sire + dam sides)
       evaluation: { basis: parsed.evaluation.basis, reliabilityOverall: parsed.evaluation.reliability, proofRun: parsed.evaluation.runLabel, traitCount: traits.length, traits },
-      note: "Externally sourced from Lactanet; session-only, not saved. Use import_animals to save it permanently.",
+      progeny: { total: parsed.progenyTotal, capped: parsed.progenyCapped, shown: progRows.length, rows: progRows },
+      note: "Externally sourced from Lactanet; session-only, not saved. The pedigree here is the 3 generations Lactanet shows on one page — for a deep maternal (tail-female) line up to 15 generations, use trace_maternal_line. Use import_animals to save this animal.",
+      warnings: parsed.warnings,
     },
+  };
+}
+
+/**
+ * Walk an animal's MATERNAL (tail-female) line — dam → dam's dam → … — up to
+ * `generations` deep, one cheap pedigree-only Lactanet fetch per generation.
+ * Stops at the cap, when Lactanet has no registration for the next dam (the trail
+ * ends), or when a wall-clock budget is hit (so it stays under the route limit),
+ * and reports how far it reached.
+ */
+async function traceMaternalLine(startReg: string, generations: number): Promise<{ summary: string; records: unknown }> {
+  const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
+  const { parsePedigree } = await import("@/lib/lactanet-parse");
+  const start = parseReg(startReg);
+  if (!start) return { summary: `"${startReg}" is not a registration number (expected e.g. HOCANF12345678).`, records: null };
+  const maxGen = Math.max(1, Math.min(Math.round(generations) || 15, 15));
+  const BUDGET_MS = 40000; // stay well under the 60s route limit
+  const t0 = Date.now();
+  const line: { generation: number; name: string | null; reg: string | null; birthDate: string | null }[] = [];
+  let cur: string | null = start.reg;
+  let stopped: string | null = null;
+  for (let gen = 1; gen <= maxGen; gen++) {
+    if (Date.now() - t0 > BUDGET_MS) { stopped = `stopped at a time budget after ${line.length} generation(s)`; break; }
+    if (!cur) break;
+    let fetched;
+    try { fetched = await fetchLactanetAnimal(cur, ["pedigree"]); }
+    catch (e) { stopped = `Lactanet fetch failed at generation ${gen}: ${(e as Error)?.message ?? e}`; break; }
+    if (fetched.error || !fetched.tabs.pedigree) { stopped = `Lactanet returned no pedigree at generation ${gen}${fetched.error ? `: ${fetched.error}` : ""}`; break; }
+    const dam = parsePedigree(fetched.tabs.pedigree).find((n) => n.side === "dam" && n.generation === 1);
+    if (!dam || (!dam.name && !dam.reg)) { stopped = `the maternal line ends — Lactanet shows no dam at generation ${gen}`; break; }
+    line.push({ generation: gen, name: dam.name, reg: dam.reg, birthDate: dam.birthDate });
+    if (!dam.reg) { stopped = `the trail ends at generation ${gen} — Lactanet has no registration number for ${dam.name ?? "the next dam"}, so it can't go further back`; break; }
+    cur = dam.reg;
+  }
+  const reachedAll = line.length >= maxGen && !stopped;
+  return {
+    summary: `Maternal (tail-female) line for ${start.reg}: traced ${line.length} generation(s)${reachedAll ? ` — the ${maxGen} requested` : stopped ? ` — ${stopped}` : ""}. Each generation is the previous dam's dam.`,
+    records: { startReg: start.reg, requested: maxGen, generationsTraced: line.length, line, stoppedReason: stopped, source: "lactanet", note: "Each entry is a dam in the tail-female line (the animal's dam, then her dam, and so on). Live from Lactanet; nothing saved." },
   };
 }
 
@@ -1274,6 +1343,26 @@ export const AGENT_TOOLS: AgentTool[] = [
       const { targetAnimalId, proposedRecordType } = await applyReviewApproval(reviewId, su);
       await logAction(actor, "review_item", "approve", reviewId, { proposedRecordType, targetAnimalId });
       return { summary: `Approved review item ${reviewId} — created a ${proposedRecordType}${targetAnimalId ? " and linked it to the animal" : ""}.`, records: { reviewId, proposedRecordType, targetAnimalId } };
+    },
+  },
+
+  {
+    name: "trace_maternal_line",
+    description:
+      "Trace an animal's MATERNAL (tail-female) line — its dam, then the dam's dam, and so on — up to 15 generations, LIVE from Lactanet. Needs a registration number (works for any animal, whether or not it's in the database). Read-only; nothing is saved. Each generation is one live Lactanet fetch, so it stops at the requested depth (max 15), when Lactanet has no registration for the next dam (the trail ends), or when a time budget is hit — and it tells you exactly how far it reached and why it stopped. Use this when the user asks for the deep maternal line or 'N generations back on the dam side'. For the SIRE and the immediate 3-generation pedigree, use get_animal_full_profile instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reg: { type: "string", description: "registration number, e.g. HOCANF12345678" },
+        generations: { type: "integer", description: "how many generations back on the dam side (default 15, max 15)" },
+      },
+      required: ["reg"],
+    },
+    run: async (input, ctx) => {
+      requireCap(ctx, "animal:read", "trace a maternal line on Lactanet");
+      const reg = str(input.reg);
+      if (!reg) return { summary: "Provide a registration number to trace the maternal line.", records: null };
+      return traceMaternalLine(reg, clamp(input.generations, 1, 15, 15));
     },
   },
 

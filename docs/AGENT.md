@@ -136,7 +136,8 @@ decide when to call it.
 | `rollback_leaders` | Best/worst by Rollback Resistance or Proof Performance |
 | `proof_history` | One sire's trait values across proof rounds, oldest→newest |
 | `pedigree_index` | 3-generation pedigree + estimated Pedigree Index and confidence |
-| `get_animal_full_profile` | Every stored trait for one animal (unpacked from `traitsJson`); if not in the DB and given a registration number, falls back to a live **Lactanet** lookup (read-only) |
+| `get_animal_full_profile` | One animal: every trait, sire/dam + 3-gen pedigree, classifications, milk, progeny. If not in the DB and given a registration number, falls back to a live **Lactanet** lookup (read-only) |
+| `trace_maternal_line` | Walk the maternal (tail-female) line — dam → dam's dam → … — up to 15 generations, live from Lactanet; reports how far it reached |
 | `calculate_mating_pa` | Parent Average of a sire × dam across shared traits (Lactanet fallback) |
 | `list_reference_data` | Breeds / traits / sources / rules / proof files / users / review queue — find the id or code a write tool needs |
 
