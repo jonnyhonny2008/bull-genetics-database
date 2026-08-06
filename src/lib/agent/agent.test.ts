@@ -291,7 +291,7 @@ test("every write tool refuses a Sales user before touching the database", async
   const writeTools = [
     "create_or_update_animal", "archive_animal", "add_animal_note", "add_proof", "add_milk_record",
     "add_classification", "manage_breed", "manage_trait", "manage_source", "manage_priority_rule",
-    "manage_user", "delete_user", "manage_agent_settings", "import_bulls", "resolve_import", "resolve_review_item",
+    "manage_user", "delete_user", "manage_agent_settings", "import_bulls", "resolve_import", "resolve_review_item", "import_animals",
   ];
   for (const name of writeTools) {
     const tool = AGENT_TOOLS.find((t) => t.name === name);

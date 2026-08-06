@@ -136,7 +136,7 @@ decide when to call it.
 | `rollback_leaders` | Best/worst by Rollback Resistance or Proof Performance |
 | `proof_history` | One sire's trait values across proof rounds, oldest→newest |
 | `pedigree_index` | 3-generation pedigree + estimated Pedigree Index and confidence |
-| `get_animal_full_profile` | Every stored trait for one animal (unpacked from `traitsJson`) |
+| `get_animal_full_profile` | Every stored trait for one animal (unpacked from `traitsJson`); if not in the DB and given a registration number, falls back to a live **Lactanet** lookup (read-only) |
 | `calculate_mating_pa` | Parent Average of a sire × dam across shared traits (Lactanet fallback) |
 | `list_reference_data` | Breeds / traits / sources / rules / proof files / users / review queue — find the id or code a write tool needs |
 
@@ -158,6 +158,7 @@ Each mirrors a UI action and checks the **same capability** before doing anythin
 | `delete_user` | Remove a user — **confirm**, self-delete guarded | `user:write` |
 | `manage_agent_settings` | Show status / set model / **clear key** (no key entry via chat) | `config:write` |
 | `import_bulls` | Import Lactanet proofs (reg / topN / mass) → **staged pending** | `record:write` |
+| `import_animals` | Import whole animals from Lactanet by registration number (a handful; direct or `review:true`) | `record:write` |
 | `resolve_import` | Approve / **deny** / restore a staged batch import | `record:approve` |
 | `resolve_review_item` | Approve / triage a per-record review item | `review:write` |
 

@@ -36,7 +36,7 @@ async function main() {
   check("tool names are unique", new Set(names).size === names.length);
   check("every tool has description + schema + run",
     AGENT_TOOLS.every((t) => t.description && t.input_schema && typeof t.run === "function"));
-  const writeNames = ["create_or_update_animal", "archive_animal", "add_animal_note", "add_proof", "add_milk_record", "add_classification", "manage_breed", "manage_trait", "manage_source", "manage_priority_rule", "manage_user", "delete_user", "manage_agent_settings", "import_bulls", "resolve_import", "resolve_review_item", "list_reference_data"];
+  const writeNames = ["create_or_update_animal", "archive_animal", "add_animal_note", "add_proof", "add_milk_record", "add_classification", "manage_breed", "manage_trait", "manage_source", "manage_priority_rule", "manage_user", "delete_user", "manage_agent_settings", "import_bulls", "resolve_import", "resolve_review_item", "list_reference_data", "import_animals"];
   check("all write/action tools are present", writeNames.every((n) => AGENT_TOOL_MAP.has(n)), `${writeNames.length} expected`);
 
   // --- READ still works with no actor (reads are open) ---
@@ -84,6 +84,21 @@ async function main() {
     check("archive_animal confirm-gate (skipped — no animal)", true);
     check("the animal is still not archived (skipped)", true);
   }
+
+  // Animal import + Lactanet lookup fallback — gating / validation / confirm
+  // only (no real Lactanet fetch is triggered by these inputs).
+  let refusedImp = false;
+  try { await run("import_animals", { regs: ["HOCANM13486161"] }, sales); } catch (e) { refusedImp = /isn't allowed/.test((e as Error).message); }
+  check("import_animals refuses a Sales user", refusedImp);
+
+  const impGarbage = await run("import_animals", { regs: ["not-a-reg", "xyz"] }, admin);
+  check("import_animals rejects input with no valid registrations", (impGarbage.records as { tooMany?: boolean } | null) == null || /No valid registration/.test(impGarbage.summary));
+
+  const impConfirm = await run("import_animals", { regs: ["HOCANM13486161"] }, admin); // no confirm → gate, no fetch
+  check("import_animals refuses without confirm (no import, no Lactanet fetch)", (impConfirm.records as { confirmRequired?: boolean } | null)?.confirmRequired === true, impConfirm.summary);
+
+  const lookupBad = await run("get_animal_full_profile", { reg: "INVALIDREG" }, admin); // not internal, bad format → no network
+  check("get_animal_full_profile external fallback rejects a non-registration cleanly", /not a registration number/.test(lookupBad.summary), lookupBad.summary);
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n  ${results.length - failed.length}/${results.length} checks passed`);

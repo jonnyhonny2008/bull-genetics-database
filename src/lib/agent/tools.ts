@@ -18,7 +18,7 @@ import { sireRoleWhere } from "@/lib/sire-class";
 import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex } from "@/lib/pedigree";
 import { unpackTraits, traitDefMap, packTraits, type RawTrait } from "@/lib/eval-traits";
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
-import { can, ROLES, isBatchImportType } from "@/lib/constants";
+import { can, ROLES, isBatchImportType, LARGE_ANIMAL_IMPORT } from "@/lib/constants";
 import { maskKey } from "./config";
 // Type-only imports of server-only modules — erased at compile time, so they do
 // not pull those modules into the static graph (the write tools import them at
@@ -377,6 +377,37 @@ async function recomputePreferred(animalId: string): Promise<void> {
   await recomputePreferredForAnimal(animalId);
 }
 
+/**
+ * Look one animal up LIVE on Lactanet by registration number (read-only,
+ * session-only — nothing is saved). Used as the fallback when an animal the user
+ * asks about isn't in the database. To persist an external animal, use the
+ * import_animals tool. Reuses the same fetch/parse the mating calculator uses.
+ */
+async function externalAnimalProfile(reg: string): Promise<{ summary: string; records: unknown }> {
+  const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
+  const ref = parseReg(reg);
+  if (!ref) return { summary: `"${reg}" is not a registration number (expected e.g. HOCANM13486161), so I can't look it up on Lactanet.`, records: null };
+  let fetched;
+  try {
+    fetched = await fetchLactanetAnimal(ref.reg);
+  } catch (e) {
+    return { summary: `Lactanet lookup failed: ${(e as Error)?.message ?? e}`, records: null };
+  }
+  if (fetched.error) return { summary: `Lactanet: ${fetched.error}`, records: null };
+  const { parseLactanetAnimal } = await import("@/lib/lactanet-parse");
+  const parsed = parseLactanetAnimal(ref.reg, ref.sex, fetched.tabs, fetched.fetchedAt);
+  const traits = parsed.evaluation.traits.map((t) => ({ code: t.code, value: t.numericValue, text: t.textValue, reliability: t.reliability }));
+  return {
+    summary: `${parsed.identity.name ?? ref.reg} is NOT in your database — this profile came live from Lactanet (${traits.length} traits) and was NOT saved. To keep it, use import_animals with this registration number.`,
+    records: {
+      found: true, source: "lactanet", externallySourced: true, savedToDatabase: false,
+      animal: { name: parsed.identity.name ?? null, reg: ref.reg, sex: ref.sex, birthDate: parsed.identity.birthDate ?? null },
+      evaluation: { basis: parsed.evaluation.basis, reliabilityOverall: parsed.evaluation.reliability, proofRun: parsed.evaluation.runLabel, traitCount: traits.length, traits },
+      note: "Externally sourced from Lactanet; session-only, not saved. Use import_animals to save it permanently.",
+    },
+  };
+}
+
 export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "search_animals",
@@ -543,15 +574,24 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "get_animal_full_profile",
     description:
-      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and any stored owners/awards where present (breed-association data, not populated from Lactanet). Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system.",
+      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and any stored owners/awards where present (breed-association data, not populated from Lactanet). Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system. LOOKUP FALLBACK: if the animal is NOT in the database and you were given a registration number, this pulls its profile LIVE from Lactanet (read-only, not saved) so you can still answer 'tell me about <reg>'. By name alone there is no external lookup — ask for the registration number. To SAVE an external animal, use import_animals.",
     input_schema: { type: "object", properties: { name: { type: "string", description: "Exact or partial animal name" }, reg: { type: "string", description: "Registration number (exact)" } } },
-    run: async (input) => {
+    run: async (input, ctx) => {
       const name = str(input.name), reg = str(input.reg);
       if (!name && !reg) return { summary: "Provide a name or registration number.", records: null };
       const a = await findAnimalFull(name, reg);
-      if (!a) return { summary: `No animal found for ${reg || name}.`, records: null };
-      const profile = await buildFullProfile(a);
-      return { summary: `Full profile for ${a.primaryName}: ${profile.preferredEvaluation?.traitCount ?? 0} traits on the preferred evaluation (${a.evaluations.length} rounds on file).`, records: profile };
+      if (a) {
+        const profile = await buildFullProfile(a);
+        return { summary: `Full profile for ${a.primaryName}: ${profile.preferredEvaluation?.traitCount ?? 0} traits on the preferred evaluation (${a.evaluations.length} rounds on file).`, records: profile };
+      }
+      // Not in the database. If we have a registration number, look it up LIVE on
+      // Lactanet (read-only, not saved). A read-capable actor is required before
+      // the external fetch. By name alone there's nothing to look up externally.
+      if (reg) {
+        requireCap(ctx, "animal:read", "look an animal up on Lactanet");
+        return externalAnimalProfile(reg);
+      }
+      return { summary: `No animal named "${name}" is in your database. If you have its registration number (e.g. HOCANM13486161), give me that and I'll look it up on Lactanet.`, records: null };
     },
   },
   {
@@ -1234,6 +1274,71 @@ export const AGENT_TOOLS: AgentTool[] = [
       const { targetAnimalId, proposedRecordType } = await applyReviewApproval(reviewId, su);
       await logAction(actor, "review_item", "approve", reviewId, { proposedRecordType, targetAnimalId });
       return { summary: `Approved review item ${reviewId} — created a ${proposedRecordType}${targetAnimalId ? " and linked it to the animal" : ""}.`, records: { reviewId, proposedRecordType, targetAnimalId } };
+    },
+  },
+
+  {
+    name: "import_animals",
+    description:
+      "Import whole animal(s) from Lactanet BY REGISTRATION NUMBER — fetches each animal's Lactanet profile (identity, evaluation, pedigree, classifications) and SAVES it to the database. `regs`: registration numbers (e.g. HOCANM13486161) as an array, or a pasted block of text (registrations are extracted from it). Up to " + LARGE_ANIMAL_IMPORT + " at a time here — for a larger list use the Animal Import page (it streams progress and has a longer timeout). By default animals are added directly (immediately usable); set review:true to stage them as pending for an admin to approve instead. Fetches live from Lactanet AND writes to the database, so it refuses until confirm:true — tell the user which / how many first. Requires the record:write permission. (For proofs from a Lactanet CSV file use import_bulls; to just VIEW an animal without saving, use get_animal_full_profile.)",
+    input_schema: {
+      type: "object",
+      properties: {
+        regs: { type: "array", items: { type: "string" }, description: "registration numbers, or pass a pasted block as one string" },
+        review: { type: "boolean", description: "stage as pending for admin approval instead of importing directly" },
+        confirm: { type: "boolean", description: "set true ONLY after the user agrees to import these animals" },
+      },
+      required: ["regs"],
+    },
+    run: async (input, ctx) => {
+      const actor = requireCap(ctx, "record:write", "import animals");
+      const raw = Array.isArray(input.regs) ? (input.regs as unknown[]).map((x) => str(x)).join("\n") : str(input.regs);
+      const found = raw.toUpperCase().match(/\b[A-Z]{2}[A-Z0-9]{3}[MF]\d{4,}\b/g) ?? [];
+      const regs = [...new Set(found.map((s) => s.trim()))];
+      if (!regs.length) return { summary: "No valid registration numbers found (expected e.g. HOCANM13486161).", records: null };
+      if (regs.length > LARGE_ANIMAL_IMPORT) {
+        return { summary: `That's ${regs.length} animals — more than I import from chat (${LARGE_ANIMAL_IMPORT} max, so the request can't time out). For a larger batch use the Animal Import page: it streams progress and routes big imports through admin review.`, records: { tooMany: true, count: regs.length, max: LARGE_ANIMAL_IMPORT } };
+      }
+      const doReview = input.review === true;
+      const gate = confirmGate(input, `Import ${regs.length} animal(s) from Lactanet (${regs.join(", ")})${doReview ? " — staged as PENDING for admin review" : " — added directly to the database"}.`, { regs, count: regs.length, review: doReview });
+      if (gate) return gate;
+
+      const { ingestLactanetReg } = await import("@/lib/lactanet-ingest");
+      let ok = 0, fail = 0, created = 0;
+      const manifest: { reg: string; animalId: string; created: boolean; evaluationId: string | null; name: string | null }[] = [];
+      const results: { reg: string; ok: boolean; name: string | null; created: boolean; traits: number; error?: string }[] = [];
+      for (const reg of regs) {
+        let outcome: Awaited<ReturnType<typeof ingestLactanetReg>>;
+        try { outcome = await ingestLactanetReg(reg, actor.uid, { pending: doReview }); }
+        catch (e) { outcome = { reg, ok: false, error: String((e as Error)?.message ?? e) }; }
+        if (outcome.ok) {
+          ok++;
+          if (outcome.created) created++;
+          if (doReview && outcome.animalId) manifest.push({ reg: outcome.reg, animalId: outcome.animalId, created: !!outcome.created, evaluationId: outcome.evaluationId ?? null, name: outcome.name ?? null });
+        } else fail++;
+        results.push({ reg: outcome.reg, ok: outcome.ok, name: outcome.name ?? null, created: !!outcome.created, traits: outcome.traitCount ?? 0, error: outcome.error });
+      }
+
+      let reviewId: string | null = null;
+      let reviewError: string | null = null;
+      if (doReview && manifest.length) {
+        try {
+          const { createImportReview } = await import("@/lib/import-staging");
+          reviewId = await createImportReview({ userId: actor.uid, kind: "animal", captureType: "lactanet_query", sourceName: "LactanetGen", manifest: { kind: "animal", mode: "paste", label: `Animal import: ${manifest.length} animal(s) from Lactanet`, count: manifest.length, animals: manifest } });
+        } catch (e) { reviewError = String((e as Error)?.message ?? e); }
+      }
+      await logAction(actor, "import_batch", doReview ? "stage" : "import", reviewId ?? undefined, { kind: "animal", regs: regs.length, ok, created });
+      // Only claim "staged for review" when a queue row actually exists. If it
+      // failed, the records are pending with no approval path — surface that
+      // rather than falsely reporting success (mirrors /api/lactanet/import).
+      const tail = !doReview
+        ? ""
+        : reviewId
+          ? " Staged as pending — an admin approves them in the review queue."
+          : manifest.length
+            ? ` WARNING: the records were written as pending, but the review-queue row could NOT be created (${reviewError}), so an admin needs to clean them up manually.`
+            : "";
+      return { summary: `Imported ${ok} of ${regs.length} animal(s) from Lactanet${created ? ` (${created} new)` : ""}${fail ? `, ${fail} failed` : ""}.${tail}`, records: { ok, fail, created, review: doReview, reviewId, reviewError, results } };
     },
   },
 ];
