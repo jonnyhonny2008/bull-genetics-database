@@ -477,6 +477,37 @@ async function traceMaternalLine(startReg: string, generations: number): Promise
   };
 }
 
+/**
+ * The 3-generation pedigree for an animal NOT in the database, live from Lactanet
+ * (read-only, not saved). Lighter than externalAnimalProfile — fetches only the
+ * summary + pedigree tabs. Lets a "what's <reg>'s pedigree?" question be answered
+ * without importing.
+ */
+async function externalPedigree(reg: string): Promise<{ summary: string; records: unknown }> {
+  const { parseReg, fetchLactanetAnimal } = await import("@/lib/lactanet-web");
+  const ref = parseReg(reg);
+  if (!ref) return { summary: `"${reg}" is not a registration number (expected e.g. HOCANF15232832), so I can't look it up on Lactanet.`, records: null };
+  let fetched;
+  try { fetched = await fetchLactanetAnimal(ref.reg, ["summary", "pedigree"]); }
+  catch (e) { return { summary: `Lactanet lookup failed: ${(e as Error)?.message ?? e}`, records: null }; }
+  if (fetched.error) return { summary: `Lactanet: ${fetched.error}`, records: null };
+  const { parseIdentity, parsePedigree } = await import("@/lib/lactanet-parse");
+  const identity = fetched.tabs.summary ? parseIdentity(fetched.tabs.summary) : null;
+  const ft = fetched.tabs.pedigree ? parsePedigree(fetched.tabs.pedigree) : [];
+  const gen1 = (side: "sire" | "dam") => { const n = ft.find((x) => x.side === side && x.generation === 1); return n ? { name: n.name, reg: n.reg, birthDate: n.birthDate } : null; };
+  const pedigree = ft.map((n) => ({ relation: ancestorLabel(n), generation: n.generation, side: n.side, name: n.name, reg: n.reg, birthDate: n.birthDate }));
+  const sire = gen1("sire"), dam = gen1("dam");
+  return {
+    summary: `${identity?.name ?? ref.reg} — pedigree from Lactanet (NOT in your database, nothing saved). Sire: ${sire?.name ?? "unknown"}; Dam: ${dam?.name ?? "unknown"}; ${ft.length} ancestors across 3 generations. For the deep maternal (tail-female) line use trace_maternal_line.`,
+    records: {
+      found: true, source: "lactanet", externallySourced: true, savedToDatabase: false,
+      animal: { name: identity?.name ?? null, reg: ref.reg, sex: ref.sex },
+      sire, dam, pedigree,
+      note: "Live from Lactanet; session-only, not saved — you do NOT need to import the animal to see this. This is the 3-generation pedigree; for a deep maternal line use trace_maternal_line. To save the animal, use import_animals.",
+    },
+  };
+}
+
 export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "search_animals",
@@ -617,16 +648,24 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "pedigree_index",
-    description: "A sire's 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) plus the estimated Pedigree Index (parent average LPI from held male-line ancestors) and its confidence. Use for 'pedigree', 'what does his pedigree suggest', 'ancestors'.",
+    description: "An animal's 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) plus, for held sires, the estimated Pedigree Index (parent average LPI from male-line ancestors) and its confidence. Use for 'pedigree', 'what's <reg>'s pedigree', 'what does his pedigree suggest', 'ancestors'. If the animal is NOT in the database and a registration number is given, it falls back to a LIVE Lactanet pedigree lookup (read-only) — so you can answer a pedigree question WITHOUT importing the animal. By name alone there's no external lookup. For the deep maternal line (up to 15 generations) use trace_maternal_line.",
     input_schema: { type: "object", properties: { name: { type: "string" }, reg: { type: "string" } } },
-    run: async (input) => {
+    run: async (input, ctx) => {
       const name = typeof input.name === "string" ? input.name.trim() : "";
       const reg = typeof input.reg === "string" ? input.reg.trim() : "";
       const where: Prisma.AnimalWhereInput = reg
         ? { archived: false, identifiers: { some: { idValue: { equals: reg, mode: "insensitive" } } } }
         : { archived: false, primaryName: { contains: name, mode: "insensitive" } };
       const a = await prisma.animal.findFirst({ where, select: { primaryName: true, pedigreeRefs: { select: { notes: true } } } });
-      if (!a) return { summary: `No sire found for ${reg || name}.`, records: null };
+      if (!a) {
+        // Not held — look the pedigree up live on Lactanet (read-only, not saved),
+        // so a pedigree question never requires importing the animal first.
+        if (reg) {
+          requireCap(ctx, "animal:read", "look a pedigree up on Lactanet");
+          return externalPedigree(reg);
+        }
+        return { summary: `No animal named "${name}" is in your database. Give me its registration number (e.g. HOCANF15232832) and I'll pull the pedigree live from Lactanet — no import needed.`, records: null };
+      }
       const notes = a.pedigreeRefs.map((p) => p.notes).find((nn) => nn && /\bSIRE:/i.test(nn)) ?? null;
       const ancestors = await resolveAncestors(prisma, parsePedigreeNotes(notes));
       const pi = computePedigreeIndex(ancestors);
