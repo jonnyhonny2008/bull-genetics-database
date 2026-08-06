@@ -4,6 +4,7 @@ import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { parseHeader, parseRow, safeProofFileName } from "@/lib/lactanet";
 import { persistBull } from "@/lib/proof-import";
+import { logAppError } from "@/lib/error-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -44,15 +45,37 @@ export async function POST(request: Request) {
   }
 
   let imported = 0, created = 0, failed = 0;
+  // Capture WHY rows failed instead of swallowing them into a bare counter. A
+  // file with a shifted header or a changed layout fails every row, and returning
+  // a silent `imported: 0` used to read as success — the exact "wrong-shaped file
+  // accepted as a good run" failure a data-correctness tool must not have.
+  const failures: string[] = [];
+  const noteFailure = (line: string, reason: string) => {
+    failed++;
+    if (failures.length < 20) failures.push(`${(line.split(",")[0] ?? "").trim() || "(row)"}: ${reason}`);
+  };
   for (const line of rows) {
     if (!line.trim()) continue;
     try {
       const bull = parseRow(line.split(","), idx);
-      if (!bull) { failed++; continue; }
+      if (!bull) { noteFailure(line, "could not parse row (unexpected layout or missing key columns)"); continue; }
       const res = await persistBull(bull, { sourceId: source?.sourceId ?? null, captureId, userId: user?.uid, fileName, approvalStatus: "approved" });
       imported++;
       if (res.created) created++;
-    } catch { failed++; }
+    } catch (e) { noteFailure(line, (e as Error)?.message ?? "unknown error"); }
   }
-  return NextResponse.json({ ok: true, captureId, imported, created, failed });
+
+  // A chunk where NOTHING imported but rows failed is almost always a layout
+  // problem, not many individually-bad bulls — surface it loudly.
+  const fatal = imported === 0 && failed > 0;
+  if (failed > 0) {
+    await logAppError("proof-import/chunk", `${failed} of ${rows.length} rows failed to import from ${fileName}`, {
+      userId: user?.uid,
+      fileName,
+      failedCount: failed,
+      importedCount: imported,
+      samples: failures.slice(0, 10),
+    });
+  }
+  return NextResponse.json({ ok: true, captureId, imported, created, failed, failures, fatal });
 }

@@ -28,6 +28,8 @@ export default function MassImport() {
 
       let captureId: string | undefined;
       let imported = 0, created = 0, failed = 0;
+      const reasons: string[] = [];
+      let stopped = false;
       for (let i = 0; i < data.length; i += CHUNK) {
         const rows = data.slice(i, i + CHUNK);
         const resp = await fetch("/api/proof-import/chunk", {
@@ -39,9 +41,27 @@ export default function MassImport() {
         if (!resp.ok) { setError(j.error ?? `Import failed (HTTP ${resp.status}).`); break; }
         captureId = j.captureId ?? captureId;
         imported += j.imported ?? 0; created += j.created ?? 0; failed += j.failed ?? 0;
+        if (Array.isArray(j.failures)) for (const r of j.failures) if (reasons.length < 12) reasons.push(String(r));
         setProgress({ done: Math.min(i + CHUNK, data.length), total: data.length });
+        // The very first chunk failing wholesale means the file's layout is wrong
+        // (shifted header, not a bull-proof CSV). Stop rather than grind through
+        // every chunk failing identically, and show why.
+        if (j.fatal && i === 0) {
+          setError(
+            `None of the first ${rows.length} rows imported — the file layout looks wrong for a Lactanet bull-proof CSV. ` +
+            (reasons.length ? `First problems: ${reasons.slice(0, 3).join("; ")}` : ""),
+          );
+          stopped = true;
+          break;
+        }
       }
-      setSummary(`${imported} imported (${created} new)${failed ? `, ${failed} skipped` : ""} of ${data.length} rows.`);
+      if (stopped) return;
+      const detail = failed && reasons.length ? ` First skipped: ${reasons.slice(0, 3).join("; ")}` : "";
+      if (imported === 0 && failed > 0) {
+        setError(`No rows imported; ${failed} skipped of ${data.length}.${detail}`);
+      } else {
+        setSummary(`${imported} imported (${created} new)${failed ? `, ${failed} skipped` : ""} of ${data.length} rows.${detail}`);
+      }
     } catch (e) {
       setError("Import error: " + String(e).slice(0, 140));
     } finally {

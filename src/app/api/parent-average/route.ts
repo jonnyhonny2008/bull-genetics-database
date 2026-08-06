@@ -63,10 +63,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "You don't have permission to import animals." }, { status: 403 });
     }
     const regs = [...new Set(body.save.map((s) => String(s).trim().toUpperCase()).filter(Boolean))];
-    const saved: { reg: string; ok: boolean; name?: string | null; error?: string }[] = [];
+    const saved: { reg: string; ok: boolean; name?: string | null; error?: string; evaluationSaved?: boolean; warnings?: string[] }[] = [];
     for (const reg of regs) {
       const out = await ingestLactanetReg(reg, user?.uid);
-      saved.push({ reg, ok: out.ok, name: out.name, error: out.error });
+      // Surface a partial save (identity stored but the proof itself didn't) rather
+      // than reporting a clean success and discarding the warnings.
+      saved.push({ reg, ok: out.ok, name: out.name, error: out.error, evaluationSaved: out.evaluationSaved, warnings: out.warnings });
     }
     return NextResponse.json({ ok: saved.every((s) => s.ok), saved });
   }

@@ -28,7 +28,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Unit tests
-        run: npx tsx --test src/lib/holstein-parse.test.ts src/lib/proof-change.test.ts
+        # Every pure suite under src/lib (the glob excludes src/lib/agent/*, which
+        # needs a live env). Runs the correctness-critical math — mating, relatedness,
+        # rollback, sire-class, the Lactanet parsers — so a regression there can't
+        # reach Vercel. The react-server condition lets the server-only modules load.
+        run: npx tsx --conditions=react-server --test src/lib/*.test.ts
       - name: Lint (informational)
         run: npx next lint
         continue-on-error: true

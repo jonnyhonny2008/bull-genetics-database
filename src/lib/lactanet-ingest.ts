@@ -47,6 +47,8 @@ export interface LactanetIngestOutcome {
   name?: string | null;
   created?: boolean;
   traitCount?: number;
+  /** True only when a dated genetic evaluation was actually written this run. */
+  evaluationSaved?: boolean;
   proofRun?: string | null;
   ancestors?: number;
   progeny?: number;
@@ -163,8 +165,18 @@ export async function ingestLactanetReg(
     // instead of stacking duplicate rows, which would corrupt proof-round counts
     // and the Proof Change Report's "previous official proof" pick.
     let traitCount = 0;
+    let evaluationSaved = false;
     let evaluationId: string | null = null;
     const ev = parsed.evaluation;
+    if (ev.traits.length && !ev.runDate) {
+      // Traits parsed but the proof-run date did not — exactly the parser failure
+      // that once imported zero data silently. Do NOT quietly report success: no
+      // evaluation is written below, so say so loudly in the warnings.
+      parsed.warnings = [
+        ...(parsed.warnings ?? []),
+        `Read ${ev.traits.length} trait values but could not read the proof-run date, so no evaluation was saved. The Lactanet page layout may have changed.`,
+      ];
+    }
     if (ev.traits.length && ev.runDate) {
       const packed = packTraits(
         ev.traits.map((t) => ({
@@ -209,6 +221,7 @@ export async function ingestLactanetReg(
         evaluationId = createdEval.evaluationId;
       }
       traitCount = ev.traits.length;
+      evaluationSaved = true;
     }
 
     // Rich profile — same shape the Holstein.ca path produced, so the UI is unchanged.
@@ -220,7 +233,7 @@ export async function ingestLactanetReg(
 
     return {
       reg: R, ok: true, animalId, evaluationId, name, created,
-      traitCount,
+      traitCount, evaluationSaved,
       proofRun: ev.runLabel,
       ancestors: parsed.profile.familyTree.length,
       progeny: parsed.profile.progeny.length,

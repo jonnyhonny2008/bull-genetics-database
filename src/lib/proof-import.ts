@@ -42,12 +42,21 @@ export async function persistBull(
   const approvalStatus = ctx.approvalStatus ?? "approved";
   const isApproved = approvalStatus === "approved";
 
-  // Match existing by registration or NAAB identifier.
-  const idMatches = await prisma.animalIdentifier.findMany({
-    where: { idValue: { in: [bull.registrationNumber, bull.naabCode ?? "__none__"] } },
+  // Identity is the REGISTRATION number, which is permanent. NAAB / semen codes are
+  // recycled and reassigned between bulls over time, so matching on the NAAB can
+  // graft a brand-new bull's proof onto whichever animal last held that code — and
+  // then overwrite its name (see the name-adoption block below). A wrong number on
+  // the wrong bull is the worst failure this app can have, so identity is resolved
+  // by registration ONLY. The NAAB is still recorded as an identifier below; it is
+  // just never used to decide WHO this row belongs to. This brings the Vercel-native
+  // path in line with the local importer (prisma/import-cdn.ts), which already keys
+  // on registration idTypes only.
+  const REG_ID_TYPES = Array.from(new Set([bull.regIdType, "registration_ca", "registration_us", "registration_int"]));
+  const regMatch = await prisma.animalIdentifier.findFirst({
+    where: { idValue: bull.registrationNumber, idType: { in: REG_ID_TYPES } },
     select: { animalId: true },
   });
-  let animalId = idMatches[0]?.animalId ?? null;
+  let animalId = regMatch?.animalId ?? null;
   let wasCreated = false;
 
   const { label: runLabel, date: runDate } = proofRunLabel(bull.proofRun);
@@ -70,7 +79,14 @@ export async function persistBull(
     animalId = created.id;
     // Identifiers
     await prisma.animalIdentifier.create({ data: { animalId, idType: bull.regIdType, idValue: bull.registrationNumber, issuingCountry: bull.country, sourceId: ctx.sourceId, isPrimary: true } });
-    if (bull.naabCode) await prisma.animalIdentifier.create({ data: { animalId, idType: "naab", idValue: bull.naabCode, sourceId: ctx.sourceId } });
+    if (bull.naabCode) {
+      // A NAAB code belongs to one active bull at a time. If this code was
+      // previously assigned to a different animal, that assignment is now stale —
+      // deactivate it so "active = carries a NAAB code" keeps pointing at the
+      // current holder alone (see the sire-status rules) instead of two bulls.
+      await prisma.animalIdentifier.updateMany({ where: { idType: "naab", idValue: bull.naabCode, active: true }, data: { active: false } });
+      await prisma.animalIdentifier.create({ data: { animalId, idType: "naab", idValue: bull.naabCode, sourceId: ctx.sourceId, active: true } });
+    }
     if (bull.naabMarketingCode) await prisma.animalIdentifier.create({ data: { animalId, idType: "marketing_code", idValue: bull.naabMarketingCode, sourceId: ctx.sourceId } });
     // Role
     await prisma.animalRole.create({ data: { animalId, roleType: "proven_bull", active: true } });
