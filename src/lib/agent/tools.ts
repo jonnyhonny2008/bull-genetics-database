@@ -20,6 +20,7 @@ import { unpackTraits, traitDefMap, packTraits, type RawTrait } from "@/lib/eval
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
 import { can, ROLES, isBatchImportType, LARGE_ANIMAL_IMPORT } from "@/lib/constants";
 import { maskKey } from "./config";
+import { stageAgentRecord } from "./stage-record";
 // Type-only imports of server-only modules — erased at compile time, so they do
 // not pull those modules into the static graph (the write tools import them at
 // runtime with a dynamic import()).
@@ -891,7 +892,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "create_or_update_animal",
     description:
-      "CREATE a new animal or UPDATE an existing one's identity fields. To UPDATE, give animalId (or a name/reg that resolves to exactly one animal); to CREATE, omit all three and give primaryName. Fields: primaryName, shortName, sex ('M'|'F'), breedCode (e.g. HO/JE/AY/BS) or breedId, birthDate (yyyy-mm-dd), countryOfOrigin ('CA'|'US'|'INT'), currentStatus (active|proven|genomic|retired|reference), notes. Optional `identifiers`: array of { idType, idValue, isPrimary?, country?, org? }. IMPORTANT: on an UPDATE, supplying identifiers REPLACES the whole identifier list — include every one you want to keep. Mirrors the New/Edit Animal screens. Requires the animal:write permission. Does NOT touch proofs/classifications/milk — use the record tools for those.",
+      "CREATE a new animal or UPDATE an existing one's identity fields. A CREATE is STAGED in the admin Review Queue (approved before the animal exists); an UPDATE takes a two-step confirm (call once to preview the exact changes, then again with confirm:true) — tell the user which. To UPDATE, give animalId (or a name/reg that resolves to exactly one animal); to CREATE, omit all three and give primaryName. Fields: primaryName, shortName, sex ('M'|'F'), breedCode (e.g. HO/JE/AY/BS) or breedId, birthDate (yyyy-mm-dd), countryOfOrigin ('CA'|'US'|'INT'), currentStatus (active|proven|genomic|retired|reference), notes. Optional `identifiers`: array of { idType, idValue, isPrimary?, country?, org? }. IMPORTANT: on an UPDATE, supplying identifiers REPLACES the whole identifier list — include every one you want to keep. Mirrors the New/Edit Animal screens. Requires the animal:write permission. Does NOT touch proofs/classifications/milk — use the record tools for those.",
     input_schema: {
       type: "object",
       properties: {
@@ -912,6 +913,7 @@ export const AGENT_TOOLS: AgentTool[] = [
           description: "REPLACES existing identifiers on update.",
           items: { type: "object", properties: { idType: { type: "string" }, idValue: { type: "string" }, isPrimary: { type: "boolean" }, country: { type: "string" }, org: { type: "string" } }, required: ["idValue"] },
         },
+        confirm: { type: "boolean", description: "UPDATE only: set true ONLY after the user has agreed to the exact changes you previewed." },
       },
     },
     run: async (input, ctx) => {
@@ -935,6 +937,21 @@ export const AGENT_TOOLS: AgentTool[] = [
       if (editing) {
         const target = await resolveAnimalId(input);
         if (!target) return { summary: `No animal found to edit for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
+        // Editing an existing animal's identity can't be staged through the review
+        // queue (that path only CREATES records), so it takes a two-step confirm:
+        // a wrong fuzzy-name match must not silently rewrite the wrong bull's name.
+        const changed: string[] = [];
+        if (str(input.primaryName)) changed.push(`name → "${str(input.primaryName)}"`);
+        if (input.shortName !== undefined) changed.push(`short name → "${str(input.shortName)}"`);
+        if (str(input.sex)) changed.push(`sex → ${str(input.sex)}`);
+        if (breedId) changed.push(`breed → ${breedCode || breedId}`);
+        if (input.birthDate !== undefined) changed.push(`birth date → ${str(input.birthDate) || "cleared"}`);
+        if (input.countryOfOrigin !== undefined) changed.push(`country → ${str(input.countryOfOrigin) || "cleared"}`);
+        if (str(input.currentStatus)) changed.push(`status → ${str(input.currentStatus)}`);
+        if (input.notes !== undefined) changed.push("notes updated");
+        if (identifiers) changed.push(`REPLACE all identifiers with ${identifiers.length}`);
+        const gate = confirmGate(input, `Update ${target.name}: ${changed.join("; ") || "no changes specified"}.`, { animalId: target.id, name: target.name, changes: changed });
+        if (gate) return gate;
         const data: Record<string, unknown> = { updatedById: actor.uid };
         if (str(input.primaryName)) data.primaryName = str(input.primaryName);
         if (input.shortName !== undefined) data.shortName = str(input.shortName) || null;
@@ -955,16 +972,17 @@ export const AGENT_TOOLS: AgentTool[] = [
 
       const primaryName = str(input.primaryName);
       if (!primaryName) return { summary: "primaryName is required to create a new animal.", records: null };
-      const created = await prisma.animal.create({
-        data: {
-          primaryName, shortName: str(input.shortName) || null, sex: str(input.sex) || "F", breedId,
-          birthDate: toDate(input.birthDate), countryOfOrigin: str(input.countryOfOrigin) || null,
-          currentStatus: str(input.currentStatus) || "active", notes: str(input.notes) || null, createdById: actor.uid,
-        },
+      // A new animal is staged for admin approval, then materialised by the same
+      // review-approval path used for extracted-data imports.
+      const idList = (identifiers ?? []).map((r) => ({ idType: r.idType, idValue: r.idValue, isPrimary: r.isPrimary }));
+      const summary = `Create a new ${str(input.sex) || "F"} animal "${primaryName}"${breedCode ? ` (${breedCode})` : ""}${idList.length ? ` with ${idList.length} identifier(s): ${idList.map((i) => `${i.idType} ${i.idValue}`).join(", ")}` : ""}.`;
+      const { reviewId } = await stageAgentRecord({
+        userId: actor.uid, proposedRecordType: "animal", matchedAnimalId: null,
+        data: { primaryName, shortName: str(input.shortName) || undefined, sex: str(input.sex) || "F", breedCode: breedCode || undefined, country: str(input.countryOfOrigin) || undefined, identifiers: idList },
+        summary,
       });
-      for (const idf of identifiers ?? []) await prisma.animalIdentifier.create({ data: { animalId: created.id, ...idf } });
-      await logAction(actor, "animal", "create", created.id, { primaryName });
-      return { summary: `Created ${primaryName}${identifiers?.length ? ` with ${identifiers.length} identifier(s)` : ""}.`, records: { animalId: created.id, name: primaryName } };
+      await logAction(actor, "animal", "stage", reviewId, { primaryName });
+      return { summary: `Staged for admin approval — ${summary} In the Review Queue (id ${reviewId}); the animal is not created until an admin approves it there.`, records: { reviewId, staged: true, name: primaryName } };
     },
   },
 
@@ -1003,7 +1021,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "add_proof",
     description:
-      "Record a genetic evaluation (proof) for ONE animal by manual entry. Resolve the animal by animalId/name/reg. Give `traits` as an object of trait code → value, e.g. {\"LPI\":3200,\"CONF\":12,\"MILK\":900,\"FAT\":40}. Optional: evaluationDate (yyyy-mm-dd, default today), proofRun label (e.g. 'April 2026'), countrySystem, reliability, approvalStatus (approved|pending, default approved), notes. Requires record:write; recomputes the animal's preferred evaluation. NOTE: to pull OFFICIAL Lactanet proofs use import_bulls instead of typing them in.",
+      "Record a genetic evaluation (proof) for ONE animal by manual entry. Resolve the animal by animalId/name/reg. Give `traits` as an object of trait code → value, e.g. {\"LPI\":3200,\"CONF\":12,\"MILK\":900,\"FAT\":40}. Optional: evaluationDate (yyyy-mm-dd, default today), proofRun label (e.g. 'April 2026'), countrySystem, notes. Requires record:write. STAGED FOR APPROVAL: the proof is placed in the admin Review Queue with a summary and does NOT affect the animal until an admin approves it there — tell the user this. To pull OFFICIAL Lactanet proofs use import_bulls instead of typing them in.",
     input_schema: {
       type: "object",
       properties: {
@@ -1027,26 +1045,28 @@ export const AGENT_TOOLS: AgentTool[] = [
         })
         .filter((t) => t.numericValue != null || t.textValue != null);
       if (!raw.length) return { summary: "No usable trait values were given.", records: null };
-      const packed = packTraits(raw);
-      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
-      const rec = await prisma.geneticEvaluation.create({
-        data: {
-          animalId: target.id, evaluationDate: toDate(input.evaluationDate) ?? new Date(),
-          proofRun: str(input.proofRun) || null, countrySystem: str(input.countrySystem) || null,
-          reliabilityOverall: toNum(input.reliability), approvalStatus,
-          approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
-          createdById: actor.uid, notes: str(input.notes) || null, traitsJson: packed.traitsJson, ...packed.columns,
-        },
+      // Staged for admin approval rather than written directly: the animal may have
+      // been resolved by a fuzzy name match, and a genetic proof is exactly the kind
+      // of value that must never land on the wrong bull unseen.
+      const traitsMap: Record<string, number | string> = {};
+      for (const t of raw) traitsMap[t.traitCode] = t.numericValue ?? (t.textValue as string);
+      const evaluationDate = str(input.evaluationDate) || undefined;
+      const proofRun = str(input.proofRun) || undefined;
+      const traitList = raw.map((t) => `${t.traitCode} ${t.numericValue ?? t.textValue}`).join(", ");
+      const summary = `Add a genetic proof to ${target.name}: ${raw.length} trait(s) — ${traitList}${proofRun ? `; run "${proofRun}"` : ""}${evaluationDate ? `; dated ${evaluationDate}` : ""}.`;
+      const { reviewId } = await stageAgentRecord({
+        userId: actor.uid, proposedRecordType: "genetic_evaluation", matchedAnimalId: target.id,
+        data: { traits: traitsMap, evaluationDate, proofRun, countrySystem: str(input.countrySystem) || undefined },
+        summary,
       });
-      await recomputePreferred(target.id);
-      await logAction(actor, "genetic_evaluation", "create", rec.evaluationId, { animalId: target.id, traits: raw.length });
-      return { summary: `Recorded a proof for ${target.name} with ${raw.length} trait(s).`, records: { evaluationId: rec.evaluationId, animalId: target.id, name: target.name, traits: raw.length } };
+      await logAction(actor, "genetic_evaluation", "stage", reviewId, { animalId: target.id, traits: raw.length });
+      return { summary: `Staged for admin approval — ${summary} It is in the Review Queue (id ${reviewId}) and will NOT affect ${target.name} until an admin approves it there.`, records: { reviewId, staged: true, animalId: target.id, name: target.name } };
     },
   },
 
   {
     name: "add_milk_record",
-    description: "Record a lactation / milk record for a cow. Resolve by animalId/name/reg. Fields: recordDate (yyyy-mm-dd, default today), lactationNumber, calvingDate, daysInMilk, milkAmount, milkUnit (default kg), fatAmount, fatPercent, proteinAmount, proteinPercent, recordType, completionStatus, approvalStatus (approved|pending). Requires record:write.",
+    description: "Record a lactation / milk record for a cow. Resolve by animalId/name/reg. Fields: recordDate (yyyy-mm-dd, default today), lactationNumber, milkAmount, milkUnit (default kg), fatAmount, fatPercent, proteinAmount, proteinPercent. Requires record:write. STAGED FOR APPROVAL: goes to the admin Review Queue and does NOT affect the animal until approved there — tell the user.",
     input_schema: {
       type: "object",
       properties: {
@@ -1061,27 +1081,31 @@ export const AGENT_TOOLS: AgentTool[] = [
       const actor = requireCap(ctx, "record:write", "add milk records");
       const target = await resolveAnimalId(input);
       if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
-      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
-      const rec = await prisma.milkRecord.create({
+      const recordDate = str(input.recordDate) || undefined;
+      const parts = [
+        toNum(input.milkAmount) != null ? `${toNum(input.milkAmount)} ${str(input.milkUnit) || "kg"} milk` : null,
+        toNum(input.fatAmount) != null ? `${toNum(input.fatAmount)} fat` : null,
+        toNum(input.proteinAmount) != null ? `${toNum(input.proteinAmount)} protein` : null,
+      ].filter(Boolean).join(", ");
+      const summary = `Add a milk record to ${target.name}${toNum(input.lactationNumber) != null ? ` (lactation ${toNum(input.lactationNumber)})` : ""}${recordDate ? `, dated ${recordDate}` : ""}${parts ? `: ${parts}` : ""}.`;
+      const { reviewId } = await stageAgentRecord({
+        userId: actor.uid, proposedRecordType: "milk_record", matchedAnimalId: target.id,
         data: {
-          animalId: target.id, recordDate: toDate(input.recordDate) ?? new Date(), lactationNumber: toNum(input.lactationNumber),
-          calvingDate: toDate(input.calvingDate), daysInMilk: toNum(input.daysInMilk), milkAmount: toNum(input.milkAmount),
-          milkUnit: str(input.milkUnit) || "kg", fatAmount: toNum(input.fatAmount), fatPercent: toNum(input.fatPercent),
-          proteinAmount: toNum(input.proteinAmount), proteinPercent: toNum(input.proteinPercent),
-          recordType: str(input.recordType) || null, completionStatus: str(input.completionStatus) || null,
-          approvalStatus, approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
-          createdById: actor.uid, notes: str(input.notes) || null,
+          recordDate, lactationNumber: toNum(input.lactationNumber) ?? undefined,
+          milkAmount: toNum(input.milkAmount) ?? undefined, fatAmount: toNum(input.fatAmount) ?? undefined,
+          fatPercent: toNum(input.fatPercent) ?? undefined, proteinAmount: toNum(input.proteinAmount) ?? undefined,
+          proteinPercent: toNum(input.proteinPercent) ?? undefined,
         },
+        summary,
       });
-      await recomputePreferred(target.id);
-      await logAction(actor, "milk_record", "create", rec.milkRecordId, { animalId: target.id });
-      return { summary: `Recorded a milk record for ${target.name}.`, records: { milkRecordId: rec.milkRecordId, animalId: target.id, name: target.name } };
+      await logAction(actor, "milk_record", "stage", reviewId, { animalId: target.id });
+      return { summary: `Staged for admin approval — ${summary} In the Review Queue (id ${reviewId}); it won't affect ${target.name} until approved there.`, records: { reviewId, staged: true, animalId: target.id, name: target.name } };
     },
   },
 
   {
     name: "add_classification",
-    description: "Record a classification for a cow. Resolve by animalId/name/reg. Fields: classificationDate (yyyy-mm-dd, default today), finalScore, classificationCode (EX|VG|GP|G...), lactationNumber, ageAtClassification, approvalStatus (approved|pending). Optional `traits`: object of classification trait code → value (linear/section scores). Requires record:write.",
+    description: "Record a classification for a cow. Resolve by animalId/name/reg. Fields: classificationDate (yyyy-mm-dd, default today), finalScore, classificationCode (EX|VG|GP|G...), lactationNumber. Optional `traits`: object of classification trait code → value (linear/section scores). Requires record:write. STAGED FOR APPROVAL: goes to the admin Review Queue and does NOT affect the animal until approved there — tell the user.",
     input_schema: {
       type: "object",
       properties: {
@@ -1095,28 +1119,20 @@ export const AGENT_TOOLS: AgentTool[] = [
       const actor = requireCap(ctx, "record:write", "add classifications");
       const target = await resolveAnimalId(input);
       if (!target) return { summary: `No animal found for ${str(input.animalId) || str(input.reg) || str(input.name)}.`, records: null };
-      const approvalStatus = str(input.approvalStatus) === "pending" ? "pending" : "approved";
-      const rec = await prisma.classificationRecord.create({
-        data: {
-          animalId: target.id, classificationDate: toDate(input.classificationDate) ?? new Date(),
-          lactationNumber: toNum(input.lactationNumber), ageAtClassification: str(input.ageAtClassification) || null,
-          finalScore: toNum(input.finalScore), classificationCode: str(input.classificationCode) || null,
-          approvalStatus, approvedById: approvalStatus === "approved" ? actor.uid : null, approvedAt: approvalStatus === "approved" ? new Date() : null,
-          createdById: actor.uid, notes: str(input.notes) || null,
-        },
-      });
+      const finalScore = toNum(input.finalScore);
+      const code = str(input.classificationCode) || undefined;
       const traitsIn = input.traits && typeof input.traits === "object" && !Array.isArray(input.traits) ? (input.traits as Record<string, unknown>) : {};
-      if (Object.keys(traitsIn).length) {
-        const defs = new Map((await prisma.traitDefinition.findMany({ where: { domain: "classification" } })).map((t) => [t.traitCode, t]));
-        for (const [code, value] of Object.entries(traitsIn)) {
-          if (value == null || value === "") continue;
-          const def = defs.get(code);
-          await prisma.classificationTraitValue.create({ data: { classificationId: rec.classificationId, traitCode: code, traitName: def?.traitName ?? code, traitValue: String(value), displayOrder: def?.displayOrder ?? 0 } });
-        }
-      }
-      await recomputePreferred(target.id);
-      await logAction(actor, "classification", "create", rec.classificationId, { animalId: target.id });
-      return { summary: `Recorded a classification for ${target.name}.`, records: { classificationId: rec.classificationId, animalId: target.id, name: target.name } };
+      const traitsMap: Record<string, string | number> = {};
+      for (const [k, v] of Object.entries(traitsIn)) if (v != null && v !== "") traitsMap[k] = v as string | number;
+      const classificationDate = str(input.classificationDate) || undefined;
+      const summary = `Add a classification to ${target.name}${code ? `: ${code}` : ""}${finalScore != null ? ` ${finalScore}` : ""}${classificationDate ? `, dated ${classificationDate}` : ""}${Object.keys(traitsMap).length ? ` (+${Object.keys(traitsMap).length} linear trait(s))` : ""}.`;
+      const { reviewId } = await stageAgentRecord({
+        userId: actor.uid, proposedRecordType: "classification", matchedAnimalId: target.id,
+        data: { classificationDate, finalScore: finalScore ?? undefined, classificationCode: code, lactationNumber: toNum(input.lactationNumber) ?? undefined, traits: traitsMap },
+        summary,
+      });
+      await logAction(actor, "classification", "stage", reviewId, { animalId: target.id });
+      return { summary: `Staged for admin approval — ${summary} In the Review Queue (id ${reviewId}); it won't affect ${target.name} until approved there.`, records: { reviewId, staged: true, animalId: target.id, name: target.name } };
     },
   },
 
