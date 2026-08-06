@@ -1,6 +1,6 @@
 "use client";
 
-// Floating AI Genetics Assistant — a button fixed lower-right on every page that
+// Floating assistant "Little Dan" — a button (his headshot) fixed lower-right on every page that
 // opens a slide-out chat panel. Talks to POST /api/agent. Shows a "thinking"
 // state, then the answer + any charts the agent drew + the database records it
 // used + suggested follow-ups. Charts open full screen.
@@ -47,6 +47,7 @@ export function GeneticsAssistant() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [fullChart, setFullChart] = useState<ChartSpec | null>(null);
+  const [iconOk, setIconOk] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -125,25 +126,29 @@ export function GeneticsAssistant() {
 
   return (
     <>
-      {/* Floating action button */}
+      {/* Floating action button — Little Dan's headshot */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label="Open the AI genetics assistant"
-        className="group fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:scale-105 hover:bg-brand-700 active:scale-95"
+        aria-label="Open Little Dan, the genetics assistant"
+        title="Little Dan"
+        className="group fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-brand-700 text-white shadow-lg shadow-brand-900/20 ring-2 ring-white transition hover:scale-105 active:scale-95"
       >
-        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" />
-          <path d="M18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8L18 14z" />
-        </svg>
+        {iconOk ? (
+          // Headshot lives at public/little-dan.png; falls back to "LD" if it's not there yet.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/little-dan.png" alt="Little Dan" className="h-full w-full object-cover" onError={() => setIconOk(false)} />
+        ) : (
+          <span className="text-lg font-extrabold tracking-tight">LD</span>
+        )}
       </button>
 
       {/* Slide-out panel */}
       <div className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-md transform flex-col bg-white shadow-2xl transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`} role="dialog" aria-hidden={!open}>
         <header className="flex items-center justify-between border-b border-slate-200 bg-brand-900 px-4 py-3 text-white">
           <div>
-            <div className="text-sm font-bold">AI Genetics Assistant</div>
-            <div className="text-[11px] text-brand-300">Grounded in your genetics database</div>
+            <div className="text-sm font-bold">Little Dan</div>
+            <div className="text-[11px] text-brand-300">Your Blondin genetics analyst</div>
           </div>
           <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-brand-200 hover:bg-brand-800 hover:text-white" aria-label="Close">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -153,12 +158,12 @@ export function GeneticsAssistant() {
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">
           {configured === false && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              The assistant isn&apos;t switched on yet. An administrator can add an Anthropic API key in <span className="font-semibold">Admin Settings → AI Genetics Assistant</span> to activate it.
+              Little Dan isn&apos;t switched on yet. An administrator can add an Anthropic API key in <span className="font-semibold">Admin Settings → AI Genetics Assistant</span> to activate him.
             </div>
           )}
           {messages.length === 0 && configured !== false && (
             <div className="space-y-2">
-              <p className="text-sm text-slate-500">Ask about sires, proofs, rankings, pedigree or trends — or ask it to make a change (add a note, record a proof, edit an animal). It does what your account is allowed to, and confirms before anything is saved. Try:</p>
+              <p className="text-sm text-slate-500">Ask Little Dan about sires, proofs, rankings, pedigree or trends — or ask him to make a change (add a note, record a proof, edit an animal). He does what your account is allowed to, and confirms before anything is saved. Try:</p>
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => ask(s)} className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50">{s}</button>
               ))}
@@ -222,7 +227,7 @@ export function GeneticsAssistant() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); } }}
               rows={1}
-              placeholder={configured === false ? "Assistant not configured" : "Ask about the genetics…"}
+              placeholder={configured === false ? "Little Dan isn't set up yet" : "Ask Little Dan…"}
               disabled={configured === false || loading}
               className="max-h-32 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50"
             />
