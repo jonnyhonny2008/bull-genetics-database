@@ -20,7 +20,9 @@ import { unpackTraits, traitDefMap, packTraits, type RawTrait } from "@/lib/eval
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
 import { can, ROLES, isBatchImportType, LARGE_ANIMAL_IMPORT } from "@/lib/constants";
 import { maskKey } from "./config";
-import { stageAgentRecord } from "./stage-record";
+// stage-record is server-only — imported dynamically at its call sites (below)
+// so this module stays importable by the plain-tsx unit test, like every other
+// server-only dependency here.
 // Type-only imports of server-only modules — erased at compile time, so they do
 // not pull those modules into the static graph (the write tools import them at
 // runtime with a dynamic import()).
@@ -123,7 +125,7 @@ const FULL_ANIMAL_SELECT = {
     orderBy: { evaluationDate: "desc" },
     select: {
       proofRun: true, evaluationDate: true, countrySystem: true, reliabilityOverall: true,
-      daughters: true, herds: true, genotyped: true, activityCode: true, officialCode: true, sireType: true, isPreferred: true, traitsJson: true, lpi: true,
+      daughters: true, herds: true, genotyped: true, activityCode: true, officialCode: true, runKind: true, sireType: true, isPreferred: true, traitsJson: true, lpi: true,
     },
   },
   classifications: { orderBy: { classificationDate: "desc" }, select: { classificationCode: true, finalScore: true, classificationDate: true, lactationNumber: true, traitValues: { select: { traitCode: true, traitName: true, traitValue: true } } } },
@@ -151,6 +153,50 @@ interface TraitOut { code: string; name: string; category: string | null; value:
 
 function preferredEval(a: FullAnimal) { return a.evaluations.find((e) => e.isPreferred) ?? a.evaluations[0] ?? null; }
 
+/** Year-month key for a proof round, e.g. "2026-04". */
+function periodKey(d: Date): string { return d.toISOString().slice(0, 7); }
+
+/** Is this the OFFICIAL proof for its round? By runKind, else Apr/Aug/Dec convention. */
+function isOfficialEval(e: { runKind?: string | null; evaluationDate: Date }): boolean {
+  if (e.runKind === "official") return true;
+  if (e.runKind === "interim") return false;
+  const m = e.evaluationDate.getUTCMonth() + 1; // no recorded kind → month heuristic
+  return m === 4 || m === 8 || m === 12;
+}
+
+/** One evaluation per round (period), keeping the OFFICIAL over the interim. */
+function canonicalEvals<T extends { runKind?: string | null; evaluationDate: Date }>(evals: T[]): T[] {
+  const rank = (e: T) => (e.runKind === "official" ? 0 : e.runKind === "interim" ? 1 : 2);
+  const best = new Map<string, T>();
+  for (const e of evals) {
+    const k = periodKey(e.evaluationDate);
+    const cur = best.get(k);
+    if (!cur || rank(e) < rank(cur)) best.set(k, e);
+  }
+  return [...best.values()].sort((a, b) => b.evaluationDate.getTime() - a.evaluationDate.getTime());
+}
+
+/**
+ * For a proof round, present the OFFICIAL proof, filling any trait the official
+ * is MISSING (absent or null) from that same round's interim proof. Returns the
+ * evaluation to report (the official) and the merged trait list — never both
+ * proofs side by side. `interimFilled` lists the trait codes taken from interim.
+ */
+function officialRoundTraits(roundEvals: FullAnimal["evaluations"], preferred: FullAnimal["evaluations"][number], defMap: DefMap): { reportEval: FullAnimal["evaluations"][number]; traits: TraitOut[]; interimFilled: string[] } {
+  const official = roundEvals.find(isOfficialEval) ?? preferred;
+  const interim = roundEvals.find((e) => e !== official && !isOfficialEval(e)) ?? null;
+  const byCode = new Map(traitsFromEval(official, defMap).map((t) => [t.code, t]));
+  const interimFilled: string[] = [];
+  if (interim) {
+    for (const it of traitsFromEval(interim, defMap)) {
+      if (it.value == null && it.text == null) continue;
+      const off = byCode.get(it.code);
+      if (!off || (off.value == null && off.text == null)) { byCode.set(it.code, it); interimFilled.push(it.code); }
+    }
+  }
+  return { reportEval: official, traits: [...byCode.values()], interimFilled };
+}
+
 function traitsFromEval(ev: FullAnimal["evaluations"][number] | null, defMap: DefMap): TraitOut[] {
   if (!ev) return [];
   return unpackTraits(ev.traitsJson, defMap).map((t) => ({ code: t.traitCode, name: t.traitName, category: t.traitCategory, value: t.numericValue, text: t.textValue, reliability: t.reliability, percentileRank: t.percentileRank }));
@@ -158,8 +204,14 @@ function traitsFromEval(ev: FullAnimal["evaluations"][number] | null, defMap: De
 
 async function buildFullProfile(a: FullAnimal) {
   const defMap = await traitDefMap();
-  const ev = preferredEval(a);
-  const traits = traitsFromEval(ev, defMap);
+  const pref = preferredEval(a);
+  // Present the OFFICIAL proof for the preferred round, filling any trait it is
+  // missing from that same round's interim — never both proofs at once.
+  const roundEvals = pref ? a.evaluations.filter((e) => periodKey(e.evaluationDate) === periodKey(pref.evaluationDate)) : [];
+  const merged = pref ? officialRoundTraits(roundEvals, pref, defMap) : null;
+  const reportEval = merged?.reportEval ?? null;
+  const traits = merged?.traits ?? [];
+  const interimFilled = merged?.interimFilled ?? [];
   const prof = parseHolsteinProfileJson(a.holsteinProfileJson);
   // Stored 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) from PedigreeReference.
   const pedNotes = a.pedigreeRefs.map((p) => p.notes).find((nn) => nn && /\bSIRE:/i.test(nn)) ?? null;
@@ -176,13 +228,22 @@ async function buildFullProfile(a: FullAnimal) {
       proofPerformance: a.proofPerformance, rollbackResistance: a.rollbackResistance, rollbackCohortN: a.rollbackCohortN,
     },
     identifiers: a.identifiers.map((i) => ({ idType: i.idType, idValue: i.idValue, isPrimary: i.isPrimary, issuingOrganization: i.issuingOrganization })),
-    preferredEvaluation: ev ? {
-      proofRun: ev.proofRun, evaluationDate: ev.evaluationDate.toISOString().slice(0, 10), countrySystem: ev.countrySystem,
-      reliabilityOverall: ev.reliabilityOverall, daughters: ev.daughters, herds: ev.herds, genotyped: ev.genotyped,
-      activityCode: ev.activityCode, officialCode: ev.officialCode, basis: ev.sireType,
+    preferredEvaluation: reportEval ? {
+      proofRun: reportEval.proofRun, evaluationDate: reportEval.evaluationDate.toISOString().slice(0, 10), countrySystem: reportEval.countrySystem,
+      reliabilityOverall: reportEval.reliabilityOverall, daughters: reportEval.daughters, herds: reportEval.herds, genotyped: reportEval.genotyped,
+      activityCode: reportEval.activityCode, officialCode: reportEval.officialCode, basis: reportEval.sireType,
+      kind: isOfficialEval(reportEval) ? "official" : "interim",
       traitCount: traits.length, traits,
+      interimFilledTraits: interimFilled,
+      note: reportEval && !isOfficialEval(reportEval)
+        ? "This round has only an interim (unofficial) proof — no official proof exists for it yet."
+        : interimFilled.length
+          ? `Figures are from the OFFICIAL proof; ${interimFilled.length} trait(s) the official did not carry were filled from the same round's interim proof (${interimFilled.join(", ")}).`
+          : "Figures are from the official proof.",
     } : null,
-    proofRoundHistory: a.evaluations.map((e) => ({ run: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7), date: e.evaluationDate.toISOString().slice(0, 10), lpi: e.lpi, preferred: e.isPreferred })),
+    // One row per round — the official proof where a round has one — so the same
+    // month never appears as two separate proofs.
+    proofRoundHistory: canonicalEvals(a.evaluations).map((e) => ({ run: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7), date: e.evaluationDate.toISOString().slice(0, 10), kind: isOfficialEval(e) ? "official" : "interim", lpi: e.lpi, preferred: e.isPreferred })),
     classifications: a.classifications.map((c) => ({ code: c.classificationCode, score: c.finalScore, date: c.classificationDate ? c.classificationDate.toISOString().slice(0, 10) : null, lactation: c.lactationNumber, sections: c.traitValues.map((t) => ({ code: t.traitCode, name: t.traitName, value: t.traitValue })) })),
     milkRecords: a.milkRecords.map((m) => ({ lactation: m.lactationNumber, dim: m.daysInMilk, milk: m.milkAmount, milkUnit: m.milkUnit, fat: m.fatAmount, fatPct: m.fatPercent, protein: m.proteinAmount, proteinPct: m.proteinPercent, type: m.recordType, calvingDate: m.calvingDate ? m.calvingDate.toISOString().slice(0, 10) : null })),
     pedigree: {
@@ -655,7 +716,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "proof_history",
-    description: "A single sire's proof rounds over time for one trait (default LPI) — the value at each round, oldest to newest. Use for 'how has X's LPI changed', 'proof trend', 'over time'.",
+    description: "A single sire's proof rounds over time for one trait (default LPI) — the value at each round, oldest to newest. One point per round: the OFFICIAL proof's value, falling back to the interim only if the official is missing that trait (so a month never shows twice). Use for 'how has X's LPI changed', 'proof trend', 'over time'.",
     input_schema: {
       type: "object",
       properties: { name: { type: "string" }, reg: { type: "string" }, trait: { type: "string", description: "default lpi" } },
@@ -667,13 +728,27 @@ export const AGENT_TOOLS: AgentTool[] = [
       const where: Prisma.AnimalWhereInput = reg
         ? { archived: false, identifiers: { some: { idValue: { equals: reg, mode: "insensitive" } } } }
         : { archived: false, primaryName: { contains: name, mode: "insensitive" } };
-      const a = await prisma.animal.findFirst({ where, select: { primaryName: true, evaluations: { orderBy: { evaluationDate: "asc" }, select: { proofRun: true, evaluationDate: true, [col]: true } } } });
+      const a = await prisma.animal.findFirst({ where, select: { primaryName: true, evaluations: { orderBy: { evaluationDate: "asc" }, select: { proofRun: true, evaluationDate: true, runKind: true, [col]: true } } } });
       if (!a) return { summary: `No sire found for ${reg || name}.`, records: null };
-      const series = a.evaluations.map((ev) => {
-        const e = ev as unknown as { proofRun: string | null; evaluationDate: Date; [k: string]: unknown };
-        return { round: e.proofRun ?? e.evaluationDate.toISOString().slice(0, 7), value: e[col] as number | null };
+      // Collapse to one point per round — official proof preferred, interim only
+      // used to fill this trait when the official round lacks it.
+      type Ev = { proofRun: string | null; evaluationDate: Date; runKind: string | null; [k: string]: unknown };
+      const byPeriod = new Map<string, { official?: Ev; interim?: Ev }>();
+      for (const raw of a.evaluations as unknown as Ev[]) {
+        const k = periodKey(raw.evaluationDate);
+        const g = byPeriod.get(k) ?? {};
+        if (isOfficialEval(raw)) g.official = raw; else g.interim = raw;
+        byPeriod.set(k, g);
+      }
+      const series = [...byPeriod.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([, g]) => {
+        const base = g.official ?? g.interim!;
+        const valOff = g.official ? (g.official[col] as number | null) : null;
+        const valInt = g.interim ? (g.interim[col] as number | null) : null;
+        const value = valOff != null ? valOff : valInt;
+        const source = valOff != null ? "official" : valInt != null ? "interim" : isOfficialEval(base) ? "official" : "interim";
+        return { round: base.proofRun ?? base.evaluationDate.toISOString().slice(0, 7), value, source };
       });
-      return { summary: `${a.primaryName}: ${series.length} rounds of ${col}.`, records: { name: a.primaryName, trait: col, series } };
+      return { summary: `${a.primaryName}: ${series.length} round(s) of ${col} (official proof per round).`, records: { name: a.primaryName, trait: col, series } };
     },
   },
   {
@@ -976,7 +1051,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       // review-approval path used for extracted-data imports.
       const idList = (identifiers ?? []).map((r) => ({ idType: r.idType, idValue: r.idValue, isPrimary: r.isPrimary }));
       const summary = `Create a new ${str(input.sex) || "F"} animal "${primaryName}"${breedCode ? ` (${breedCode})` : ""}${idList.length ? ` with ${idList.length} identifier(s): ${idList.map((i) => `${i.idType} ${i.idValue}`).join(", ")}` : ""}.`;
-      const { reviewId } = await stageAgentRecord({
+      const { reviewId } = await (await import("./stage-record")).stageAgentRecord({
         userId: actor.uid, proposedRecordType: "animal", matchedAnimalId: null,
         data: { primaryName, shortName: str(input.shortName) || undefined, sex: str(input.sex) || "F", breedCode: breedCode || undefined, country: str(input.countryOfOrigin) || undefined, identifiers: idList },
         summary,
@@ -1054,7 +1129,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       const proofRun = str(input.proofRun) || undefined;
       const traitList = raw.map((t) => `${t.traitCode} ${t.numericValue ?? t.textValue}`).join(", ");
       const summary = `Add a genetic proof to ${target.name}: ${raw.length} trait(s) — ${traitList}${proofRun ? `; run "${proofRun}"` : ""}${evaluationDate ? `; dated ${evaluationDate}` : ""}.`;
-      const { reviewId } = await stageAgentRecord({
+      const { reviewId } = await (await import("./stage-record")).stageAgentRecord({
         userId: actor.uid, proposedRecordType: "genetic_evaluation", matchedAnimalId: target.id,
         data: { traits: traitsMap, evaluationDate, proofRun, countrySystem: str(input.countrySystem) || undefined },
         summary,
@@ -1088,7 +1163,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         toNum(input.proteinAmount) != null ? `${toNum(input.proteinAmount)} protein` : null,
       ].filter(Boolean).join(", ");
       const summary = `Add a milk record to ${target.name}${toNum(input.lactationNumber) != null ? ` (lactation ${toNum(input.lactationNumber)})` : ""}${recordDate ? `, dated ${recordDate}` : ""}${parts ? `: ${parts}` : ""}.`;
-      const { reviewId } = await stageAgentRecord({
+      const { reviewId } = await (await import("./stage-record")).stageAgentRecord({
         userId: actor.uid, proposedRecordType: "milk_record", matchedAnimalId: target.id,
         data: {
           recordDate, lactationNumber: toNum(input.lactationNumber) ?? undefined,
@@ -1126,7 +1201,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       for (const [k, v] of Object.entries(traitsIn)) if (v != null && v !== "") traitsMap[k] = v as string | number;
       const classificationDate = str(input.classificationDate) || undefined;
       const summary = `Add a classification to ${target.name}${code ? `: ${code}` : ""}${finalScore != null ? ` ${finalScore}` : ""}${classificationDate ? `, dated ${classificationDate}` : ""}${Object.keys(traitsMap).length ? ` (+${Object.keys(traitsMap).length} linear trait(s))` : ""}.`;
-      const { reviewId } = await stageAgentRecord({
+      const { reviewId } = await (await import("./stage-record")).stageAgentRecord({
         userId: actor.uid, proposedRecordType: "classification", matchedAnimalId: target.id,
         data: { classificationDate, finalScore: finalScore ?? undefined, classificationCode: code, lactationNumber: toNum(input.lactationNumber) ?? undefined, traits: traitsMap },
         summary,
