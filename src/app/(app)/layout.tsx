@@ -4,6 +4,7 @@ import { can, ROLES } from "@/lib/constants";
 import { EnvBanner } from "@/components/EnvBanner";
 import { type NavItem } from "@/components/Sidebar";
 import { NavProvider, NavToggle, AppSidebar } from "@/components/AppNav";
+import { SystemToggle } from "@/components/SystemToggle";
 import { logoutAction } from "@/app/actions/session";
 import { GeneticsAssistant } from "@/components/GeneticsAssistant";
 
@@ -43,6 +44,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2">
           <NavToggle />
           <span className="font-serif text-lg font-bold tracking-tight text-white">GenetiBase</span>
+          {/* Switches the whole app between the Canadian and American programs. */}
+          <SystemToggle />
         </div>
         <div className="ml-auto flex items-center gap-3">
           {/* Initials avatar + name + role (no org dropdown), then a logout icon —

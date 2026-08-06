@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { systemFromPathname, systemHref, routeAvailable } from "@/lib/genetic-system";
 
 export interface NavItem {
   href: string;
@@ -55,10 +56,18 @@ export function Sidebar({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   let lastGroup: string | undefined;
 
+  // Which program are we in? The nav items are declared system-relative
+  // ("/animals") and prefixed here, because this is the component that knows the
+  // pathname — the layout is a server component and cannot read it.
+  const system = systemFromPathname(pathname);
+  const shown = items.filter((i) => routeAvailable(i.href, system));
+
   return (
     <nav className="flex flex-col py-2 text-sm">
-      {items.map((item) => {
-        const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+      {shown.map((item) => {
+        // The icon map is keyed by the bare href, so look it up before prefixing.
+        const href = systemHref(item.href, system);
+        const active = pathname === href || (item.href !== "/dashboard" && pathname.startsWith(href));
         const showGroup = item.group && item.group !== lastGroup;
         lastGroup = item.group;
         return (
@@ -69,7 +78,7 @@ export function Sidebar({ items }: { items: NavItem[] }) {
               </div>
             )}
             <Link
-              href={item.href}
+              href={href}
               // prefetch={false} is load-bearing, not a micro-optimisation.
               // Every destination here is `dynamic = "force-dynamic"`, so a
               // prefetch is a FULL server render that opens database
