@@ -30,10 +30,17 @@ const REPORTS = [
     ready: true,
   },
   {
-    href: "/reports/round-compare",
-    title: "Proof Change Report (Breed)",
+    href: "/reports/round-compare?type=ebv",
+    title: "Breed Proof Change — Proven (EBV)",
     tag: "Breed · HTML",
-    blurb: "A breed-level comparison between any two proof rounds — EBV (daughter-proven) or PA (genomic) — as a self-contained HTML file you can email. Breed-wide average change boxes, LPI and Conformation gainers/losers, an All Breed / Top 1,000 / Top 200 toggle that works offline, and a full Top-100 table. The EBV report adds the newly-proven (PA→EBV) bulls at the top.",
+    blurb: "A breed-level comparison of the daughter-proven (EBV) NAAB Holstein bulls between any two proof rounds, as a self-contained HTML file you can email. Breed-wide average change boxes, LPI and Conformation gainers/losers, an All Breed / Top 1,000 / Top 200 toggle that works offline, a full Top-100 table, and the newly-proven (PA→EBV) bulls at the top.",
+    ready: true,
+  },
+  {
+    href: "/reports/round-compare?type=pa",
+    title: "Breed Proof Change — Genomic (PA)",
+    tag: "Breed · HTML",
+    blurb: "A breed-level comparison of the genomic (PA) NAAB Holstein bulls between any two proof rounds, as a self-contained HTML file you can email. Breed-wide average change boxes, LPI and Conformation gainers/losers, an All Breed / Top 1,000 / Top 200 toggle that works offline, and a full Top-100 table.",
     ready: true,
   },
   {

@@ -7,39 +7,47 @@ import { listProofRuns } from "@/lib/proof-round-report";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export default async function RoundCompareReportPage() {
+export default async function RoundCompareReportPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | undefined>;
+}) {
   const user = currentUser();
   if (!can(user?.role, "compare:read")) redirect("/dashboard");
+
+  // Each Reports-page card links here with a fixed type, so the EBV and PA
+  // reports are distinct entries in GenetiBase rather than one dropdown.
+  const type: "ebv" | "pa" = searchParams.type === "pa" ? "pa" : "ebv";
+  const isEbv = type === "ebv";
 
   const runs = await listProofRuns();
   // Sensible defaults: newest round as the "to", the one before it as the "from".
   const defTo = runs[0] ?? "";
   const defFrom = runs[1] ?? runs[0] ?? "";
 
+  const title = isEbv
+    ? "Proof Change Report — Daughter-Proven (EBV)"
+    : "Proof Change Report — Genomic (PA)";
+  const subtitle = isEbv
+    ? "How the daughter-proven (EBV) NAAB Holstein bulls moved between any two proof rounds — as a self-contained HTML file you can open in any browser or email."
+    : "How the genomic (PA) NAAB Holstein bulls moved between any two proof rounds — as a self-contained HTML file you can open in any browser or email.";
+
   return (
     <div>
-      <PageHeader
-        title="Proof Change Report (Breed)"
-        subtitle="Compare how the NAAB Holstein lineup moved between any two proof rounds — as a self-contained HTML file you can open in any browser or email."
-      />
+      <PageHeader title={title} subtitle={subtitle} />
 
       {runs.length < 2 ? (
-        <Card title="Proof Change Report">
+        <Card title={title}>
           <p className="text-sm text-slate-600">
             At least two proof rounds must be on file to compare. Only {runs.length} round is loaded so far.
           </p>
         </Card>
       ) : (
-        <Card title="Generate a comparison">
+        <Card title={`Generate the ${isEbv ? "EBV" : "PA"} comparison`}>
           <form action="/reports/round-compare/export" method="get" className="space-y-4">
+            {/* Type is fixed by which report you opened. */}
+            <input type="hidden" name="type" value={type} />
             <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <label className="label" htmlFor="type">Report</label>
-                <select id="type" name="type" defaultValue="ebv" className="input min-w-[240px]">
-                  <option value="ebv">EBV — daughter-proven bulls</option>
-                  <option value="pa">PA — genomic bulls</option>
-                </select>
-              </div>
               <div>
                 <label className="label" htmlFor="from">From round</label>
                 <select id="from" name="from" defaultValue={defFrom} className="input min-w-[180px]">
@@ -64,11 +72,16 @@ export default async function RoundCompareReportPage() {
             </div>
 
             <p className="text-[11px] leading-relaxed text-slate-500">
-              The EBV report covers the daughter-proven bulls and adds two &ldquo;newly proven&rdquo; sections at the top
-              (bulls that went from genomic to their first daughter proof). The PA report covers the genomic bulls. Both
-              share the breed-wide averages, the LPI and Conformation gainers/losers, and the All&nbsp;Breed /
-              Top&nbsp;1,000 / Top&nbsp;200 toggle. The file is self-contained — the toggle works even when opened
-              from your desktop, and it needs no login to view or email.
+              {isEbv ? (
+                <>This report covers the <strong>daughter-proven (EBV)</strong> bulls and adds two &ldquo;newly
+                proven&rdquo; sections at the top — bulls that went from genomic (PA) to their first daughter proof
+                between the two rounds. </>
+              ) : (
+                <>This report covers the <strong>genomic (PA)</strong> bulls. </>
+              )}
+              It shows the breed-wide average change boxes, the LPI and Conformation gainers/losers, and the full Top-100
+              table, with an All&nbsp;Breed / Top&nbsp;1,000 / Top&nbsp;200 toggle. The file is self-contained — the
+              toggle works even when opened from your desktop, and it needs no login to view or email.
             </p>
           </form>
         </Card>
