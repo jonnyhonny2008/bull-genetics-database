@@ -162,12 +162,12 @@ function newcomerTable(title: string, rows: NewcomerRow[]): string {
 
 function ebvExtras(r: RoundReport): string {
   return `
-  <h2 class="sec2">🆕 Top 10 Newly Proven — PA in ${esc(r.fromRun)}, Now EBV in ${esc(r.toRun)}</h2>
+  <h2 class="sec2">Top 10 Newly Proven — PA in ${esc(r.fromRun)}, Now EBV in ${esc(r.toRun)}</h2>
   <p class="note">These bulls were genomic (PA) in ${esc(r.fromRun)} and received their first daughter proof (EBV) in ${esc(r.toRun)}.</p>
   ${newcomerTable(`Top 10 Newcomers by LPI (${esc(r.toRun)})`, r.newcomersByLpi)}
   ${newcomerTable(`Top 10 Newcomers by Conformation (${esc(r.toRun)})`, r.newcomersByConf)}
 
-  <h2 class="sec2">📋 Newly Proven — Gains &amp; Drops (PA → EBV)</h2>
+  <h2 class="sec2">Newly Proven — Gains &amp; Drops (PA → EBV)</h2>
   <p class="note">${esc(r.fromRun)} values are the bull's genomic (PA) proof; ${esc(r.toRun)} values are their first daughter proof (EBV) — how much the proof moved when real daughter data replaced the genomic estimate.</p>
   <h3 class="sec">LPI Gains &amp; Drops</h3>
   <div class="twocol">

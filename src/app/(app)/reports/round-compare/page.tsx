@@ -60,7 +60,7 @@ export default async function RoundCompareReportPage() {
 
             <div className="flex flex-wrap items-center gap-3">
               <button type="submit" formTarget="_blank" className="btn-primary">Open report in a new tab</button>
-              <button type="submit" name="download" value="1" className="btn-secondary">⬇ Download .html</button>
+              <button type="submit" name="download" value="1" className="btn-secondary">Download .html</button>
             </div>
 
             <p className="text-[11px] leading-relaxed text-slate-500">
