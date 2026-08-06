@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "./db";
 import { recomputePreferredForAnimal } from "./priority";
 import { packTraits } from "./eval-traits";
-import { classifyProofFile, type ProofRunKind } from "./proof-file-kind";
+import { classifyProofFile, parseReleaseDate, type ProofRunKind } from "./proof-file-kind";
 import { classifyRound, isGenotyped } from "./sire-class";
 import type { ParsedBull } from "./lactanet";
 
@@ -102,7 +102,11 @@ export async function persistBull(
 
   // Which Lactanet extract is this? Official and interim runs share a GERUN, so
   // they share `runLabel` — the file name is the only thing that separates them.
-  const runKind: ProofRunKind | null = classifyProofFile(ctx.fileName).kind;
+  const fileId = classifyProofFile(ctx.fileName);
+  const runKind: ProofRunKind | null = fileId.kind;
+  // The weekly release date, when the file name carries one. Lactanet ships several
+  // interim revisions of the same run; this makes "newest revision wins" the rule.
+  const incomingRelease = parseReleaseDate(fileId.releaseDate);
 
   // Avoid duplicate evaluations for the same run + source — but NEVER disturb an
   // existing APPROVED evaluation when staging a pending import. A pending write
@@ -117,6 +121,13 @@ export async function persistBull(
     where: { animalId, proofRun: runLabel, sourceId: ctx.sourceId, runKind, ...(isApproved ? {} : { approvalStatus: "pending" }) },
   });
   if (existingEval) {
+    // Keep the most recent weekly revision of a run. If a newer-dated file for this
+    // same round is already stored, importing an older revision must NOT clobber it
+    // with staler numbers — which one wins would otherwise depend on import order.
+    if (incomingRelease && existingEval.releaseDate && existingEval.releaseDate > incomingRelease) {
+      await recomputePreferredForAnimal(animalId);
+      return { animalId, created: wasCreated, evaluationId: existingEval.evaluationId };
+    }
     await prisma.geneticEvaluation.delete({ where: { evaluationId: existingEval.evaluationId } });
   }
 
@@ -137,7 +148,7 @@ export async function persistBull(
       approvedById: isApproved ? ctx.userId : undefined,
       approvedAt: isApproved ? new Date() : undefined,
       createdById: ctx.userId, notes: `Imported from ${ctx.fileName}.`,
-      runKind, sourceFile: ctx.fileName,
+      runKind, sourceFile: ctx.fileName, releaseDate: incomingRelease,
       // Lactanet status codes for this round. These were being dropped here while
       // prisma/import-cdn.ts recorded them, so a proof uploaded through the web
       // screen lost its daughter count and its proven/genomic classification.

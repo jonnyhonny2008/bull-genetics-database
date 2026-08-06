@@ -327,6 +327,11 @@ model GeneticEvaluation {
   // import cannot destroy an existing proof.
   runKind            String?  // "official" | "interim"
   sourceFile         String?  // original Lactanet file name — the evidence for runKind
+  // Weekly release date (YYYYMMDD) stamped in the file name, when present. Lactanet
+  // ships several interim revisions of the same run (April has 4 weekly files); this
+  // lets an import keep the NEWEST revision per round instead of whichever file
+  // happened to be imported last. Null for files/lookups with no dated revision.
+  releaseDate        DateTime?
 
   // Compact trait storage: all trait values packed here as JSON…
   traitsJson         String?

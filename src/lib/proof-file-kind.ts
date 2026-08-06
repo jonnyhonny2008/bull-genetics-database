@@ -129,3 +129,11 @@ export function isImportableProofFile(id: ProofFileId): boolean {
 export function runKindLabel(kind: ProofRunKind | null | undefined): string {
   return kind === "interim" ? "Interim" : kind === "official" ? "Official" : "Unknown";
 }
+
+/** Parse the "YYYYMMDD" release date from classifyProofFile().releaseDate to a Date. */
+export function parseReleaseDate(s: string | null | undefined): Date | null {
+  if (!s || !/^\d{8}$/.test(s)) return null;
+  const y = +s.slice(0, 4), mo = +s.slice(4, 6), d = +s.slice(6, 8);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}

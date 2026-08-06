@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyProofFile, isImportableProofFile, runKindLabel } from "./proof-file-kind";
+import { classifyProofFile, isImportableProofFile, runKindLabel, parseReleaseDate } from "./proof-file-kind";
 
 // Every name below is a real file from "Blondin Sires - Genetics".
 
@@ -111,4 +111,21 @@ test("labels read the way the reports say them", () => {
   assert.equal(runKindLabel("official"), "Official");
   assert.equal(runKindLabel("interim"), "Interim");
   assert.equal(runKindLabel(null), "Unknown");
+});
+
+test("the weekly release date is parsed, and later revisions sort after earlier ones", () => {
+  // April 2025 ships four weekly interim revisions; the date decides which wins.
+  const apr08 = classifyProofFile("gealltraits_bulls_unoff07992504_20250408_ho.csv");
+  const apr29 = classifyProofFile("gealltraits_bulls_unoff07992504_20250429_ho.csv");
+  assert.equal(apr08.releaseDate, "20250408");
+  assert.equal(apr29.releaseDate, "20250429");
+  const d08 = parseReleaseDate(apr08.releaseDate);
+  const d29 = parseReleaseDate(apr29.releaseDate);
+  assert.ok(d08 && d29 && d29 > d08, "the 29th is the newer revision");
+  assert.equal(d29!.getUTCFullYear(), 2025);
+  assert.equal(d29!.getUTCMonth(), 3); // April (0-indexed)
+  assert.equal(d29!.getUTCDate(), 29);
+  // A file with no dated revision yields null (no false ordering).
+  assert.equal(parseReleaseDate(classifyProofFile("gealltraits_bulls07992504_ho.csv").releaseDate), null);
+  assert.equal(parseReleaseDate("2025049"), null); // malformed → null
 });
