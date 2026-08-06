@@ -9,6 +9,13 @@ export const dynamic = "force-dynamic";
 // One entry per report. Add a report by appending here + its page under /reports.
 const REPORTS = [
   {
+    href: "/reports/round-summary",
+    title: "What Changed This Round",
+    tag: "Digest",
+    blurb: "A lineup-level digest of the newest proof round: how many bulls were updated, the average LPI move, the top gainers and biggest drops, and which bulls moved unusually on a key trait. The at-a-glance companion to the trait-by-trait Proof Change Report.",
+    ready: true,
+  },
+  {
     href: "/reports/proof-changes",
     title: "Proof Change Report",
     tag: "NAAB bulls",
