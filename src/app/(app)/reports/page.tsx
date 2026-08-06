@@ -30,6 +30,13 @@ const REPORTS = [
     ready: true,
   },
   {
+    href: "/reports/round-compare",
+    title: "Proof Change Report (Breed)",
+    tag: "Breed · HTML",
+    blurb: "A breed-level comparison between any two proof rounds — EBV (daughter-proven) or PA (genomic) — as a self-contained HTML file you can email. Breed-wide average change boxes, LPI and Conformation gainers/losers, an All Breed / Top 1,000 / Top 200 toggle that works offline, and a full Top-100 table. The EBV report adds the newly-proven (PA→EBV) bulls at the top.",
+    ready: true,
+  },
+  {
     href: "/reports/mating-program",
     title: "Mating Program",
     tag: "Mating",
