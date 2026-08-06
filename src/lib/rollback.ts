@@ -152,6 +152,52 @@ function pctChange(from: number, to: number): number {
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+// --- Retention scale: ratio-scale vs zero-centred traits --------------------
+//
+// "Retention" asks how much of a trait a bull carried from one round to the next.
+// Percent-of-previous only answers that for a RATIO-scale figure with a real zero
+// and large magnitude (LPI, Pro$). For the zero-centred EBV deviations
+// (Conformation, Milk, Fat, Protein, Mammary, F&L …) it is wrong: a trait sitting
+// near zero divides by a tiny base and a small move reads as a total collapse, and
+// the same absolute move scores differently depending on the sign of the base.
+//
+// So those traits are scored SD-RELATIVE instead: the move is measured as a
+// fraction of how much that trait TYPICALLY moves round-to-round across the whole
+// lineup (its population "step SD"), which is scale-free and symmetric. The step
+// SDs come from prisma/compute-rollback.ts and are threaded in as `traitScales`.
+
+/** Traits scored by percent-of-previous. Everything else is scored SD-relative. */
+export const RATIO_SCALE_TRAITS = new Set(["LPI", "PRO$"]);
+
+/**
+ * Points of retention lost per one step-SD of unfavourable move, for zero-centred
+ * traits. Calibrated so a typical (~1 SD) round-to-round move costs about what a
+ * typical LPI move costs under percent-change, keeping Proof Performance on the
+ * same 0–100 footing and its verdict bands meaningful. Tunable: raising it spreads
+ * the raw scores further apart before the cohort rating normalises them.
+ */
+export const POINTS_PER_STEP_SD = 3;
+
+/** Per-trait population step SD (how much a trait usually moves between rounds). */
+export type TraitScales = Record<string, number>;
+
+/**
+ * Retention of ONE round-to-round move for one trait, 0–100. Holding or gaining
+ * scores 100; an unfavourable move scores less. All scored traits are
+ * "higher is better", so a decrease is the penalised direction.
+ */
+function retentionOf(from: number, to: number, code: string, scales?: TraitScales): number {
+  if (!RATIO_SCALE_TRAITS.has(code)) {
+    const scale = scales?.[code];
+    if (scale != null && scale > 1e-9) {
+      return clamp(100 + POINTS_PER_STEP_SD * ((to - from) / scale), 0, 100);
+    }
+    // No population scale available yet (e.g. before the batch has run once) —
+    // degrade to percent-change rather than mis-scoring, so the page still works.
+  }
+  return clamp(100 + pctChange(from, to), 0, 100);
+}
+
 /** Blend per-trait scores into one weighted figure, or null if nothing scored. */
 function weightedBlend(pick: (code: string) => number | null | undefined): number | null {
   let wSum = 0, wTotal = 0;
@@ -169,7 +215,8 @@ function weightedBlend(pick: (code: string) => number | null | undefined): numbe
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export function computeRollback(evals: EvalLite[]): RollbackResult {
+export function computeRollback(evals: EvalLite[], opts?: { traitScales?: TraitScales }): RollbackResult {
+  const scales = opts?.traitScales;
   // One row per round (official over interim), then oldest→newest. The secondary
   // sort on run kind only breaks a same-date tie that canonicalRounds already
   // resolves; it is kept so ordering is deterministic even if a caller passes
@@ -209,7 +256,7 @@ export function computeRollback(evals: EvalLite[]): RollbackResult {
     for (let i = 0; i < series.length; i++) {
       const v = series[i];
       if (v != null && prev != null) {
-        const retention = clamp(100 + pctChange(prev, v), 0, 100);
+        const retention = retentionOf(prev, v, code, scales);
         allSteps.push(retention);
         // A rollback step is one that LANDS on an April round: the round before
         // the base change versus the base change itself.
@@ -226,7 +273,7 @@ export function computeRollback(evals: EvalLite[]): RollbackResult {
     maxRollbackSteps = Math.max(maxRollbackSteps, aprilSteps.length);
     traits[code] = {
       code, first: f, latest: l, delta: l - f, pctChange: pctChange(f, l),
-      resistance: clamp(100 + pctChange(f, l), 0, 100),
+      resistance: retentionOf(f, l, code, scales),
       stepResistance: mean(allSteps),
       steps: allSteps.length,
       rollbackResistance: aprilSteps.length ? mean(aprilSteps) : null,
@@ -267,6 +314,41 @@ export function computeRollback(evals: EvalLite[]): RollbackResult {
     rounds, traits, headline, proofPerformance, proofSteps: maxProofSteps,
     rollbackRaw, rollbackSteps: maxRollbackSteps, verdict, progeny, hasHistory: true,
   };
+}
+
+// --- Population step SDs for zero-centred traits -----------------------------
+//
+// To score a zero-centred trait's move SD-relative we need the SD of that trait's
+// round-to-round moves across the WHOLE lineup, not one bull. These two helpers
+// let prisma/compute-rollback.ts gather every bull's per-trait step deltas and
+// reduce them to one SD per trait, which then feeds computeRollback via
+// `traitScales`. Ratio-scale traits are skipped — they don't use a scale.
+
+/** One bull's consecutive-round deltas (to − from) per zero-centred trait. */
+export function traitStepDeltas(evals: EvalLite[]): Record<string, number[]> {
+  const kindRank = (k: string | null | undefined) => (k === "official" ? 0 : k === "interim" ? 1 : 2);
+  const sorted = canonicalRounds(evals.filter((e) => e.evaluationDate))
+    .sort((a, b) => a.evaluationDate.getTime() - b.evaluationDate.getTime() || kindRank(a.runKind) - kindRank(b.runKind));
+  const out: Record<string, number[]> = {};
+  for (const code of ALL_TRAITS) {
+    if (RATIO_SCALE_TRAITS.has(code)) continue;
+    let prev: number | null = null;
+    for (const e of sorted) {
+      const v = num(e, code);
+      if (v != null && prev != null) (out[code] ??= []).push(v - prev);
+      if (v != null) prev = v;
+    }
+  }
+  return out;
+}
+
+/** Reduce many bulls' per-trait deltas to one population step SD per trait. */
+export function deltaScalesFrom(deltasByTrait: Record<string, number[]>): TraitScales {
+  const out: TraitScales = {};
+  for (const [code, deltas] of Object.entries(deltasByTrait)) {
+    if (deltas.length >= 2) out[code] = baselineOf(deltas).sd;
+  }
+  return out;
 }
 
 // --- Rollback Resistance: the base-100 scale --------------------------------

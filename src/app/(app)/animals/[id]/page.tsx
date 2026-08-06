@@ -14,6 +14,7 @@ import { archiveAnimal, addNote } from "../actions";
 import { LinearGraph, type LinearGroup, type LinearTraitDatum } from "@/components/LinearGraph";
 import { TraitTrendChart, type TrendSeries } from "@/components/TraitTrendChart";
 import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from "@/lib/rollback";
+import { getRollbackTraitScales } from "@/lib/reference";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { PedigreeTree } from "@/components/PedigreeTree";
 import {
@@ -175,8 +176,13 @@ export default async function AnimalProfile({
     .map(([group, arr]) => ({ group, traits: arr.sort((x, y) => x.order - y.order).map((x) => x.datum) }))
     .sort((x, y) => (GROUP_ORDER.indexOf(x.group) + 99) - (GROUP_ORDER.indexOf(y.group) + 99));
 
-  // Proof Performance (live) + Rollback Resistance (materialised).
-  const rollback = computeRollback(evaluations.map((e) => ({ evaluationDate: e.evaluationDate, proofRun: e.proofRun, reliabilityOverall: e.reliabilityOverall, traitValues: e.traitValues })));
+  // Proof Performance (live) + Rollback Resistance (materialised). The lineup step
+  // SDs put zero-centred traits on the same scale as the stored columns.
+  const rbScales = await getRollbackTraitScales();
+  const rollback = computeRollback(
+    evaluations.map((e) => ({ evaluationDate: e.evaluationDate, proofRun: e.proofRun, reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues })),
+    { traitScales: rbScales },
+  );
   const rbVerdict = a.rollbackResistance != null ? ratingVerdict(a.rollbackResistance) : null;
 
   // Pedigree — resolved live only on the Family Tree tab.

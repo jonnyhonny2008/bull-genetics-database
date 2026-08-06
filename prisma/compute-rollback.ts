@@ -31,13 +31,14 @@
 // ---------------------------------------------------------------------------
 
 import { PrismaClient } from "@prisma/client";
-import { computeRollback, baselineOf, buildCohortBaselines, cohortRating } from "../src/lib/rollback";
+import { computeRollback, baselineOf, buildCohortBaselines, cohortRating, traitStepDeltas, deltaScalesFrom, type EvalLite } from "../src/lib/rollback";
 import { attachTraits, traitDefMap } from "../src/lib/eval-traits";
 
 const CHUNK = 1000; // animals per evaluation fetch — keeps the pooler happy
 
 export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
   scored: number; rated: number; withRollback: number; baselineN: number; mean: number; sd: number;
+  scaledTraits: number;
   cohorts: { steps: number; n: number; mean: number; sd: number }[];
 }> {
   const defMap = await traitDefMap();
@@ -55,6 +56,13 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
 
   type Score = { perf: number; perfSteps: number; rbRaw: number | null; rbSteps: number };
   const scores = new Map<string, Score>();
+
+  // Pass 1: load every qualifying bull's rounds ONCE, and collect — per
+  // zero-centred trait — how much it moves round-to-round across the whole lineup.
+  // That spread (one "step SD" per trait) is what lets those traits be scored on a
+  // scale-free footing instead of by percent-of-previous (which blows up near zero).
+  const evalsById = new Map<string, EvalLite[]>();
+  const allDeltas: Record<string, number[]> = {};
   for (let i = 0; i < ids.length; i += CHUNK) {
     const batch = ids.slice(i, i + CHUNK);
     const animals = await prisma.animal.findMany({
@@ -65,18 +73,26 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
       select: { id: true, evaluations: { where: { approvalStatus: "approved" }, orderBy: { evaluationDate: "asc" } } },
     });
     for (const a of animals) {
-      const r = computeRollback(
-        attachTraits(a.evaluations, defMap).map((e) => ({
-          evaluationDate: e.evaluationDate, proofRun: e.proofRun,
-          reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
-        })),
-      );
-      if (r.proofPerformance != null) {
-        scores.set(a.id, {
-          perf: r.proofPerformance, perfSteps: r.proofSteps,
-          rbRaw: r.rollbackRaw, rbSteps: r.rollbackSteps,
-        });
-      }
+      const lites: EvalLite[] = attachTraits(a.evaluations, defMap).map((e) => ({
+        evaluationDate: e.evaluationDate, proofRun: e.proofRun,
+        reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
+      }));
+      evalsById.set(a.id, lites);
+      const d = traitStepDeltas(lites);
+      for (const [code, arr] of Object.entries(d)) (allDeltas[code] ??= []).push(...arr);
+    }
+  }
+  const traitScales = deltaScalesFrom(allDeltas);
+
+  // Pass 2: score each bull, now that a zero-centred move can be measured against
+  // the lineup's typical movement for that trait.
+  for (const [id, lites] of evalsById) {
+    const r = computeRollback(lites, { traitScales });
+    if (r.proofPerformance != null) {
+      scores.set(id, {
+        perf: r.proofPerformance, perfSteps: r.proofSteps,
+        rbRaw: r.rollbackRaw, rbSteps: r.rollbackSteps,
+      });
     }
   }
 
@@ -140,9 +156,22 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
        )`,
   );
 
+  // Persist the per-trait step SDs so the live per-bull views (animal profile,
+  // analysis breakdown) score zero-centred traits on the SAME scale as these
+  // stored columns, instead of silently degrading to percent-change.
+  await prisma.environmentConfig.upsert({
+    where: { key: "rollbackTraitScales" },
+    update: { value: JSON.stringify(traitScales) },
+    create: {
+      key: "rollbackTraitScales",
+      value: JSON.stringify(traitScales),
+      notes: "Per-trait round-to-round step SD; scales zero-centred traits in Proof Performance / Rollback Resistance. Written by compute-rollback.ts.",
+    },
+  });
+
   return {
     scored: scores.size, rated: rows.length, withRollback: baseEntries.length,
-    baselineN: baseline.n,
+    baselineN: baseline.n, scaledTraits: Object.keys(traitScales).length,
     mean: Math.round(baseline.mean * 100) / 100, sd: Math.round(baseline.sd * 1000) / 1000,
     cohorts: [...cohorts.entries()].sort((a, b) => a[0] - b[0]).map(([steps, b]) => ({
       steps, n: b.n, mean: Math.round(b.mean * 100) / 100, sd: Math.round(b.sd * 100) / 100,
@@ -161,6 +190,7 @@ if (process.argv[1] && /compute-rollback\.ts$/.test(process.argv[1])) {
       for (const c of r.cohorts) {
         console.log(`             ${c.steps} April${c.steps === 1 ? " " : "s"} → n=${String(c.n).padStart(4)} mean=${c.mean}% sd=${c.sd}`);
       }
+      console.log(`[rollback] zero-centred traits scored SD-relative against lineup step SDs: ${r.scaledTraits} traits`);
       console.log(`[rollback] wrote proofPerformance / rollbackRaw / rollbackResistance for ${r.rated} bulls`);
     })
     .catch((e) => { console.error(e); process.exitCode = 1; })

@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { TRAIT_COLUMNS } from "./eval-traits";
+import type { TraitScales } from "./rollback";
 
 // ---------------------------------------------------------------------------
 // Cached getters for rarely-changing REFERENCE data (breeds, sources, the trait
@@ -38,6 +39,18 @@ export const getActiveBreeds = memoTTL(() =>
 export const getAllSources = memoTTL(() =>
   prisma.source.findMany({ orderBy: { sourceName: "asc" } }),
 );
+
+/**
+ * Per-trait step SDs written by prisma/compute-rollback.ts. Used to score
+ * zero-centred traits SD-relative in the LIVE per-bull rollback views, on the same
+ * scale as the materialised proofPerformance / rollbackResistance columns. Empty
+ * (⇒ percent-change fallback) until the batch has run once.
+ */
+export const getRollbackTraitScales = memoTTL(async (): Promise<TraitScales> => {
+  const row = await prisma.environmentConfig.findUnique({ where: { key: "rollbackTraitScales" }, select: { value: true } });
+  if (!row?.value) return {};
+  try { return JSON.parse(row.value) as TraitScales; } catch { return {}; }
+});
 
 /** The genetic trait defs the Animals filter bar offers (indexed columns only). */
 export const getGeneticTraitDefsForFilters = memoTTL(() =>

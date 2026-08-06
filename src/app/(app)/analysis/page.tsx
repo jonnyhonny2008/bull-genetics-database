@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { PageHeader, Card, Table, Badge, EmptyState, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { computeRollback, baselineOf, relativeRating, ratingVerdict, ROLLBACK_TRAIT_LABELS, isOfficialProof, isRollbackRound, type RollbackResult } from "@/lib/rollback";
+import { getRollbackTraitScales } from "@/lib/reference";
 import { attachTraits, traitDefMap } from "@/lib/eval-traits";
 import { LineChart, CompareBars, type LineSeries } from "@/components/TrendCharts";
 import { SireRolePills, SireRoleField, SireSortField, BlondinToggle } from "@/components/SireFilters";
@@ -110,20 +111,22 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
       .sort((a, b) => (b.rollbackSteps ?? 0) - (a.rollbackSteps ?? 0) || b.proofRoundCount - a.proofRoundCount)
       .slice(0, TRAIT_SAMPLE)
       .map((a) => a.id);
-    const [sampleAnimals, defMap] = await Promise.all([
+    const [sampleAnimals, defMap, rbScales] = await Promise.all([
       prisma.animal.findMany({
         where: { id: { in: sampleIds } },
         select: { id: true, evaluations: { orderBy: { evaluationDate: "asc" } } },
       }),
       traitDefMap(),
+      getRollbackTraitScales(),
     ]);
     const agg = new Map<string, { perf: number; perfN: number; rb: number; rbN: number; worst: number }>();
     for (const a of sampleAnimals) {
       const r = computeRollback(
         attachTraits(a.evaluations, defMap).map((e) => ({
           evaluationDate: e.evaluationDate, proofRun: e.proofRun,
-          reliabilityOverall: e.reliabilityOverall, traitValues: e.traitValues,
+          reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
         })),
+        { traitScales: rbScales },
       );
       if (!r.hasHistory) continue;
       traitSampleN++;
