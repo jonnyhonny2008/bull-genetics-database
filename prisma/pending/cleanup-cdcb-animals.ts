@@ -24,6 +24,10 @@
 
 const CDCB_CREATED = { notes: { contains: "Imported from CDCB" } };
 
+// No top-level import remains, so declare these files modules explicitly —
+// otherwise `main` lands in the global scope and collides between them.
+export {};
+
 async function main() {
   // Imported HERE, not at the top: a static named import fails under Node 24,
   // which treats this as strict ESM while src/lib/db compiles to CommonJS — and a

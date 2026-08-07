@@ -13,6 +13,10 @@
 // Exits non-zero if any of that is false, so a bad import fails loudly rather
 // than leaving a plausible-looking but empty site.
 
+// No top-level import remains, so declare these files modules explicitly —
+// otherwise `main` lands in the global scope and collides between them.
+export {};
+
 async function main() {
   // Imported HERE, not at the top: a static named import fails under Node 24,
   // which treats this as strict ESM while src/lib/db compiles to CommonJS — and a
