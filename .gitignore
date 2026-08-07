@@ -51,3 +51,4 @@ tsconfig.tsbuildinfo
 # Contains a live DB password — never commit
 VERCEL_DATABASE_URL.txt
 imports/hausa/*.xlsx
+.firecrawl/

@@ -11,7 +11,7 @@ import { usSpecialists, parseUsSpecialistCodes, parseUsSpecialistLevel, US_SPECI
 import { SpecialistPicker } from "@/components/SpecialistPicker";
 import { CDCB_BREEDS } from "@/lib/us-cdcb/file-kind";
 import { usRoundLabel } from "@/lib/us-cdcb/proof-change";
-import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound } from "@/lib/us-cdcb/list-filters";
+import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound, usAiStatusIds } from "@/lib/us-cdcb/list-filters";
 // Favourites are ANIMAL-level (a Watchlist row keyed userId+animalId, with no
 // system on it), so this is the same star and the same action the Canadian list
 // uses — a bull starred there is already starred here. Duplicating it per system
@@ -287,6 +287,11 @@ async function loadRows(opts: {
   if (opts.favUserId) AND.push(usFavouriteWhere(opts.favUserId));
   const roleWhere = usRoleWhere(opts.role, statusRound);
   if (roleWhere) AND.push(roleWhere);
+  // The three AI-status roles resolve through id17 rather than a relation — see
+  // usAiStatusIds. An empty list must still filter to nothing, so the null check
+  // is on the RETURN VALUE, not on the array being non-empty.
+  const statusIds = await usAiStatusIds(opts.role, statusRound);
+  if (statusIds) AND.push({ id17: { in: statusIds } });
 
   // The bar is set against the whole official pool for the breed — a stable
   // reference — and the qualifying ids are folded back into the query so every

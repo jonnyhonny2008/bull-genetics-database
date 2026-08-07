@@ -89,8 +89,9 @@ export function usRoleWhere(role: string | undefined, statusRound: string | null
     case "active":
     case "marketed":
     case "foreign":
-      if (!statusRound) return null;
-      return { animal: { is: { usAiStatus: { some: { roundCode: statusRound, code: STATUS_CODE[role] } } } } };
+      // Resolved by the caller via usRoleWhereAsync — the status table joins on
+      // id17, not through the Canadian Animal row (see the note there).
+      return null;
     default:
       return null;
   }
@@ -142,14 +143,27 @@ export async function usRoleCounts(
 ): Promise<Record<string, number>> {
   const [basis, status] = await Promise.all([
     prisma.usEvaluation.groupBy({ by: ["isPtaMilk"], where: base, _count: { _all: true } }),
+    // Counted through id17 for the same reason usAiStatusIds exists: the Animal
+    // relation is null for almost every American bull, so the old groupBy through
+    // it returned zero for every pill.
     statusRound
-      ? prisma.usAiStatus
-          .groupBy({
-            by: ["code"],
-            where: { roundCode: statusRound, animal: { is: { usEvaluations: { some: base } } } },
-            _count: { _all: true },
-          })
-          .then((rows) => rows.map((r) => ({ code: r.code, n: r._count._all })))
+      ? (async () => {
+          const rows = await prisma.usAiStatus.findMany({
+            where: { roundCode: statusRound },
+            select: { id17: true, code: true },
+          });
+          const byCode = new Map<string, string[]>();
+          for (const r of rows) {
+            const a = byCode.get(r.code) ?? [];
+            a.push(r.id17);
+            byCode.set(r.code, a);
+          }
+          const out: { code: string; n: number }[] = [];
+          for (const [code, ids] of byCode) {
+            out.push({ code, n: await prisma.usEvaluation.count({ where: { ...base, id17: { in: ids } } }) });
+          }
+          return out;
+        })()
       : Promise.resolve([] as { code: string; n: number }[]),
   ]);
   const nBasis = (v: boolean) => basis.find((b) => b.isPtaMilk === v)?._count._all ?? 0;
@@ -161,4 +175,29 @@ export async function usRoleCounts(
     marketed: nStatus("G"),
     foreign: nStatus("F"),
   };
+}
+
+
+/**
+ * The AI-status role filters, which cannot be expressed as a plain where-clause.
+ *
+ * UsAiStatus is joined on id17 rather than through Animal, DELIBERATELY: it has no
+ * foreign key to UsAnimal because ~5% of its rows name a bull no evaluation
+ * mentions, and a key would reject those. It used to go through
+ * `animal: { is: { usAiStatus: ... } }`, which quietly returned nothing once the
+ * rosters were split — an American bull has no Animal row unless he is also
+ * registered in Canada, so 99.8% of the lineup fell out and every status pill
+ * read zero while looking perfectly healthy.
+ *
+ * The id17 set for one code is at most a few thousand, so an IN list is the right
+ * shape here and stays one extra query.
+ */
+export async function usAiStatusIds(role: string, statusRound: string | null): Promise<string[] | null> {
+  const code = STATUS_CODE[role];
+  if (!code || !statusRound) return null;
+  const rows = await prisma.usAiStatus.findMany({
+    where: { roundCode: statusRound, code },
+    select: { id17: true },
+  });
+  return rows.map((r) => r.id17);
 }

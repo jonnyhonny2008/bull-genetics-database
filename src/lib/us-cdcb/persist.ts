@@ -271,22 +271,57 @@ export async function recomputeUsPreferred(usAnimalId: string): Promise<void> {
   if (winner) await prisma.usEvaluation.update({ where: { usEvaluationId: winner }, data: { isPreferred: true } });
 }
 
-/** Load CDCB's AI-status file — the US "is this bull actually marketed" answer. */
+/**
+ * Load CDCB's AI-status file — the US "is this bull actually marketed" answer.
+ *
+ * BULK, because the per-row version could not finish. It did a findUnique plus an
+ * upsert for every line: 13,150 sequential round-trips for one 6,575-line file,
+ * which ran past ten minutes against the pooled remote database and was killed.
+ * This does a fixed number of queries regardless of file size — the same lesson
+ * persist-bulk.ts already learned for the evaluation files.
+ *
+ * Delete-then-insert for the round, so a re-load is idempotent without needing a
+ * per-row upsert. Scoped to ONE roundCode: it can never touch another round.
+ */
 export async function persistAiStatus(lines: string[], roundCode: string): Promise<{ rows: number; matched: number }> {
-  let rows = 0, matched = 0;
+  const RE = /^([A-Z]{2}[A-Z0-9]{3}[A-Z0-9]{12})\s+([AFG])\s*$/;
+  const parsed: { id17: string; code: string }[] = [];
+  const seen = new Set<string>();
   for (const line of lines) {
-    const m = /^([A-Z]{2}[A-Z0-9]{3}[A-Z0-9]{12})\s+([AFG])\s*$/.exec(line.trim());
+    const m = RE.exec(line.trim());
     if (!m) continue;
-    const [, id17, code] = m;
-    const ua = await prisma.usAnimal.findUnique({ where: { id17 }, select: { animalId: true } });
-    if (ua) matched++;
-    // Orphans are expected and kept — about 5% of entries match no evaluation.
-    await prisma.usAiStatus.upsert({
-      where: { id17_roundCode: { id17, roundCode } },
-      update: { code, animalId: ua?.animalId ?? null },
-      create: { id17, roundCode, code, animalId: ua?.animalId ?? null },
-    });
-    rows++;
+    // The file can repeat an id17; the table is unique on (id17, roundCode), so
+    // the later line would be rejected rather than merged. Keep the first.
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    parsed.push({ id17: m[1], code: m[2] });
   }
-  return { rows, matched };
+  if (!parsed.length) return { rows: 0, matched: 0 };
+
+  // Resolve the Canadian bridge for the bulls that have one, in chunks.
+  const bridges = new Map<string, string>();
+  const ids = parsed.map((p) => p.id17);
+  for (let i = 0; i < ids.length; i += 2000) {
+    const rows = await prisma.usAnimal.findMany({
+      where: { id17: { in: ids.slice(i, i + 2000) } },
+      select: { id17: true, animalId: true },
+    });
+    for (const r of rows) bridges.set(r.id17, r.animalId ?? "");
+  }
+
+  await prisma.usAiStatus.deleteMany({ where: { roundCode } });
+  let rows = 0;
+  for (let i = 0; i < parsed.length; i += 1000) {
+    const r = await prisma.usAiStatus.createMany({
+      data: parsed.slice(i, i + 1000).map((p) => ({
+        id17: p.id17, roundCode, code: p.code,
+        animalId: bridges.get(p.id17) || null,
+      })),
+      skipDuplicates: true,
+    });
+    rows += r.count;
+  }
+  // "Matched" means the bull is on the AMERICAN roster. Orphans are expected and
+  // kept: the status file and the evaluation files are published independently.
+  return { rows, matched: bridges.size };
 }
