@@ -71,6 +71,7 @@ export function systemLabel(system: GeneticSystem): string {
  */
 export const US_ROUTES = new Set<string>([
   "/dashboard",
+  "/animals",
 ]);
 
 /**

@@ -703,7 +703,11 @@ model UsEvaluation {
   pl        Float?
   scs       Float?
   dpr       Float?
+  ccr       Float?
   ptat      Float?
+  // Rump angle. INTERMEDIATE OPTIMUM — neither the highest nor the lowest value
+  // is best, so it must never be sorted or scored as higher-is-better.
+  rpa       Float?
   liv       Float?
   udc       Float?
   flc       Float?
