@@ -95,6 +95,7 @@ export function toSystem(pathname: string, system: GeneticSystem): string {
  */
 const US_NESTED_ROUTES = new Set<string>([
   "/reports/proof-changes",
+  "/reports/round-compare",
   "/reports/round-summary",
   "/admin/data-quality",
 ]);
@@ -118,6 +119,7 @@ export const US_ROUTES = new Set<string>([
   "/animals",
   "/analysis",
   "/compare",
+  "/parent-average",
   "/reports",
   "/admin/data-quality",
 ]);

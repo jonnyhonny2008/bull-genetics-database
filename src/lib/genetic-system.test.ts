@@ -45,7 +45,7 @@ test("a page the other side does not have falls back to its dashboard, never a 4
   // Canada has whole groups America will never have: the mating program and
   // parent average need female evaluations CDCB does not publish; Data In and
   // Configuration are Canadian-pipeline screens.
-  for (const p of ["/parent-average", "/uploads", "/import-proofs", "/animal-import", "/review", "/sources", "/traits", "/breeds", "/admin", "/admin/errors"]) {
+  for (const p of ["/uploads", "/import-proofs", "/animal-import", "/review", "/sources", "/traits", "/breeds", "/admin", "/admin/errors"]) {
     assert.equal(toSystem(p, "us"), "/us/dashboard", p);
   }
   // Specialists was America's one exclusive page. It is now a trait picker inside
@@ -88,7 +88,15 @@ test("systemFromPathname does not mistake a lookalike path for the US side", () 
 
 test("route availability reflects what each side actually has", () => {
   assert.ok(routeAvailable("/animals", "us"));
-  assert.ok(!routeAvailable("/parent-average", "us"), "needs female data CDCB does not publish");
+  // /parent-average exists on BOTH sides now, but they are not the same report.
+  // Canada pairs a sire and dam to predict a mating, which needs cow evaluations
+  // CDCB does not publish. America compares each bull's own published parent
+  // average against his genomic evaluation. Same route, different question — so
+  // the toggle carries the user across rather than dumping them on a dashboard.
+  assert.ok(routeAvailable("/parent-average", "us"));
+  assert.ok(routeAvailable("/parent-average", "ca"));
+  assert.equal(toSystem("/parent-average", "us"), "/us/parent-average");
+  assert.equal(toSystem("/us/parent-average", "ca"), "/parent-average");
   // Neither side has a specialists PAGE: both have the picker in their list.
   assert.ok(!routeAvailable("/specialists", "ca"));
   assert.ok(!routeAvailable("/specialists", "us"));

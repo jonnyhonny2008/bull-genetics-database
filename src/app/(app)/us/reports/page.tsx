@@ -24,6 +24,13 @@ const REPORTS = [
     blurb: "How each NAAB bull moved between the latest official CDCB round and the one before it, trait by trait, in pounds. Ranks bulls by their biggest changes and flags any trait that moved unusually far.",
     ready: true,
   },
+  {
+    href: "/us/reports/round-compare",
+    title: "Round Comparison",
+    tag: "Any two rounds",
+    blurb: "Pick ANY two CDCB periods on file and see how the population moved between them — per breed, trait by trait, with the biggest risers and fallers ranked within their own breed. Warns you when the two periods are not peers, because a provisional monthly add and an official round are not comparable populations.",
+    ready: true,
+  },
 ];
 
 export default function UsReportsPage() {

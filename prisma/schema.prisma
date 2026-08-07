@@ -769,6 +769,20 @@ model UsEvaluation {
   // COMPUTED indexes — never an official published figure. The formula version
   // is stored alongside so a value can always be traced to the formula that was
   // in force for its round, and so a registry change can invalidate the right rows.
+  // --- Holstein Association USA's Conformation Composite ----------------------
+  // PUBLISHED BY HAUSA, NOT COMPUTED. Unlike UDC/FLC/BWC — which this app derives
+  // from the linear traits with HAUSA's published weights — the HCC formula is
+  // published only as a description ("a quadratic penalty from a functional
+  // optimum" over 18 traits with stated weights and optima). Fitting that to
+  // HAUSA's own 4,372-bull release reaches R2 0.988 and a mean error of 0.08, but
+  // only 8% of bulls land within 0.01 and the worst miss is 0.84 — good enough to
+  // rank roughly, nowhere near good enough to print beside an official figure.
+  // So this column holds the value HAUSA published, and is null for every bull
+  // they did not publish. A computed stand-in would be a guess wearing a number's
+  // clothes. See prisma/import-hcc.ts.
+  hcc               Float?
+  // Which HAUSA release the value came from, e.g. "HCC_report 2026-04".
+  hccSource         String?
   tpi               Int?
   tpiFormulaVersion String?
   tpiConfidence     String? // verified | inferred | contested
