@@ -91,7 +91,12 @@ export interface LinearTraits {
   FLS: number; STR: number; BDE: number; TRW: number; DFM: number;
 }
 
-interface CompositeVersion extends VersionBase { fn: (t: LinearTraits) => number }
+interface CompositeVersion extends VersionBase {
+  fn: (t: LinearTraits) => number;
+  /** CDCB trait codes this composite reads — versioned, because the published
+   *  trait set changed over time (FLC v2017 has no side-view term at all). */
+  requires: string[];
+}
 
 /** Udder Composite. The 2015-base form drops the -0.03 offset of the 2010 base. */
 const UDC_VERSIONS: CompositeVersion[] = [
@@ -101,6 +106,7 @@ const UDC_VERSIONS: CompositeVersion[] = [
     source: "holsteinusa.com/genetic_evaluations/ss_linear.html (Wayback 20200703222130)",
     fn: (t) => (0.16 * t.FUA + 0.23 * t.RUH + 0.19 * t.RUW + 0.08 * t.UCL + 0.20 * t.UDP
       + 0.04 * t.FTP + 0.05 * RPstar(t.RTP) + 0.05 * TLstar(t.TLG) - 0.20 * t.STA) * 1.16,
+    requires: ["FUA","RUH","RUW","UCL","UDP","FTP","RTP","TLG","STA"],
   },
   {
     label: "UDC v2017 (2010 base)", from: 201708, to: 201912,
@@ -110,6 +116,7 @@ const UDC_VERSIONS: CompositeVersion[] = [
     source: "holsteinusa.com/genetic_evaluations/ss_linear.html (Wayback 20200117143955)",
     fn: (t) => -0.03 + (0.16 * t.FUA + 0.23 * t.RUH + 0.19 * t.RUW + 0.08 * t.UCL + 0.20 * t.UDP
       + 0.04 * t.FTP + 0.05 * RPstar(t.RTP) + 0.05 * TLstar(t.TLG) - 0.20 * t.STA) * 1.16,
+    requires: ["FUA","RUH","RUW","UCL","UDP","FTP","RTP","TLG","STA"],
   },
 ];
 
@@ -127,12 +134,14 @@ const FLC_VERSIONS: CompositeVersion[] = [
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com/genetic_evaluations/ss_linear.html (Wayback 20200703222130)",
     fn: (t) => (0.05 * t.FTA + 0.20 * t.RLR + 0.05 * SVstar(t.RLS) + 0.70 * t.FLS - 0.20 * t.STA) * 1.14,
+    requires: ["FTA","RLR","RLS","FLS","STA"],
   },
   {
     label: "FLC v2017 (2010 base)", from: 201708, to: 201912,
     availability: "data_available", confidence: "inferred", datesConfidence: "verified",
     source: "holsteinusa.com/genetic_evaluations/ss_linear.html (Wayback 20200117143955)",
     fn: (t) => 0.02 + (0.09 * t.FTA + 0.21 * t.RLR + 0.70 * t.FLS - 0.20 * t.STA) * 1.09,
+    requires: ["FTA","RLR","FLS","STA"],
   },
 ];
 
@@ -144,6 +153,7 @@ const BWC_VERSIONS: CompositeVersion[] = [
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com/genetic_evaluations/ss_linear.html",
     fn: (t) => 0.23 * t.STA + 0.72 * t.STR + 0.08 * t.BDE + 0.17 * t.TRW - 0.47 * t.DFM,
+    requires: ["STA","STR","BDE","TRW","DFM"],
   },
 ];
 
@@ -155,7 +165,16 @@ export interface SubIndexTraits {
   MFV: number; DAB: number; KET: number; MAS: number; MET: number; RPL: number;
 }
 
-interface SubVersion extends VersionBase { fn: (t: SubIndexTraits, bwc: number) => number }
+interface SubVersion extends VersionBase {
+  fn: (t: SubIndexTraits, bwc: number) => number;
+  /** CDCB trait codes this definition reads. Versioned like everything else,
+   *  because CDCB's published trait set GREW over time — the April 2020 extract
+   *  carries 46 traits and has no FS (Feed Saved) at all, so demanding today's
+   *  37 inputs would refuse a round that is perfectly computable. */
+  requires: string[];
+  /** True when the definition consumes BWC (the pre-2021 Feed Efficiency forms). */
+  needsBwc?: boolean;
+}
 
 /**
  * Feed Efficiency. The SHAPE changes at April 2021: pre-2021 it is a function of
@@ -173,18 +192,21 @@ const FE_VERSIONS: SubVersion[] = [
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com ss_tpi_formula.html (Wayback 20250422153102, 'TPI Formula – April 2025')",
     fn: (t) => -0.0025 * t.MILK + 1.86 * t.FAT + 1.75 * t.PRO + 0.13 * t.FS,
+    requires: ["MILK","FAT","PRO","FS"],
   },
   {
     label: "FE$ v2021", from: 202104, to: 202412,
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com ss_tpi_formula.html (Wayback 20210414041449)",
     fn: (t) => 0.0008 * t.MILK + 1.55 * t.FAT + 1.73 * t.PRO + 0.11 * t.FS,
+    requires: ["MILK","FAT","PRO","FS"],
   },
   {
     label: "FE v2020", from: 202004, to: 202012,
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com ss_tpi_formula.html (Wayback 20200628231022)",
     fn: (t, bwc) => -0.0188 * t.MILK + 1.45 * t.FAT + 1.85 * t.PRO - 12.4 * bwc,
+    requires: ["MILK","FAT","PRO"], needsBwc: true,
   },
   {
     label: "FE v2017", from: 201708, to: 201912,
@@ -194,6 +216,7 @@ const FE_VERSIONS: SubVersion[] = [
     availability: "data_available", confidence: "contested", datesConfidence: "verified",
     source: "holsteinusa.com/pdf/Upcoming_Changes_aug17.pdf p.7 (coefficients disputed)",
     fn: (t, bwc) => -0.0187 * t.MILK + 1.28 * t.FAT + 1.95 * t.PRO - 12.4 * bwc,
+    requires: ["MILK","FAT","PRO"], needsBwc: true,
   },
 ];
 
@@ -214,18 +237,21 @@ const FI_VERSIONS: SubVersion[] = [
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com ss_tpi_formula.html (Wayback 20241006155752); boundary pinned empirically at 2404/2408",
     fn: (t) => 0.4 * t.DPR + 0.4 * t.CCR + 0.1 * t.HCR + 0.1 * t.EFC,
+    requires: ["DPR","CCR","HCR","EFC"],
   },
   {
     label: "FI v2020", from: 202004, to: 202404,
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com ss_tpi_formula.html (Wayback 20200628231022); boundary pinned empirically",
     fn: (t) => 0.7 * t.DPR + 0.1 * t.CCR + 0.1 * t.HCR + 0.1 * t.EFC,
+    requires: ["DPR","CCR","HCR","EFC"],
   },
   {
     label: "FI v2017", from: 201708, to: 201912,
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com/pdf/Upcoming_Changes_aug17.pdf",
     fn: (t) => 0.64 * t.DPR + 0.18 * t.CCR + 0.18 * t.HCR,
+    requires: ["DPR","CCR","HCR"],
   },
 ];
 
@@ -237,6 +263,7 @@ const HT_VERSIONS: SubVersion[] = [
     availability: "data_available", confidence: "verified", datesConfidence: "verified",
     source: "holsteinusa.com/genetic_evaluations/ss_tpi_formula.html",
     fn: (t) => 0.34 * t.MFV + 1.97 * t.DAB + 0.28 * t.KET + 1.50 * t.MAS + 1.12 * t.MET + 0.68 * t.RPL,
+    requires: ["MFV","DAB","KET","MAS","MET","RPL"],
   },
 ];
 
@@ -436,8 +463,37 @@ export function formulaConfidence(f: ResolvedTpiFormula): IndexConfidence {
   return "verified";
 }
 
-/** Every CDCB trait code the TPI engine reads. All 37 are present for 100% of
- *  Holstein animals in both the proven and genomic files. */
+/** Trait codes a TPI term reads directly (as opposed to via a sub-index). */
+const DIRECT_TERM_TRAITS: Partial<Record<TpiInputKey, string>> = {
+  PTAP: "PRO", PTAF: "FAT", PTAT: "PTAT", PL: "PL", LIV: "LIV",
+  SCS: "SCS", DCE: "DCE", DSB: "DSB",
+};
+
+/**
+ * Every CDCB trait code a round's formula actually needs.
+ *
+ * MUST BE DERIVED PER ROUND, not fixed. CDCB's published trait set GREW over
+ * time — the April 2020 extract declares FIELDS:46 and carries no FS (Feed
+ * Saved) at all, while the April 2026 one carries 52 and does. The 2020 formula
+ * does not want FS either (its Feed Efficiency definition consumes BWC instead),
+ * so demanding today's 37 inputs would return null for every bull in a round we
+ * can compute perfectly well.
+ */
+export function tpiRequiredTraits(formula: ResolvedTpiFormula): string[] {
+  const need = new Set<string>();
+  for (const term of formula.tpi.terms) {
+    const direct = DIRECT_TERM_TRAITS[term.key];
+    if (direct) need.add(direct);
+  }
+  for (const v of [formula.fe, formula.fi, formula.ht]) if (v) for (const c of v.requires) need.add(c);
+  for (const v of [formula.udc, formula.flc]) if (v) for (const c of v.requires) need.add(c);
+  // BWC is needed when a Feed Efficiency definition consumes it, and only then.
+  if (formula.fe?.needsBwc) for (const c of formula.bwc.requires) need.add(c);
+  return [...need];
+}
+
+/** The traits the CURRENT formula reads — 37 of them, present for 100% of
+ *  Holstein animals in both the proven and genomic April-2026 files. */
 export const TPI_REQUIRED_TRAITS = [
   "PRO", "FAT", "MILK", "PTAT", "PL", "LIV", "SCS", "DCE", "DSB", "FS",
   "DPR", "CCR", "HCR", "EFC", "MFV", "DAB", "KET", "MAS", "MET", "RPL",
@@ -473,12 +529,16 @@ export interface TpiResult {
 export function computeTpi(traits: TpiTraitInput, roundCode: string): TpiResult | null {
   const formula = resolveTpiFormula(roundCode);
 
+  // Derived from the RESOLVED formula, not a fixed list — see tpiRequiredTraits.
   const t: Record<string, number> = {};
-  for (const code of TPI_REQUIRED_TRAITS) {
+  for (const code of tpiRequiredTraits(formula)) {
     const v = traits[code];
     if (v == null || !Number.isFinite(v)) return null;
     t[code] = v;
   }
+  // Anything a composite reads but this round does not require reads as 0; the
+  // required check above guarantees every code the formula actually uses is set.
+  for (const code of TPI_REQUIRED_TRAITS) if (t[code] === undefined) t[code] = 0;
   const lin = t as unknown as LinearTraits;
   const sub = t as unknown as SubIndexTraits;
 
