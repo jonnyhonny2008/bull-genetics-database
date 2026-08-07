@@ -67,9 +67,7 @@ export default async function UsDataQualityPage() {
             The US side stores its evaluations in their own tables, separate from the Canadian ones, so a
             CDCB proof can never displace a Lactanet proof. Those tables do not exist in this database yet.
           </p>
-          <pre className="mt-3 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">npm run db:push:prod</pre>
-          <p className="mt-3 text-sm text-slate-600">Then import a CDCB round:</p>
-          <pre className="mt-2 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">npm run import:cdcb:prod -- &quot;C:\path\to\cdcb\files&quot;</pre>
+          <pre className="mt-3 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">npm run us:finish</pre>
           <p className="mt-3 text-xs text-slate-500">Both are additive — no existing Canadian table is touched.</p>
         </Card>
       </div>
