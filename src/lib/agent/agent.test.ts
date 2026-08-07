@@ -16,7 +16,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { askGeneticsAgent, type MessagesClient, type AgentDeps, type AgentStream } from "./agent";
 import type { AgentConfig } from "./config";
 import { maskKey } from "./config";
-import { traitCol, clamp, type AgentTool, AGENT_TOOLS, requireCap, confirmGate, type AgentContext } from "./tools";
+import { traitCol, usTraitCol, systemOf, clamp, type AgentTool, AGENT_TOOLS, requireCap, confirmGate, type AgentContext } from "./tools";
+import { AGENT_SYSTEM_PROMPT } from "./instructions";
 import { cleanText, extractCharts, splitFollowups } from "./answer-format";
 import { slugify, recordsToRows, rowsToCsv, reportMarkdown } from "./answer-export";
 
@@ -155,6 +156,76 @@ test("traitCol maps friendly trait names to evaluation columns", () => {
   assert.equal(traitCol("Feet & Legs"), "fl");
   assert.equal(traitCol(undefined), "lpi");
   assert.equal(traitCol("nonsense"), "lpi"); // safe default, never raw SQL
+});
+
+test("usTraitCol maps the American vocabulary and never falls back to a Canadian column", () => {
+  assert.equal(usTraitCol("gtpi"), "tpi");
+  assert.equal(usTraitCol("NM$"), "nmDollar");
+  assert.equal(usTraitCol("net merit"), "nmDollar");
+  assert.equal(usTraitCol("ptat"), "ptat");
+  assert.equal(usTraitCol("rump angle"), "rpa");
+  assert.equal(usTraitCol(undefined), "tpi");
+  assert.equal(usTraitCol("nonsense"), "tpi");
+  // "milk" and "protein" exist in both vocabularies and must resolve to the US
+  // column here — a Canadian column name would be a kilogram value in a pounds
+  // answer, the single worst bug this feature can have.
+  assert.equal(usTraitCol("milk"), "milk");
+  assert.equal(usTraitCol("protein"), "pro");
+  assert.notEqual(usTraitCol("protein"), traitCol("protein"));
+  assert.equal(usTraitCol("lpi"), "tpi"); // a Canadian index has no US column
+});
+
+test("systemOf defaults to Canada and only 'us' switches systems", () => {
+  assert.equal(systemOf({}), "ca");
+  assert.equal(systemOf({ system: "ca" }), "ca");
+  assert.equal(systemOf({ system: "US" }), "us");
+  assert.equal(systemOf({ system: " us " }), "us");
+  assert.equal(systemOf({ system: "america" }), "ca"); // anything unrecognised stays Canadian
+  assert.equal(systemOf({ system: 1 }), "ca");
+});
+
+test("every read tool that reads evaluations offers the system argument", () => {
+  const dualSystem = ["search_animals", "get_animal", "rank_animals", "lineup_stats", "rollback_leaders", "proof_history", "get_animal_full_profile"];
+  for (const name of dualSystem) {
+    const t = AGENT_TOOLS.find((x) => x.name === name);
+    assert.ok(t, `${name} is missing`);
+    const props = (t!.input_schema as { properties: Record<string, { enum?: string[] }> }).properties;
+    assert.deepEqual(props.system?.enum, ["ca", "us"], `${name} has no system argument`);
+  }
+});
+
+test("the US side refuses what has no American meaning", async () => {
+  const ctx: AgentContext = { actor: { uid: "u", name: "U", role: "admin" } };
+  // Rollback Resistance measures Canada's annual April re-basing; the US does not
+  // re-base annually, so the tool must refuse rather than return Canadian scores.
+  const rollback = await AGENT_TOOLS.find((t) => t.name === "rollback_leaders")!.run({ system: "us" }, ctx);
+  assert.equal(rollback.records, null);
+  assert.match(rollback.summary, /do not exist on the American side/i);
+
+  // Rump angle has an intermediate optimum — there is no top of that list.
+  const ranked = await AGENT_TOOLS.find((t) => t.name === "rank_animals")!.run({ system: "us", trait: "rpa" }, ctx);
+  assert.equal(ranked.records, null);
+  assert.match(ranked.summary, /INTERMEDIATE OPTIMUM/);
+
+  // A breed CDCB does not publish is named, not silently filtered to nothing.
+  const searched = await AGENT_TOOLS.find((t) => t.name === "search_animals")!.run({ system: "us", breed: "Zebu" }, ctx);
+  assert.equal(searched.records, null);
+  assert.match(searched.summary, /CDCB publishes bull evaluations for/);
+});
+
+test("the instructions state the rules that keep the two systems apart", () => {
+  // These are product requirements, not prose preferences: an agent that loses
+  // any one of them can produce a confidently wrong cross-country answer.
+  assert.match(AGENT_SYSTEM_PROMPT, /POUNDS/);
+  assert.match(AGENT_SYSTEM_PROMPT, /KILOGRAMS/);
+  assert.match(AGENT_SYSTEM_PROMPT, /NOT comparable/i);
+  assert.match(AGENT_SYSTEM_PROMPT, /GTPI is CALCULATED/i);
+  assert.match(AGENT_SYSTEM_PROMPT, /Holstein Association USA/);
+  assert.match(AGENT_SYSTEM_PROMPT, /THERE IS NO INTERIM PROOF/);
+  assert.match(AGENT_SYSTEM_PROMPT, /NO ROLLBACK RESISTANCE/);
+  assert.match(AGENT_SYSTEM_PROMPT, /INTERMEDIATE OPTIMUM/);
+  assert.match(AGENT_SYSTEM_PROMPT, /PER TRAIT GROUP/);
+  assert.match(AGENT_SYSTEM_PROMPT, /AI-status file/);
 });
 
 test("clamp bounds numeric input and falls back on garbage", () => {

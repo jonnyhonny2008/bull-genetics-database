@@ -72,6 +72,10 @@ export function systemLabel(system: GeneticSystem): string {
 export const US_ROUTES = new Set<string>([
   "/dashboard",
   "/animals",
+  "/analysis",
+  "/compare",
+  "/specialists",
+  "/reports",
 ]);
 
 /**
@@ -87,8 +91,20 @@ export const US_EXCLUDED_ROUTES = new Set<string>([
   "/reports/interim-changes",
 ]);
 
+/**
+ * Routes that exist ONLY on the American side.
+ *
+ * Specialists is its own page here because the US trait vocabulary and its
+ * SD-relative thresholds differ from the Canadian ones; on the Canadian side the
+ * equivalent is a picker embedded in the animals list, so there is no /specialists
+ * page to link to and offering one would 404.
+ */
+export const CA_EXCLUDED_ROUTES = new Set<string>([
+  "/specialists",
+]);
+
 /** True when a system-relative route should appear in that system's nav. */
 export function routeAvailable(href: string, system: GeneticSystem): boolean {
-  if (system === "ca") return true;
+  if (system === "ca") return !CA_EXCLUDED_ROUTES.has(href);
   return US_ROUTES.has(href) && !US_EXCLUDED_ROUTES.has(href);
 }

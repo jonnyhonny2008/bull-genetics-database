@@ -19,6 +19,9 @@ import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex } from "@/li
 import { unpackTraits, traitDefMap, packTraits, type RawTrait } from "@/lib/eval-traits";
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
 import { can, ROLES, isBatchImportType, LARGE_ANIMAL_IMPORT } from "@/lib/constants";
+import { US_CHANGE_TRAITS, usRoundLabel } from "@/lib/us-cdcb/proof-change";
+import { US_KEY_TRAITS } from "@/lib/us-cdcb/key-traits";
+import { CDCB_BREEDS } from "@/lib/us-cdcb/file-kind";
 import { maskKey } from "./config";
 // stage-record is server-only — imported dynamically at its call sites (below)
 // so this module stays importable by the plain-tsx unit test, like every other
@@ -60,7 +63,9 @@ export interface AgentTool {
   run: (input: Record<string, unknown>, ctx: AgentContext) => Promise<{ summary: string; records: unknown }>;
 }
 
-// Friendly trait name → indexed GeneticEvaluation column.
+// Friendly trait name → indexed GeneticEvaluation column. CANADIAN vocabulary:
+// LPI, Pro$, Conformation — EBVs in KILOGRAMS. The American equivalent is
+// US_TRAIT_COL far below, and the two must never resolve into each other.
 const TRAIT_COL: Record<string, string> = {
   lpi: "lpi", "pro$": "proDollar", prodollar: "proDollar", conf: "conf", conformation: "conf",
   milk: "milk", fat: "fat", prot: "prot", protein: "prot", mamm: "mamm", mammary: "mamm",
@@ -599,20 +604,400 @@ async function externalPedigree(reg: string): Promise<{ summary: string; records
   };
 }
 
+// ---------------------------------------------------------------------------
+// The AMERICAN (CDCB) side.
+//
+// One agent spans both countries, so the same tools answer both — but the two
+// systems never share a query. Everything below reads UsEvaluation; nothing
+// below touches GeneticEvaluation. That separation is the whole safety story:
+// a Canadian EBV is in KILOGRAMS and roughly twice the American PTA in POUNDS
+// for the same bull, so a single leaked column would read as a plausible number
+// and be wrong by a factor of two — the worst kind of bug this product can have.
+//
+// Three American facts shape these helpers:
+//   * GTPI is COMPUTED here, not published by CDCB, so every record that carries
+//     it also carries the disclosure and the formula version it was computed with.
+//   * Rump Angle has an INTERMEDIATE OPTIMUM, so ranking on it is refused rather
+//     than quietly allowed.
+//   * CDCB ships ONE file per round. There is no official/interim pair, so only
+//     runKind="official" rows are ever a round; monthly and weekly adds exist but
+//     are never ranked or presented alongside one.
+// ---------------------------------------------------------------------------
+
+export type AgentSystem = "ca" | "us";
+
+/** Which genetic system a read tool was asked for. Canada stays the default. */
+export const systemOf = (input: Record<string, unknown>): AgentSystem =>
+  String(input.system ?? "").trim().toLowerCase() === "us" ? "us" : "ca";
+
+/** The `system` argument, shared by every read tool that can answer for both. */
+const SYSTEM_ARG = {
+  system: {
+    type: "string",
+    enum: ["ca", "us"],
+    description:
+      "Which genetic system to read. \"ca\" (default) = the Canadian Lactanet/CDN evaluations — EBVs in KILOGRAMS, LPI / Pro$ / Conformation. \"us\" = the American CDCB evaluations — PTAs in POUNDS, GTPI / NM$ / PTAT. Pick the one the user is asking about; never blend the two systems' numbers in one answer or one table.",
+  },
+} as const;
+
+/** The disclosure that must travel with every GTPI figure the agent sees. */
+const GTPI_NOTE =
+  "GTPI is CALCULATED by Blondin Sires from CDCB evaluations using the Holstein Association USA formula in force for each round. It is not an official Holstein Association USA publication and is typically within ±3 points. Report it as a whole number and say it is calculated. TPI is a registered trademark of Holstein Association USA.";
+
+const US_UNITS_NOTE =
+  "American values are PTAs in POUNDS and are roughly HALF the Canadian breeding value for the same trait. Never compare or combine them with a Canadian EBV.";
+
+const RPA_NOTE =
+  "Rump Angle has an intermediate optimum — neither the highest nor the lowest value is best. Report it, but never rank or call a bull 'best' on it.";
+
+// Friendly US trait name → indexed UsEvaluation column. Built from the round-
+// compare catalogue so the agent and the reports can never drift apart, then
+// widened with the words a person actually types.
+const US_TRAIT_COL: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  for (const t of US_CHANGE_TRAITS) {
+    m[t.code.toLowerCase()] = t.column;
+    m[t.short.toLowerCase()] = t.column;
+    m[t.label.toLowerCase()] = t.column;
+  }
+  return Object.assign(m, {
+    tpi: "tpi", "net merit": "nmDollar", "nm$": "nmDollar",
+    jpi: "jpi", type: "ptat", protein: "pro", prot: "pro",
+    rump: "rpa", "rump angle": "rpa", "productive life": "pl", livability: "liv",
+    "cheese merit": "cmDollar", "fluid merit": "fmDollar", "grazing merit": "gmDollar",
+  });
+})();
+
+export const usTraitCol = (t: string | undefined) => US_TRAIT_COL[(t ?? "tpi").toLowerCase().trim()] ?? "tpi";
+
+/** Columns that must never be ordered on, because there is no "top" of the list. */
+const US_INTERMEDIATE_COLS = new Set<string>(US_CHANGE_TRAITS.filter((t) => t.direction === "intermediate").map((t) => t.column));
+
+const US_TRAIT_MENU = US_CHANGE_TRAITS.map((t) => t.code.toLowerCase()).join(" | ");
+
+/** Breed as a person says it → the CDCB EVAL_BREED code. Null when unrecognised. */
+const US_BREED_NAMES: Record<string, string> = {
+  HOLSTEIN: "HO", JERSEY: "JE", "BROWN SWISS": "BS", BROWNSWISS: "BS", GUERNSEY: "GU", AYRSHIRE: "AY",
+};
+function usBreedCode(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+  if (!s) return null;
+  return CDCB_BREEDS.includes(s) ? s : (US_BREED_NAMES[s] ?? null);
+}
+
+const AI_CODE_LABEL: Record<string, string> = {
+  A: "active AI", G: "genomic young bull being marketed", F: "foreign",
+};
+
+const US_ANIMAL_CARD = {
+  id: true, primaryName: true, birthDate: true, sex: true,
+  breed: { select: { breedName: true } },
+  identifiers: { where: { active: true }, orderBy: [{ isPrimary: "desc" }, { idType: "asc" }], take: 8, select: { idType: true, idValue: true, isPrimary: true } },
+  // Marketed-or-not is CDCB's AI-status file, NOT the presence of a NAAB code —
+  // plenty of evaluated bulls carry a code and are not being sold.
+  usAiStatus: { orderBy: { roundCode: "desc" }, take: 1, select: { code: true, roundCode: true } },
+} satisfies Prisma.AnimalSelect;
+
+const US_EVAL_SELECT = {
+  usEvaluationId: true, roundCode: true, runKind: true, evaluationDate: true, isPreferred: true,
+  evalBreed: true, naabCode: true, isPtaMilk: true, isPtaCt: true, isGraduation: true,
+  tpi: true, tpiFormulaVersion: true, tpiConfidence: true, jpi: true,
+  nmDollar: true, cmDollar: true, fmDollar: true, gmDollar: true,
+  milk: true, fat: true, pro: true, fatPct: true, proPct: true,
+  pl: true, scs: true, dpr: true, ccr: true, ptat: true, rpa: true, liv: true, udc: true, flc: true,
+} satisfies Prisma.UsEvaluationSelect;
+
+type UsCard = Prisma.UsEvaluationGetPayload<{ select: typeof US_EVAL_SELECT & { animal: { select: typeof US_ANIMAL_CARD } } }>;
+
+/**
+ * CDCB's proven-vs-genomic answer, which is PER TRAIT GROUP rather than per
+ * animal — a bull can be daughter-proven for production and still on a parent
+ * average for calving. There is no single label to give him, so none is invented.
+ */
+function usBasis(e: { isPtaMilk: boolean | null; isPtaCt: boolean | null }) {
+  const one = (v: boolean | null) => (v == null ? "unknown" : v ? "daughter-proven (PTA)" : "parent average / genomic");
+  return {
+    production: one(e.isPtaMilk),
+    calvingTraits: one(e.isPtaCt),
+    note: "CDCB flags proven-vs-genomic PER TRAIT GROUP. Do not collapse this to one proven/genomic word for the bull; say which groups are daughter-proven.",
+  };
+}
+
+/** Is CDCB marketing this bull? From the AI-status file, never from a NAAB code. */
+function usMarketed(rows: { code: string; roundCode: string }[]) {
+  const r = rows[0];
+  if (!r) {
+    return { active: false, code: null, label: "not listed in CDCB's AI-status file — not being marketed", round: null };
+  }
+  return { active: r.code === "A" || r.code === "G", code: r.code, label: AI_CODE_LABEL[r.code] ?? r.code, round: usRoundLabel(r.roundCode) };
+}
+
+/** One American bull, flattened for the model. Every field is a US figure. */
+function usFlatten(e: UsCard) {
+  const a = e.animal;
+  return {
+    system: "us" as const,
+    units: US_UNITS_NOTE,
+    name: a.primaryName,
+    reg: a.identifiers.find((i) => i.isPrimary)?.idValue ?? null,
+    id17: a.identifiers.find((i) => i.idType === "cdcb_id17")?.idValue ?? null,
+    breed: a.breed?.breedName ?? null,
+    evalBreed: e.evalBreed,
+    naab: e.naabCode,
+    round: e.roundCode ? usRoundLabel(e.roundCode) : null,
+    roundCode: e.roundCode,
+    runKind: e.runKind,
+    marketed: usMarketed(a.usAiStatus),
+    evaluationBasis: usBasis(e),
+    isGraduation: e.isGraduation,
+    gtpi: e.tpi,
+    gtpiFormula: e.tpiFormulaVersion,
+    gtpiConfidence: e.tpiConfidence,
+    gtpiNote: e.tpi == null ? null : GTPI_NOTE,
+    jpi: e.jpi,
+    nmDollar: e.nmDollar, cmDollar: e.cmDollar, fmDollar: e.fmDollar, gmDollar: e.gmDollar,
+    milk: e.milk, fat: e.fat, pro: e.pro, fatPct: e.fatPct, proPct: e.proPct,
+    pl: e.pl, scs: e.scs, dpr: e.dpr, ccr: e.ccr, liv: e.liv,
+    ptat: e.ptat, udc: e.udc, flc: e.flc,
+    rpa: e.rpa,
+    rpaNote: e.rpa == null ? null : RPA_NOTE,
+  };
+}
+
+/**
+ * The UsEvaluation WHERE for a lineup query.
+ *
+ * Preferred + official only: a provisional monthly add and a weekly unofficial
+ * row are not rounds, so they can never enter a ranking or an average.
+ */
+function usEvalWhere(input: Record<string, unknown>): { where: Prisma.UsEvaluationWhereInput } | { error: string } {
+  const AND: Prisma.UsEvaluationWhereInput[] = [
+    { isPreferred: true, runKind: "official", approvalStatus: "approved", animal: { archived: false } },
+  ];
+  const asked = typeof input.breed === "string" ? input.breed.trim() : "";
+  if (asked) {
+    const code = usBreedCode(asked);
+    if (!code) return { error: `CDCB publishes bull evaluations for ${CDCB_BREEDS.join(", ")} only — "${asked}" is not one of them.` };
+    AND.push({ evalBreed: code });
+  }
+  switch (typeof input.role === "string" ? input.role : "") {
+    // Proven vs genomic comes from the production trait group's own flag.
+    case "proven": AND.push({ isPtaMilk: true }); break;
+    case "genomic": AND.push({ isPtaMilk: false }); break;
+    // Active means CDCB is marketing him, not that he holds a NAAB code.
+    case "active": AND.push({ animal: { usAiStatus: { some: { code: { in: ["A", "G"] } } } } }); break;
+    case "inactive": AND.push({ animal: { usAiStatus: { none: { code: { in: ["A", "G"] } } } } }); break;
+  }
+  return { where: { AND } };
+}
+
+/** The "US tables have not been created yet" Prisma failure. */
+const isMissingUsTables = (e: unknown) => /does not exist|P2021/i.test(String((e as Error)?.message ?? ""));
+
+const US_SETUP_RESULT = {
+  summary: "The American (CDCB) tables do not exist in this database yet — the CDCB importer has never been run here. Tell the user plainly that there is no US data to read until an administrator imports a CDCB round; do NOT answer from the Canadian data instead.",
+  records: { system: "us", available: false, reason: "us_tables_not_created" },
+};
+
+/** Run a US read, turning "those tables aren't there yet" into a plain answer. */
+async function usRead(fn: () => Promise<{ summary: string; records: unknown }>) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (isMissingUsTables(e)) return US_SETUP_RESULT;
+    throw e;
+  }
+}
+
+/** Find the Animal behind a US question: registration, CDCB id17, NAAB, or name. */
+async function findUsAnimal(name: string, reg: string): Promise<{ id: string; primaryName: string } | null> {
+  const sel = { id: true, primaryName: true };
+  if (reg) {
+    const byId = await prisma.animal.findFirst({
+      where: { archived: false, identifiers: { some: { idValue: { equals: reg, mode: "insensitive" } } } },
+      select: sel,
+    });
+    if (byId) return byId;
+    const byEval = await prisma.usEvaluation.findFirst({
+      where: { OR: [{ id17: reg.toUpperCase() }, { naabCode: reg.toUpperCase() }] },
+      select: { animal: { select: sel } },
+    });
+    if (byEval) return byEval.animal;
+  }
+  if (name) {
+    const exact = await prisma.animal.findFirst({ where: { archived: false, primaryName: { equals: name, mode: "insensitive" } }, select: sel });
+    if (exact) return exact;
+    return prisma.animal.findFirst({ where: { archived: false, primaryName: { contains: name, mode: "insensitive" } }, select: sel });
+  }
+  return null;
+}
+
+function parseNumMap(json: string | null | undefined): Record<string, number> {
+  if (!json) return {};
+  try {
+    const o = JSON.parse(json) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(o)) if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    return out;
+  } catch {
+    return {}; // a malformed blob is no traits, never a fabricated zero
+  }
+}
+
+/**
+ * Every trait on one US evaluation, unpacked from the stored code→value maps.
+ *
+ * The union of the published and parent-average maps, not just the published
+ * one: a young bull can carry a PA for a trait he has no GPTA for yet, and
+ * dropping it would hide that he has one. A code with no confirmed meaning is
+ * returned under its raw code with direction "unknown" rather than guessed at.
+ *
+ * The trait dictionary lives in the (server-only) specialist catalogue, so it is
+ * pulled in with a dynamic import like every other server-only dependency here.
+ */
+async function usTraitRows(e: { gptaJson: string | null; relJson: string | null; paJson: string | null; tpi: number | null; tpiFormulaVersion: string | null; tpiConfidence: string | null; udc: number | null; flc: number | null; jpi: number | null }) {
+  const { US_SPECIALIST_CATALOG } = await import("@/lib/us-cdcb/specialists");
+  const byCode = new Map(US_SPECIALIST_CATALOG.map((t) => [t.code, t]));
+  const gpta = parseNumMap(e.gptaJson), rel = parseNumMap(e.relJson), pa = parseNumMap(e.paJson);
+  const published = [...new Set([...Object.keys(gpta), ...Object.keys(pa)])]
+    .map((code) => {
+      const def = byCode.get(code);
+      return {
+        code,
+        name: def?.name ?? code,
+        group: def?.group ?? "Published but not identified",
+        direction: def?.direction ?? "unknown",
+        unit: def?.unit ?? null,
+        value: gpta[code] ?? null,
+        reliability: rel[code] ?? null,
+        parentAverage: pa[code] ?? null,
+        source: "cdcb" as const,
+      };
+    })
+    .sort((x, y) => x.group.localeCompare(y.group) || x.code.localeCompare(y.code));
+
+  // The figures CDCB does NOT publish. Kept in their own list so they can never
+  // be read back as an official CDCB number.
+  const computed = [
+    { code: "GTPI", name: "GTPI (calculated)", value: e.tpi, formula: e.tpiFormulaVersion, confidence: e.tpiConfidence, note: GTPI_NOTE },
+    { code: "JPI", name: "JPI (calculated)", value: e.jpi, formula: null, confidence: null, note: "Calculated by Blondin Sires from CDCB evaluations using AJCA's formula. Not an official American Jersey Cattle Association publication." },
+    { code: "UDC", name: "Udder Composite (calculated)", value: e.udc, formula: null, confidence: null, note: "Derived from the published linear traits with Holstein Association USA's composite weights — CDCB publishes the linears, not the composite." },
+    { code: "FLC", name: "Feet & Legs Composite (calculated)", value: e.flc, formula: null, confidence: null, note: "Derived from the published linear traits with Holstein Association USA's composite weights." },
+  ].filter((t) => t.value != null);
+
+  return { published, computed };
+}
+
+/** The exhaustive American record for one animal. */
+async function buildUsProfile(animalId: string, animalName: string) {
+  const [animal, evals] = await Promise.all([
+    prisma.animal.findUnique({ where: { id: animalId }, select: US_ANIMAL_CARD }),
+    prisma.usEvaluation.findMany({
+      where: { animalId, approvalStatus: "approved" },
+      orderBy: { evaluationDate: "desc" },
+      select: {
+        ...US_EVAL_SELECT, sourceFamily: true, periodKey: true,
+        gptaJson: true, relJson: true, paJson: true, haplotypesJson: true,
+        sire17: true, dam17: true, genInb: true, pedInb: true, genFutInb: true, expFutInb: true,
+      },
+    }),
+  ]);
+  if (!animal) return null;
+
+  const official = evals.filter((e) => e.runKind === "official");
+  const pref = evals.find((e) => e.isPreferred) ?? official[0] ?? null;
+  const traits = pref ? await usTraitRows(pref) : null;
+  const haplotypes = pref?.haplotypesJson ? (JSON.parse(pref.haplotypesJson) as Record<string, string>) : null;
+
+  return {
+    system: "us" as const,
+    units: US_UNITS_NOTE,
+    found: true,
+    animal: {
+      name: animal.primaryName,
+      sex: animal.sex,
+      breed: animal.breed?.breedName ?? null,
+      birthDate: animal.birthDate ? animal.birthDate.toISOString().slice(0, 10) : null,
+      identifiers: animal.identifiers.map((i) => ({ idType: i.idType, idValue: i.idValue, isPrimary: i.isPrimary })),
+      marketed: usMarketed(animal.usAiStatus),
+    },
+    preferredEvaluation: pref
+      ? {
+          round: pref.roundCode ? usRoundLabel(pref.roundCode) : null,
+          roundCode: pref.roundCode,
+          runKind: pref.runKind,
+          evaluationDate: pref.evaluationDate.toISOString().slice(0, 10),
+          evalBreed: pref.evalBreed,
+          naab: pref.naabCode,
+          evaluationBasis: usBasis(pref),
+          isGraduation: pref.isGraduation,
+          graduationNote: pref.isGraduation ? "First official round after the young-bull list — a graduating bull moves far more than an ordinary round, so treat the change as a change of evaluation type, not as a proof holding or slipping." : null,
+          sire17: pref.sire17, dam17: pref.dam17,
+          inbreeding: { genomic: pref.genInb, pedigree: pref.pedInb, expectedFuture: pref.expFutInb, genomicFuture: pref.genFutInb },
+          keyTraits: US_KEY_TRAITS.map((t) => ({
+            code: t.code, label: t.label, value: (pref as Record<string, unknown>)[t.column] as number | null,
+            unit: t.unit, direction: t.direction, computed: t.source === "computed",
+          })),
+          traitCount: traits ? traits.published.length + traits.computed.length : 0,
+          publishedTraits: traits?.published ?? [],
+          computedIndexes: traits?.computed ?? [],
+          haplotypes,
+        }
+      : null,
+    // One row per official round. CDCB ships ONE file per round, so there is no
+    // official/interim pair here and nothing to merge — unlike Canada.
+    proofRoundHistory: official.map((e) => ({
+      round: e.roundCode ? usRoundLabel(e.roundCode) : e.evaluationDate.toISOString().slice(0, 7),
+      roundCode: e.roundCode,
+      date: e.evaluationDate.toISOString().slice(0, 10),
+      gtpi: e.tpi, nmDollar: e.nmDollar, ptat: e.ptat, milk: e.milk,
+      isGraduation: e.isGraduation,
+      preferred: e.isPreferred,
+    })),
+    nonRoundRuns: evals.filter((e) => e.runKind !== "official").map((e) => ({ periodKey: e.periodKey, runKind: e.runKind, date: e.evaluationDate.toISOString().slice(0, 10) })),
+    notes: [
+      GTPI_NOTE,
+      RPA_NOTE,
+      "Only the official rounds above are authoritative. Monthly (provisional) and weekly (unofficial) adds are listed under nonRoundRuns for completeness and must never be ranked or called a proof round.",
+      "There is no interim proof and no Rollback Resistance on the American side — neither concept exists in CDCB's publishing model.",
+    ],
+    warning: `${animalName} is shown here on his AMERICAN evaluation only. Do not mix these figures with any Canadian LPI/EBV figure for the same bull.`,
+  };
+}
+
 export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "search_animals",
-    description: "Find sires by name or registration number, optionally filtered by role (proven/genomic/active/inactive) and breed. Use for 'find', 'look up', 'is there a bull named…'.",
+    description: "Find sires by name or registration number, optionally filtered by role (proven/genomic/active/inactive) and breed. Use for 'find', 'look up', 'is there a bull named…'. Set system:\"us\" to search the American CDCB lineup instead of the Canadian one — the US results carry PTAs in pounds and a calculated GTPI, and on that side 'proven/genomic' comes from CDCB's per-trait-group flag and 'active' from CDCB's AI-status file.",
     input_schema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Name fragment or registration number" },
+        query: { type: "string", description: "Name fragment or registration number (US: also a CDCB 17-char id or a NAAB code)" },
         role: { type: "string", enum: ["proven", "genomic", "active", "inactive"] },
-        breed: { type: "string", description: "Breed name fragment, e.g. Holstein" },
+        breed: { type: "string", description: "Breed name fragment, e.g. Holstein. On the US side: Holstein, Jersey, Brown Swiss, Guernsey or Ayrshire only." },
         limit: { type: "integer", description: "Max results (default 15, max 50)" },
+        ...SYSTEM_ARG,
       },
     },
     run: async (input) => {
+      if (systemOf(input) === "us") return usRead(async () => {
+        const f = usEvalWhere(input);
+        if ("error" in f) return { summary: f.error, records: null };
+        const q = str(input.query);
+        const AND = [...(f.where.AND as Prisma.UsEvaluationWhereInput[])];
+        if (q) AND.push({ OR: [
+          { animal: { primaryName: { contains: q, mode: "insensitive" } } },
+          { animal: { identifiers: { some: { idValue: { contains: q, mode: "insensitive" } } } } },
+          { id17: { contains: q.toUpperCase() } },
+          { naabCode: { contains: q.toUpperCase() } },
+        ] });
+        const rows = await prisma.usEvaluation.findMany({
+          where: { AND }, take: clamp(input.limit, 1, 50, 15),
+          orderBy: { animal: { primaryName: "asc" } },
+          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+        });
+        return { summary: `${rows.length} bull(s) with an official US (CDCB) evaluation matched${q ? ` "${q}"` : ""}. ${US_UNITS_NOTE}`, records: rows.map(usFlatten) };
+      });
       const base = await animalFilter(input);
       const q = typeof input.query === "string" ? input.query.trim() : "";
       const AND = [...(base.AND as Prisma.AnimalWhereInput[])];
@@ -627,15 +1012,28 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "get_animal",
-    description: "Full detail for one sire by exact name or registration number: preferred evaluation traits, proven/genomic status, proof performance, rollback resistance, and proof-round count.",
+    description: "The card for one sire by exact name or registration number. system:\"ca\" (default) returns the Canadian preferred evaluation, proven/genomic status, proof performance, rollback resistance and proof-round count. system:\"us\" returns his American CDCB card instead — calculated GTPI, NM$, PTAT, Milk, Rump Angle, DPR, CCR (PTAs in pounds), which trait groups are daughter-proven, and whether CDCB's AI-status file lists him as marketed. Rollback Resistance and Proof Performance do NOT exist on the US card.",
     input_schema: {
       type: "object",
-      properties: { name: { type: "string" }, reg: { type: "string" } },
+      properties: { name: { type: "string" }, reg: { type: "string" }, ...SYSTEM_ARG },
     },
     run: async (input) => {
       const name = typeof input.name === "string" ? input.name.trim() : "";
       const reg = typeof input.reg === "string" ? input.reg.trim() : "";
       if (!name && !reg) return { summary: "Provide a name or registration number.", records: null };
+      if (systemOf(input) === "us") return usRead(async () => {
+        const hit = await findUsAnimal(name, reg);
+        if (!hit) return { summary: `No animal found for ${reg || name}.`, records: null };
+        const row = await prisma.usEvaluation.findFirst({
+          where: { animalId: hit.id, runKind: "official", approvalStatus: "approved" },
+          orderBy: [{ isPreferred: "desc" }, { evaluationDate: "desc" }],
+          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+        });
+        if (!row) {
+          return { summary: `${hit.primaryName} is in the database but has no official CDCB evaluation — he has no American proof here. Do not substitute his Canadian figures.`, records: { system: "us", name: hit.primaryName, usEvaluation: null } };
+        }
+        return { summary: `US (CDCB) card for ${hit.primaryName}. ${US_UNITS_NOTE}`, records: usFlatten(row) };
+      });
       const where: Prisma.AnimalWhereInput = reg
         ? { archived: false, identifiers: { some: { idValue: { equals: reg, mode: "insensitive" } } } }
         : { archived: false, primaryName: { equals: name, mode: "insensitive" } };
@@ -647,19 +1045,36 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "rank_animals",
-    description: "Top or bottom N sires by a trait (lpi, pro$, conf, milk, fat, prot, mamm, fl, ds) among optional role/breed filters. Use for 'highest LPI', 'best conformation active bulls', 'lowest…'.",
+    description: `Top or bottom N sires by a trait among optional role/breed filters. Use for 'highest LPI', 'best conformation active bulls', 'lowest…'. CANADIAN traits (system:"ca", default): lpi, pro$, conf, milk, fat, prot, mamm, fl, ds — EBVs in kilograms. AMERICAN traits (system:"us"): ${US_TRAIT_MENU} — PTAs in pounds, plus the calculated gtpi. Ranking on the American rump angle (rpa) is REFUSED: it has an intermediate optimum, so there is no bull at the top of that list.`,
     input_schema: {
       type: "object",
       properties: {
-        trait: { type: "string", description: "lpi | pro$ | conf | milk | fat | prot | mamm | fl | ds" },
+        trait: { type: "string", description: `Canadian: lpi | pro$ | conf | milk | fat | prot | mamm | fl | ds. American (system:"us"): ${US_TRAIT_MENU}` },
         role: { type: "string", enum: ["proven", "genomic", "active", "inactive"] },
         breed: { type: "string" },
         order: { type: "string", enum: ["top", "bottom"], description: "top = highest (default)" },
         limit: { type: "integer", description: "default 10, max 30" },
+        ...SYSTEM_ARG,
       },
       required: ["trait"],
     },
     run: async (input) => {
+      if (systemOf(input) === "us") return usRead(async () => {
+        const col = usTraitCol(input.trait as string);
+        if (US_INTERMEDIATE_COLS.has(col)) {
+          return { summary: `${str(input.trait) || col} has an INTERMEDIATE OPTIMUM — neither the highest nor the lowest value is the best one, so ranking bulls on it would be meaningless. Explain that to the user and offer to report the trait for named bulls instead, or to rank on a trait that has a direction.`, records: null };
+        }
+        const f = usEvalWhere(input);
+        if ("error" in f) return { summary: f.error, records: null };
+        const dir = input.order === "bottom" ? "asc" : "desc";
+        const rows = await prisma.usEvaluation.findMany({
+          where: { AND: [...(f.where.AND as Prisma.UsEvaluationWhereInput[]), { [col]: { not: null } }] },
+          orderBy: { [col]: dir }, take: clamp(input.limit, 1, 30, 10),
+          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+        });
+        const note = col === "tpi" ? ` ${GTPI_NOTE}` : "";
+        return { summary: `${input.order === "bottom" ? "Lowest" : "Highest"} ${rows.length} on the AMERICAN side by ${col} (official CDCB rounds only). ${US_UNITS_NOTE}${note}`, records: rows.map(usFlatten) };
+      });
       const col = traitCol(input.trait as string);
       const dir = input.order === "bottom" ? "asc" : "desc";
       const base = await animalFilter(input);
@@ -674,9 +1089,44 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "lineup_stats",
-    description: "Aggregate counts and averages for the lineup: how many proven/genomic/active/inactive, total sires and proof rounds, and average LPI/Pro$/Conformation. Use for 'how many…', 'lineup overview', 'average LPI'.",
-    input_schema: { type: "object", properties: { role: { type: "string", enum: ["proven", "genomic", "active", "inactive"] }, breed: { type: "string" } } },
+    description: "Aggregate counts and averages for the lineup: how many proven/genomic/active/inactive, total sires and proof rounds, and average LPI/Pro$/Conformation. Use for 'how many…', 'lineup overview', 'average LPI'. With system:\"us\" it reports the AMERICAN lineup instead — how many bulls carry an official CDCB round, how many are daughter-proven for production, how many CDCB is marketing, and average GTPI/NM$/PTAT/Milk in US units.",
+    input_schema: { type: "object", properties: { role: { type: "string", enum: ["proven", "genomic", "active", "inactive"] }, breed: { type: "string" }, ...SYSTEM_ARG } },
     run: async (input) => {
+      if (systemOf(input) === "us") return usRead(async () => {
+        const f = usEvalWhere(input);
+        if ("error" in f) return { summary: f.error, records: null };
+        const where = f.where;
+        const [total, provenMilk, provenCt, marketed, avg, byBreed] = await Promise.all([
+          prisma.usEvaluation.count({ where }),
+          prisma.usEvaluation.count({ where: { AND: [where, { isPtaMilk: true }] } }),
+          prisma.usEvaluation.count({ where: { AND: [where, { isPtaCt: true }] } }),
+          prisma.usEvaluation.count({ where: { AND: [where, { animal: { usAiStatus: { some: { code: { in: ["A", "G"] } } } } }] } }),
+          prisma.usEvaluation.aggregate({ where, _avg: { tpi: true, nmDollar: true, ptat: true, milk: true, fat: true, pro: true } }),
+          prisma.usEvaluation.groupBy({ by: ["evalBreed"], where, _count: { _all: true } }),
+        ]);
+        const r0 = (v: number | null) => (v == null ? null : Math.round(v));
+        const r2 = (v: number | null) => (v == null ? null : Math.round(v * 100) / 100);
+        return {
+          summary: `${total} bull(s) hold an official CDCB round. ${US_UNITS_NOTE}`,
+          records: {
+            system: "us", units: US_UNITS_NOTE,
+            bullsWithOfficialRound: total,
+            daughterProvenForProduction: provenMilk,
+            parentAverageForProduction: total - provenMilk,
+            daughterProvenForCalvingTraits: provenCt,
+            marketedByCdcb: marketed,
+            notMarketed: total - marketed,
+            byEvalBreed: byBreed.map((b) => ({ breed: b.evalBreed, bulls: b._count._all })),
+            averages: { gtpi: r0(avg._avg.tpi), nmDollar: r0(avg._avg.nmDollar), ptat: r2(avg._avg.ptat), milk: r0(avg._avg.milk), fat: r0(avg._avg.fat), pro: r0(avg._avg.pro) },
+            notes: [
+              GTPI_NOTE,
+              "Proven vs genomic is CDCB's PER-TRAIT-GROUP flag: production and calving traits are flagged separately, so the two counts above will differ.",
+              "Marketed comes from CDCB's AI-status file (A = active AI, G = genomic young bull marketed), not from holding a NAAB code.",
+              "Only official rounds are counted. There is no interim proof on the American side.",
+            ],
+          },
+        };
+      });
       const base = await animalFilter(input);
       const [total, byClass, avg, rounds] = await Promise.all([
         prisma.animal.count({ where: base }),
@@ -693,7 +1143,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "rollback_leaders",
-    description: "Best or worst sires by Rollback Resistance (April base-change retention, base 100) or Proof Performance (0–100, every round). Use for 'most rollback resistant', 'which bulls hold up best', 'proof stability leaders'.",
+    description: "CANADIAN ONLY. Best or worst sires by Rollback Resistance (April base-change retention, base 100) or Proof Performance (0–100, every round). Use for 'most rollback resistant', 'which bulls hold up best', 'proof stability leaders'. Both metrics are computed from Lactanet rounds and measure retention through Canada's ANNUAL April re-basing. The United States re-bases about every five years, so neither number exists — or can be computed — for the American side; calling this with system:\"us\" refuses rather than returning Canadian scores under an American question.",
     input_schema: {
       type: "object",
       properties: {
@@ -701,9 +1151,19 @@ export const AGENT_TOOLS: AgentTool[] = [
         order: { type: "string", enum: ["top", "bottom"] },
         role: { type: "string", enum: ["proven", "genomic", "active", "inactive"] },
         limit: { type: "integer", description: "default 10, max 30" },
+        ...SYSTEM_ARG,
       },
     },
     run: async (input) => {
+      // The refusal is the point: these scores are Canadian by construction, and
+      // returning them for a US question would answer it with the wrong country's
+      // numbers under an American-sounding label.
+      if (systemOf(input) === "us") {
+        return {
+          summary: "Rollback Resistance and Proof Performance do not exist on the American side and cannot be computed there. Rollback Resistance measures how a bull holds through Lactanet's ANNUAL April re-basing; CDCB re-bases roughly every five years, so there is no annual rollback to resist. Tell the user that plainly — do not answer with the Canadian scores. For how an American proof moved between rounds, compare his CDCB rounds with proof_history (system:\"us\").",
+          records: null,
+        };
+      }
       const metric = input.metric === "proofPerformance" ? "proofPerformance" : "rollbackResistance";
       const dir = input.order === "bottom" ? "asc" : "desc";
       const base = await animalFilter(input);
@@ -716,12 +1176,43 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "proof_history",
-    description: "A single sire's proof rounds over time for one trait (default LPI) — the value at each round, oldest to newest. One point per round: the OFFICIAL proof's value, falling back to the interim only if the official is missing that trait (so a month never shows twice). Use for 'how has X's LPI changed', 'proof trend', 'over time'.",
+    description: `A single sire's proof rounds over time for one trait, oldest to newest. CANADIAN (system:"ca", default, trait defaults to LPI): one point per round — the OFFICIAL proof's value, falling back to the interim only if the official is missing that trait, so a month never shows twice. AMERICAN (system:"us", trait defaults to the calculated GTPI; traits: ${US_TRAIT_MENU}): one point per official CDCB round. There is no interim proof on the US side, so nothing is merged — a round is simply a round. Use for 'how has X's LPI changed', 'how has his GTPI moved', 'proof trend'.`,
     input_schema: {
       type: "object",
-      properties: { name: { type: "string" }, reg: { type: "string" }, trait: { type: "string", description: "default lpi" } },
+      properties: { name: { type: "string" }, reg: { type: "string" }, trait: { type: "string", description: "Canadian default lpi; American default gtpi" }, ...SYSTEM_ARG },
     },
     run: async (input) => {
+      if (systemOf(input) === "us") return usRead(async () => {
+        const col = usTraitCol(input.trait as string);
+        const hit = await findUsAnimal(str(input.name), str(input.reg));
+        if (!hit) return { summary: `No animal found for ${str(input.reg) || str(input.name)}.`, records: null };
+        // Official rounds only — a monthly or weekly add is not a round, and
+        // plotting one beside a round would invent movement that never happened.
+        const rows = await prisma.usEvaluation.findMany({
+          where: { animalId: hit.id, runKind: "official", approvalStatus: "approved" },
+          orderBy: { evaluationDate: "asc" },
+          select: { roundCode: true, evaluationDate: true, isGraduation: true, [col]: true } as Prisma.UsEvaluationSelect,
+        });
+        type Row = { roundCode: string | null; evaluationDate: Date; isGraduation: boolean; [k: string]: unknown };
+        const series = (rows as unknown as Row[]).map((e) => ({
+          round: e.roundCode ? usRoundLabel(e.roundCode) : e.evaluationDate.toISOString().slice(0, 7),
+          roundCode: e.roundCode,
+          value: (e[col] ?? null) as number | null,
+          isGraduation: e.isGraduation,
+        }));
+        const grad = series.some((s) => s.isGraduation);
+        return {
+          summary: `${hit.primaryName}: ${series.length} official CDCB round(s) of ${col}. ${US_UNITS_NOTE}${col === "tpi" ? ` ${GTPI_NOTE}` : ""}`,
+          records: {
+            system: "us", units: US_UNITS_NOTE, name: hit.primaryName, trait: col, series,
+            notes: [
+              "Every point is an official round — CDCB ships one file per round, so there is no interim proof to fall back to and no month can appear twice.",
+              ...(grad ? ["A round flagged isGraduation is the bull's first official round after the young-bull list. He moves roughly six times a normal round there, so that step is a change of evaluation type, not a proof holding or slipping."] : []),
+              ...(US_INTERMEDIATE_COLS.has(col) ? [RPA_NOTE] : []),
+            ],
+          },
+        };
+      });
       const col = traitCol(input.trait as string);
       const name = typeof input.name === "string" ? input.name.trim() : "";
       const reg = typeof input.reg === "string" ? input.reg.trim() : "";
@@ -753,7 +1244,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: "pedigree_index",
-    description: "An animal's 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) plus, for held sires, the estimated Pedigree Index (parent average LPI from male-line ancestors) and its confidence. Use for 'pedigree', 'what's <reg>'s pedigree', 'what does his pedigree suggest', 'ancestors'. If the animal is NOT in the database and a registration number is given, it falls back to a LIVE Lactanet pedigree lookup (read-only) — so you can answer a pedigree question WITHOUT importing the animal. By name alone there's no external lookup. For the deep maternal line (up to 15 generations) use trace_maternal_line.",
+    description: "An animal's 3-generation pedigree (sire/dam/MGS/MGD/GMGS/GMGD) plus, for held sires, the estimated Pedigree Index (parent average LPI from male-line ancestors) and its confidence. Use for 'pedigree', 'what's <reg>'s pedigree', 'what does his pedigree suggest', 'ancestors'. If the animal is NOT in the database and a registration number is given, it falls back to a LIVE Lactanet pedigree lookup (read-only) — so you can answer a pedigree question WITHOUT importing the animal. By name alone there's no external lookup. For the deep maternal line (up to 15 generations) use trace_maternal_line. NOTE the ancestry itself is country-neutral — the same sire and dam whichever system you are discussing — but the estimated Pedigree Index is a CANADIAN LPI figure built from Canadian ancestor proofs. There is no American pedigree index; never present the LPI estimate as if it belonged to a US question.",
     input_schema: { type: "object", properties: { name: { type: "string" }, reg: { type: "string" } } },
     run: async (input, ctx) => {
       const name = typeof input.name === "string" ? input.name.trim() : "";
@@ -787,11 +1278,24 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "get_animal_full_profile",
     description:
-      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and any stored owners/awards where present (breed-association data, not populated from Lactanet). Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system. LOOKUP FALLBACK: if the animal is NOT in the database and you were given a registration number, this pulls its profile LIVE from Lactanet (read-only, not saved) so you can still answer 'tell me about <reg>'. By name alone there is no external lookup — ask for the registration number. To SAVE an external animal, use import_animals.",
-    input_schema: { type: "object", properties: { name: { type: "string", description: "Exact or partial animal name" }, reg: { type: "string", description: "Registration number (exact)" } } },
+      "EXHAUSTIVE record for ONE animal by exact name or registration number — EVERY field held, not the curated subset the other tools return. Returns: identity/status fields; ALL genetic traits on the preferred evaluation, UNPACKED from storage (up to ~60 when present) — indexes (LPI, Pro$, PI, LTI, HWI, RI, MI, EI), production (MILK, FAT, PROT, %F, %P, SCS), functional & health/fertility (HL, LP, DF=Daughter Fertility, CA/DCA=Calving Ability, MDR, MR, HH, BCS, MSPD, MTMP, FE, BMR, METH, CH), conformation composites (CONF, MAMM, FL, DS, RUMP, AFS), and EVERY linear conformation trait (STA, HFE, CHW, BODY, RIB, RA=Rump Angle, PW=Pin Width, LOIN, THURL, FA=Foot Angle, HD, BQ, RLSV, RLRV=Rear Legs Rear View, FLV, LOCO, FUA=Fore Udder Attachment, RAH, RAW, UDEP=Udder Depth, UTEX, MSUS=Median Suspensory/cleft, FTP/RTP=Teat Placement, TL=Teat Length) — each with value, per-trait reliability and percentile rank WHERE PRESENT; plus proof-round history, classification history with section scores, lactation/milk records, and any stored owners/awards where present (breed-association data, not populated from Lactanet). Trait availability VARIES by animal and round — ONLY traits actually stored are returned; anything absent is simply not in the list (do not infer a missing trait is zero). Use this for detailed conformation/linear/health-trait questions or 'everything about' an animal. NOTE: beef traits, non-return-rate, and udder-cleft-as-a-separate-score are NOT tracked in this system. LOOKUP FALLBACK: if the animal is NOT in the database and you were given a registration number, this pulls its profile LIVE from Lactanet (read-only, not saved) so you can still answer 'tell me about <reg>'. By name alone there is no external lookup — ask for the registration number. To SAVE an external animal, use import_animals. SET system:\"us\" FOR THE AMERICAN RECORD instead: every trait CDCB published for him on his preferred OFFICIAL round (value, reliability and parent average per trait, unpacked from storage), which trait groups are daughter-proven versus parent-average, inbreeding, haplotype calls, the calculated GTPI/JPI/UDC/FLC kept in their own list because CDCB does not publish them, his official round history, and whether CDCB's AI-status file lists him as marketed. Everything there is a PTA in POUNDS. There is no live American lookup — US figures exist only for animals whose CDCB rounds have been imported.",
+    input_schema: { type: "object", properties: { name: { type: "string", description: "Exact or partial animal name" }, reg: { type: "string", description: "Registration number (exact). US: a CDCB 17-char id or a NAAB code also resolves." }, ...SYSTEM_ARG } },
     run: async (input, ctx) => {
       const name = str(input.name), reg = str(input.reg);
       if (!name && !reg) return { summary: "Provide a name or registration number.", records: null };
+      if (systemOf(input) === "us") return usRead(async () => {
+        const hit = await findUsAnimal(name, reg);
+        if (!hit) {
+          // No live American fallback exists: the external lookup is Lactanet,
+          // which would answer an American question with Canadian numbers.
+          return { summary: `No animal found for ${reg || name}. There is no live American lookup — the only external source wired up is Lactanet, which publishes Canadian evaluations, so it cannot answer a CDCB question. American figures come from imported CDCB rounds only.`, records: null };
+        }
+        const profile = await buildUsProfile(hit.id, hit.primaryName);
+        if (!profile?.preferredEvaluation) {
+          return { summary: `${hit.primaryName} is held here but has no CDCB evaluation — there is no American proof for him. Say so; do not fall back to his Canadian figures.`, records: profile ?? null };
+        }
+        return { summary: `Full AMERICAN (CDCB) profile for ${hit.primaryName}: ${profile.preferredEvaluation.traitCount} traits on the preferred official round, ${profile.proofRoundHistory.length} official round(s) on file. ${US_UNITS_NOTE}`, records: profile };
+      });
       const a = await findAnimalFull(name, reg);
       if (a) {
         const profile = await buildFullProfile(a);
@@ -810,7 +1314,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     name: "calculate_mating_pa",
     description:
-      "Project a MATING between a sire (male) and dam (female) as the Parent Average (PA = simple mean of the two parents) across every trait BOTH animals have. Answers 'what would a mating of X and Y produce', 'PA of X × Y'. For each shared numeric trait it returns the sire value, the dam value, and the computed PA; categorical descriptors (A2/colour/polled) are returned side-by-side without a mean; traits held by only one parent are listed under unavailableForPA and are NEVER guessed or defaulted to zero. Each parent's overall reliability, evaluation basis (proven vs genomic/parent-average), genotyped flag and daughter count are included so you can caveat how trustworthy the projection is. FLOW: internal database first; if a parent is NOT in the database AND a registration number was supplied, it does a LIVE Lactanet lookup for that reg and clearly labels those values as externally sourced (possibly on a different evaluation basis than internal proofs). Externally-pulled data is SESSION-ONLY and is NOT saved unless saveToDatabase=true — always confirm with the user before setting that. If a parent is missing and cannot be looked up (no reg, or Lactanet has nothing / the lookup fails), it reports that plainly and does NOT return a partial PA.",
+      "Project a MATING between a sire (male) and dam (female) as the Parent Average (PA = simple mean of the two parents) across every trait BOTH animals have. Answers 'what would a mating of X and Y produce', 'PA of X × Y'. For each shared numeric trait it returns the sire value, the dam value, and the computed PA; categorical descriptors (A2/colour/polled) are returned side-by-side without a mean; traits held by only one parent are listed under unavailableForPA and are NEVER guessed or defaulted to zero. Each parent's overall reliability, evaluation basis (proven vs genomic/parent-average), genotyped flag and daughter count are included so you can caveat how trustworthy the projection is. FLOW: internal database first; if a parent is NOT in the database AND a registration number was supplied, it does a LIVE Lactanet lookup for that reg and clearly labels those values as externally sourced (possibly on a different evaluation basis than internal proofs). Externally-pulled data is SESSION-ONLY and is NOT saved unless saveToDatabase=true — always confirm with the user before setting that. If a parent is missing and cannot be looked up (no reg, or Lactanet has nothing / the lookup fails), it reports that plainly and does NOT return a partial PA. CANADIAN ONLY: every value here is a Lactanet trait — EBVs in kilograms. There is no American mating calculator, so never label its output with US trait names or mix a CDCB figure into it.",
     input_schema: {
       type: "object",
       properties: {

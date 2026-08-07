@@ -19,6 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/animals", label: "Animals", group: "Records", need: "animal:read" },
     { href: "/analysis", label: "Proof Trends", group: "Records", need: "compare:read" },
     { href: "/compare", label: "Compare Bulls", group: "Records", need: "compare:read" },
+    // US-only: the Canadian equivalent is a picker inside the animals list.
+    { href: "/specialists", label: "Specialists", group: "Records", need: "compare:read" },
     { href: "/parent-average", label: "Parent Average", group: "Records", need: "compare:read" },
     { href: "/reports", label: "Reports", group: "Records", need: "compare:read" },
     { href: "/uploads", label: "Uploads", group: "Data In", need: "upload:write" },
