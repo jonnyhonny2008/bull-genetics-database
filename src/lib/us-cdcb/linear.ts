@@ -12,7 +12,7 @@
 // the same animal in the same words and the same order. Reusing them is what stops
 // one bull's two cards from disagreeing about which way "wide" points.
 //
-// DIRECTION IS NOT DECIDED HERE. It is read from US_SPECIALIST_CATALOG, so the
+// DIRECTION IS NOT DECIDED HERE. It is read from US_TRAIT_CATALOG, so the
 // chart, the specialist finder and the trait tables cannot drift apart. That
 // matters most on the traits whose good end is the LOW one: shading by sign would
 // paint a correctly short bull in the warning colour, and a reader takes the
@@ -20,7 +20,7 @@
 // ---------------------------------------------------------------------------
 
 import type { LinearTraitDatum } from "@/components/LinearGraph";
-import { usSpecialistTrait } from "./specialists";
+import { usTrait } from "./trait-catalog";
 
 export const US_LINEAR_MIN = -3;
 export const US_LINEAR_MAX = 3;
@@ -63,7 +63,7 @@ export const US_LINEAR_SECTIONS: { group: string; codes: string[] }[] = [
 
 /** Where the app's reasoned direction puts the better animal on the track. */
 export function usFavourableEnd(code: string): LinearTraitDatum["favourable"] {
-  switch (usSpecialistTrait(code)?.direction) {
+  switch (usTrait(code)?.direction) {
     case "higher": return "right";
     case "lower": return "left";
     case "intermediate": return "intermediate";
@@ -81,7 +81,7 @@ export function usLinearGroups(gpta: Record<string, number>): { group: string; t
       const v = gpta[code];
       if (!ends || typeof v !== "number" || !Number.isFinite(v)) return [];
       return [{
-        name: usSpecialistTrait(code)?.name ?? code,
+        name: usTrait(code)?.name ?? code,
         value: Number(v.toFixed(2)),
         min: US_LINEAR_MIN,
         max: US_LINEAR_MAX,

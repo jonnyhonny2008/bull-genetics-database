@@ -30,7 +30,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { computeTpi, TpiUnavailable } from "./index-registry";
-import { US_SPECIALIST_CATALOG } from "./specialists";
+import { US_TRAIT_CATALOG } from "./trait-catalog";
 
 export interface PaTrait {
   code: string;
@@ -67,7 +67,7 @@ export interface UsPaReport {
   cohortN: number;
 }
 
-const CATALOG = new Map(US_SPECIALIST_CATALOG.map((t) => [t.code, t]));
+const CATALOG = new Map(US_TRAIT_CATALOG.map((t) => [t.code, t]));
 
 const parse = (s: string | null): Record<string, number> => {
   if (!s) return {};

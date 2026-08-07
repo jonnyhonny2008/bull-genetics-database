@@ -7,8 +7,9 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Card, Badge, EmptyState, Table } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { US_KEY_TRAITS, US_SORTABLE_KEY_TRAITS, formatUsTrait } from "@/lib/us-cdcb/key-traits";
-import { usSpecialists, parseUsSpecialistCodes, parseUsSpecialistLevel, US_SPECIALIST_TRAITS, type UsSpecialistLevel } from "@/lib/us-cdcb/specialists";
-import { SpecialistPicker } from "@/components/SpecialistPicker";
+import { US_RANGE_TRAITS, US_RANGE_TRAIT_CODES, usRangeWhere } from "@/lib/us-cdcb/range-traits";
+import { RANGE_PARAM, readTraitRanges, type TraitRange } from "@/lib/trait-range";
+import { TraitRangeFilter } from "@/components/TraitRangeFilter";
 import { CDCB_BREEDS } from "@/lib/us-cdcb/file-kind";
 import { usRoundLabel } from "@/lib/us-cdcb/proof-change";
 import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound, usAiStatusIds, PROVEN_REL_MIN } from "@/lib/us-cdcb/list-filters";
@@ -42,12 +43,11 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
   const q = (sp.q ?? "").trim();
   const role = sp.role ?? "";
   const favUserId = sp.fav === "1" && user ? user.uid : null;
-  // SPECIALISTS IS A SEARCH, NOT A PLACE. It narrows this list to the bulls that
-  // are solidly positive for every picked trait, so it composes with breed, role,
-  // favourites, sorting and paging instead of being a separate ranked page that
-  // silently ignores them.
-  const specCodes = parseUsSpecialistCodes(sp.spec);
-  const specLevel = parseUsSpecialistLevel(sp.specLevel);
+  // TRAIT RANGES — at least / at most / between, stacked, and every one of them a
+  // plain condition on an indexed column. This is a SEARCH, not a place: it
+  // composes with breed, role, favourites, sorting and paging rather than being a
+  // separate ranked page that silently ignores them.
+  const { ranges, dropped: droppedRanges } = readTraitRanges(sp[RANGE_PARAM], US_RANGE_TRAIT_CODES);
 
   // Only rankable traits may be sorted on — rump angle has an intermediate
   // optimum, so "highest first" would be a meaningless ordering.
@@ -55,10 +55,10 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
     ?? US_SORTABLE_KEY_TRAITS[0];
 
   let rows: Awaited<ReturnType<typeof loadRows>> = {
-    list: [], total: 0, roleCounts: {}, statusRound: null, aiByAnimal: new Map<string, string>(), spec: null, missingTables: false,
+    list: [], total: 0, roleCounts: {}, statusRound: null, aiByAnimal: new Map<string, string>(), missingTables: false,
   };
   try {
-    rows = await loadRows({ page, dir, breed, q, role, favUserId, sortColumn: sortTrait.column, specCodes, specLevel });
+    rows = await loadRows({ page, dir, breed, q, role, favUserId, sortColumn: sortTrait.column, ranges });
   } catch (e) {
     // The US tables are created by `prisma db push`. Until that has run, say so
     // plainly rather than rendering a 500 — this is a setup state, not a fault.
@@ -104,7 +104,7 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
     return p.toString();
   })();
 
-  const filtered = Boolean(q || breed || role || favUserId);
+  const filtered = Boolean(q || breed || role || favUserId || ranges.length);
   const pages = Math.max(1, Math.ceil(rows.total / PAGE_SIZE));
   const skip = (page - 1) * PAGE_SIZE;
 
@@ -153,26 +153,22 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
             proven/genomic flag, so the split is read from reliability.
           </p>
 
+          <TraitRangeFilter basePath="/us/animals" traits={US_RANGE_TRAITS} />
+
+          {/* A range this list cannot apply must never pass silently: the list
+              would come back UNFILTERED to someone who asked for a narrow set. */}
+          {droppedRanges.length > 0 && (
+            <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <strong>Not filtered by {droppedRanges.join(", ")}.</strong> CDCB publishes {droppedRanges.length === 1 ? "it" : "them"},
+              but this list can only filter traits that have an indexed column, and {droppedRanges.length === 1 ? "that one does" : "those do"} not
+              yet — the individual linear type traits are the main gap. Every other range below still applies.
+            </div>
+          )}
+
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <SpecialistPicker traits={US_SPECIALIST_TRAITS.map((t) => ({ code: t.code, name: t.name, group: t.group }))} />
             <UsFavouritesToggle sp={sp} signedIn={Boolean(user)} />
             {user && <UsSavedSearches path="/us/animals" currentQuery={currentQuery} searches={savedSearches} />}
           </div>
-
-          {/* What the bar actually was, stated in the results rather than hidden in
-              the picker: a specialist search is only as meaningful as the pool it
-              was measured against. */}
-          {rows.spec && (
-            <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900">
-              <strong>Specialist search.</strong> {rows.spec.rows.length} of {fmtNum(rows.spec.scoredN)} bulls in the
-              official {breed || "all-breed"} pool are solidly positive for {specCodes.join(", ")}
-              {rows.spec.bars.length > 0 && (
-                <> — the bar is {rows.spec.bars.filter((b) => b.threshold != null).map((b) => `${b.code} ≥ ${b.threshold!.toFixed(2)}`).join(", ")}</>
-              )}
-              . Every other filter, the sort and the paging still apply.
-              {rows.spec.truncated && <> Only the strongest matches are shown.</>}
-            </div>
-          )}
 
           {rows.list.length === 0 ? (
             <EmptyState message="No bulls match. Try widening the search, breed or role." />
@@ -283,8 +279,7 @@ async function loadRows(opts: {
   role: string;
   favUserId: string | null;
   sortColumn: string;
-  specCodes: string[];
-  specLevel: UsSpecialistLevel;
+  ranges: TraitRange[];
 }) {
   // The AI-status file is published per round, so "active" means active in the
   // latest file we hold — not "has ever been marketed".
@@ -303,14 +298,11 @@ async function loadRows(opts: {
   const statusIds = await usAiStatusIds(opts.role, statusRound);
   if (statusIds) AND.push({ id17: { in: statusIds } });
 
-  // The bar is set against the whole official pool for the breed — a stable
-  // reference — and the qualifying ids are folded back into the query so every
-  // other filter, the sort and the paging still apply.
-  let spec: Awaited<ReturnType<typeof usSpecialists>> | null = null;
-  if (opts.specCodes.length) {
-    spec = await usSpecialists({ codes: opts.specCodes, level: opts.specLevel, breed: opts.breed || undefined, limit: 5000 });
-    AND.push({ usAnimalId: { in: spec.rows.map((r) => r.animalId) } });
-  }
+  // Trait ranges. Every one is a condition on an INDEXED COLUMN of the row being
+  // selected, so unlike the specialist search this replaced there is no second
+  // query, no id list to fold back in and no ceiling on how many bulls can match
+  // — the database does the whole thing in one pass and paging stays honest.
+  AND.push(...usRangeWhere(opts.ranges));
   const where: Prisma.UsEvaluationWhereInput = { AND };
 
   // The pill counts answer "what would this pill give me", so they honour every
@@ -346,5 +338,5 @@ async function loadRows(opts: {
   const aiByAnimal = new Map<string, string>();
   for (const a of aiRows) aiByAnimal.set(a.id17, a.code);
 
-  return { list, total, roleCounts, statusRound, aiByAnimal, spec, missingTables: false };
+  return { list, total, roleCounts, statusRound, aiByAnimal, missingTables: false };
 }

@@ -94,14 +94,11 @@ export function AnimalFilters({
           <label className="label">Birth year</label>
           <input name="year" defaultValue={sp.year} className="input" placeholder="e.g. 2021" />
         </div>
-        <div>
-          <label className="label">Trait code</label>
-          <input name="trait" defaultValue={sp.trait} className="input" placeholder="e.g. LPI" />
-        </div>
-        <div>
-          <label className="label">Trait ≥</label>
-          <input name="traitMin" defaultValue={sp.traitMin} className="input" placeholder="e.g. 3400" />
-        </div>
+        {/* "Trait code" + "Trait ≥" used to sit here. The Trait ranges picker above
+            the list does the same job and three more — an upper bound, a window,
+            and several traits at once — so keeping both would be two controls that
+            can contradict each other. A view SAVED with the old pair still works:
+            the page still reads `trait`/`traitMin`. */}
         <div>
           <label className="label">Class. score ≥</label>
           <input name="classMin" defaultValue={sp.classMin} className="input" placeholder="e.g. 85" />

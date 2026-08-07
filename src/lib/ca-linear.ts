@@ -15,7 +15,7 @@
 //
 // WHY THIS IS NOT SHARED WITH THE AMERICAN CATALOGUE. The two associations do not
 // agree about these traits, and that disagreement is real rather than a bug to be
-// reconciled: see us-cdcb/specialists.ts, where Stature and Rear Teat Placement
+// reconciled: see us-cdcb/trait-catalog.ts, where Stature and Rear Teat Placement
 // carry a stated direction on the owner's instruction for the US index. One bull
 // can legitimately read "intermediate" on his Canadian card and "lower is better"
 // on his American one. Merging the two lists would silently overwrite one

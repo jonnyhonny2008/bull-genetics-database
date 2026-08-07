@@ -12,8 +12,9 @@ import { TRAIT_COLUMNS } from "@/lib/eval-traits";
 import { sireRoleWhere, blondinWhere, resolveSort } from "@/lib/sire-class";
 import { sireRoleCounts } from "@/lib/sire-rank";
 import { getActiveBreeds, getAllSources, getGeneticTraitDefsForFilters } from "@/lib/reference";
-import { specialistTraits, specialistFilter, parseLevel, SPECIALIST_LEVELS } from "@/lib/specialists";
-import { SpecialistPicker } from "@/components/SpecialistPicker";
+import { caRangeTraits, caRangeWhere } from "@/lib/ca-range-traits";
+import { RANGE_PARAM, readTraitRanges } from "@/lib/trait-range";
+import { TraitRangeFilter } from "@/components/TraitRangeFilter";
 import FavouriteStar from "@/components/FavouriteStar";
 import SavedSearches from "@/components/SavedSearches";
 
@@ -78,22 +79,20 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   // "My favourites" — restrict to the signed-in user's watchlist.
   if (sp.fav === "1" && user) AND.push({ watchers: { some: { userId: user.uid } } });
 
-  // Specialists: narrow to bulls that are solidly positive for every picked trait.
-  // The bar is set against the whole breed population (a stable reference), then
-  // the qualifying ids are folded into the query so paging / sorting / the other
-  // filters still apply. Only runs when traits are picked.
-  const specCodes = (sp.spec ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-  const specLevel = parseLevel(sp.specLevel);
-  let specResult: Awaited<ReturnType<typeof specialistFilter>> | null = null;
-  if (specCodes.length) {
-    specResult = await specialistFilter(
-      { archived: false, sex: "M", ...(sp.breed ? { breedId: sp.breed } : {}) },
-      specCodes,
-      specLevel,
-    );
-    AND.push({ id: { in: specResult.ids } });
-  }
+  // TRAIT RANGES — at least / at most / between, stacked. Replaces the Specialists
+  // finder, which loaded every bull's traitsJson into Node on each page load to
+  // work out a bar; these are plain conditions on indexed columns of the preferred
+  // evaluation, so the database answers in one pass and nothing caps how many
+  // bulls can match.
+  const rangeTraits = await caRangeTraits();
+  const { ranges, dropped: droppedRanges } = readTraitRanges(sp[RANGE_PARAM], new Set(rangeTraits.map((t) => t.code)));
+  const rangeWhere = caRangeWhere(ranges, rangeTraits);
+  if (rangeWhere) AND.push(rangeWhere);
 
+  // The old single-trait floor from the filter bar. Its two inputs are gone —
+  // the range picker does this and more — but the parsing stays, because
+  // SavedSearch replays a stored query string verbatim and a view saved before
+  // today still carries `trait` and `traitMin`.
   const filterCol = sp.trait ? TRAIT_COLUMNS[sp.trait.toUpperCase()] : null;
   if (filterCol && sp.traitMin && !isNaN(Number(sp.traitMin))) {
     AND.push({ evaluations: { some: { isPreferred: true, [filterCol]: { gte: Number(sp.traitMin) } } } });
@@ -137,8 +136,8 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
   const roleBase: Prisma.AnimalWhereInput = { AND: AND.filter((c) => c !== roleWhere) };
   const roleCounts = await sireRoleCounts(roleBase);
 
-  const [breeds, sources, traitDefs, specTraits] = await Promise.all([
-    getActiveBreeds(), getAllSources(), getGeneticTraitDefsForFilters(), specialistTraits(),
+  const [breeds, sources, traitDefs] = await Promise.all([
+    getActiveBreeds(), getAllSources(), getGeneticTraitDefsForFilters(),
   ]);
 
   // Which of the animals on this page have an import awaiting admin approval
@@ -199,15 +198,18 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
 
       <AnimalFilters breeds={breeds} sources={sources} traitDefs={traitDefs} sp={sp} />
       <BlondinToggle basePath="/animals" sp={sp} />
-      <div className="flex flex-wrap items-center gap-3">
-        <SpecialistPicker traits={specTraits} />
-        {specResult && (
-          <span className="mb-3 text-xs text-slate-500">
-            {SPECIALIST_LEVELS.find((l) => l.code === specLevel)?.label} for{" "}
-            <strong>{specResult.bars.map((b) => b.name).join(", ")}</strong> — {fmtNum(specResult.ids.length)} specialist{specResult.ids.length === 1 ? "" : "s"} of {fmtNum(specResult.poolN)} scored.
-          </span>
-        )}
-      </div>
+      <TraitRangeFilter basePath="/animals" traits={rangeTraits} />
+
+      {/* A range this list cannot apply must never pass silently: the list would
+          come back UNFILTERED to someone who asked for a narrow set. */}
+      {droppedRanges.length > 0 && (
+        <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <strong>Not filtered by {droppedRanges.join(", ")}.</strong> Only traits stored in their own
+          indexed column can be filtered; the linear type traits live inside the packed trait JSON and
+          are not among them. Every other range below still applies.
+        </div>
+      )}
+
       <SireRolePills basePath="/animals" sp={sp} counts={roleCounts} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3">

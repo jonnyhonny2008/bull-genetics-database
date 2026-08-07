@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { usLinearGroups, usFavourableEnd, US_LINEAR_ENDS, US_LINEAR_MIN, US_LINEAR_MAX } from "./linear";
-import { US_SPECIALIST_CATALOG } from "./specialists";
+import { US_TRAIT_CATALOG } from "./trait-catalog";
 
 // ---------------------------------------------------------------------------
 // What actually reaches the chart. The component is tested separately for how it
@@ -71,7 +71,7 @@ test("nothing is plotted for an animal with no type data at all", () => {
 });
 
 test("every descriptor pair belongs to a trait the catalogue knows", () => {
-  const known = new Set(US_SPECIALIST_CATALOG.map((t) => t.code));
+  const known = new Set(US_TRAIT_CATALOG.map((t) => t.code));
   for (const code of Object.keys(US_LINEAR_ENDS)) {
     assert.ok(known.has(code), `${code} has descriptors but no catalogue entry, so it has no direction`);
     assert.notEqual(usFavourableEnd(code), undefined, `${code} would be drawn with no stated direction`);

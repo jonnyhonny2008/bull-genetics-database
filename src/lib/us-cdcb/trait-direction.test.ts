@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { US_SPECIALIST_CATALOG, US_SPECIALIST_TRAITS, usSpecialistTrait } from "./specialists";
+import { US_TRAIT_CATALOG, US_SAFELY_RANKED_TRAITS, usTrait } from "./trait-catalog";
 import { HOLSTEIN_LINEAR } from "../../../prisma/traits-holstein";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ import { HOLSTEIN_LINEAR } from "../../../prisma/traits-holstein";
 // ---------------------------------------------------------------------------
 
 function dir(code: string) {
-  const t = usSpecialistTrait(code);
+  const t = usTrait(code);
   assert.ok(t, `${code} missing from the catalogue`);
   return t.direction;
 }
@@ -45,11 +45,11 @@ test("stature, rump angle and rear teat placement are intermediate optimum", () 
   }
 });
 
-test("dairy form is the one type trait kept directional, and is offered as a specialty", () => {
+test("dairy form is the one type trait of the four kept directional", () => {
   assert.equal(dir("DFM"), "higher");
   assert.ok(
-    US_SPECIALIST_TRAITS.some((t) => t.code === "DFM"),
-    "a higher-is-better trait with no exclusion reason belongs in the picker",
+    US_SAFELY_RANKED_TRAITS.some((t) => t.code === "DFM"),
+    "a higher-is-better trait with nothing to caution about is safe to rank",
   );
 });
 
@@ -59,19 +59,28 @@ test("the traits with a long-standing intermediate optimum are untouched", () =>
   }
 });
 
-test("no lower-is-better trait is offered as a specialty", () => {
-  // The finder ranks bulls solidly POSITIVE on every picked trait, so a
-  // lower-is-better trait in the picker would put the worst bulls on top.
-  for (const t of US_SPECIALIST_TRAITS) {
-    assert.equal(t.direction, "higher", `${t.code} is offered but is not higher-is-better`);
+test("nothing but a higher-is-better trait is treated as safe to rank", () => {
+  // US_SAFELY_RANKED_TRAITS feeds anything that sorts high-to-low and reads the
+  // top of the list. A lower-is-better or intermediate trait in it would put the
+  // WORST bulls on top, silently.
+  for (const t of US_SAFELY_RANKED_TRAITS) {
+    assert.equal(t.direction, "higher", `${t.code} is treated as safely ranked but is not higher-is-better`);
   }
 });
 
-test("every excluded trait still states a reason, and every trait has a direction", () => {
-  for (const t of US_SPECIALIST_CATALOG) {
+test("every trait has a direction, and anything not higher-is-better carries a caution", () => {
+  for (const t of US_TRAIT_CATALOG) {
     assert.ok(t.direction, `${t.code} has no direction`);
     if (t.direction !== "higher") {
-      assert.ok(t.excluded, `${t.code} is not higher-is-better but gives no reason for being excluded`);
+      assert.ok(t.caution, `${t.code} is not higher-is-better but carries no caution`);
     }
+  }
+});
+
+test("no code appears twice", () => {
+  const seen = new Set<string>();
+  for (const t of US_TRAIT_CATALOG) {
+    assert.ok(!seen.has(t.code), `${t.code} is listed twice — usTrait() would silently return the first`);
+    seen.add(t.code);
   }
 });

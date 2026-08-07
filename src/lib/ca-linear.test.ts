@@ -78,13 +78,13 @@ test("the two systems now agree on the traits they share", async () => {
   // Stature, Rump Angle and Rear Teat Placement are intermediate on BOTH sides.
   // They are still stored separately on purpose — the associations are free to
   // diverge again — but today they must not contradict each other on one bull.
-  const { usSpecialistTrait } = await import("./us-cdcb/specialists");
+  const { usTrait } = await import("./us-cdcb/trait-catalog");
   for (const [caCode, caName, usCode] of [
     ["STA", "Stature", "STA"],
     ["RA", "Rump Angle", "RPA"],
     ["RTP", "Rear Teat Placement", "RTP"],
   ] as const) {
     assert.equal(caFavourableEnd(caCode, caName, true), "intermediate", caName);
-    assert.equal(usSpecialistTrait(usCode)?.direction, "intermediate", usCode);
+    assert.equal(usTrait(usCode)?.direction, "intermediate", usCode);
   }
 });

@@ -37,7 +37,7 @@
     "test:reports": "dotenv -e .env.production -- tsx --test src/lib/proof-change.test.ts src/lib/proof-forecast.test.ts src/lib/proof-similarity.test.ts src/lib/mating-score.test.ts src/lib/mating-targets.test.ts src/lib/relatedness.test.ts src/lib/report-html.test.ts",
     "test:holstein": "tsx --test src/lib/holstein-parse.test.ts",
     "test:layout": "tsx --conditions=react-server --test src/lib/lactanet-layout.test.ts",
-    "test:direction": "dotenv -e .env.demo -- tsx --conditions=react-server --test src/lib/us-cdcb/specialists-direction.test.ts src/lib/us-cdcb/linear.test.ts",
+    "test:direction": "dotenv -e .env.demo -- tsx --conditions=react-server --test src/lib/us-cdcb/trait-direction.test.ts src/lib/us-cdcb/linear.test.ts",
     "test:components": "tsx --tsconfig tsconfig.test.json --test src/components/LinearGraph.test.tsx",
     "us:finish": "dotenv -e .env.production -- prisma db push --accept-data-loss && dotenv -e .env.production -- tsx --conditions=react-server prisma/import-cdcb.ts ./imports/cdcb && dotenv -e .env.production -- tsx --conditions=react-server prisma/pending/verify-split.ts"
   },

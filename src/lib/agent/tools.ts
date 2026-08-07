@@ -867,8 +867,8 @@ function parseNumMap(json: string | null | undefined): Record<string, number> {
  * pulled in with a dynamic import like every other server-only dependency here.
  */
 async function usTraitRows(e: { gptaJson: string | null; relJson: string | null; paJson: string | null; tpi: number | null; tpiFormulaVersion: string | null; tpiConfidence: string | null; udc: number | null; flc: number | null; jpi: number | null }) {
-  const { US_SPECIALIST_CATALOG } = await import("@/lib/us-cdcb/specialists");
-  const byCode = new Map(US_SPECIALIST_CATALOG.map((t) => [t.code, t]));
+  const { US_TRAIT_CATALOG } = await import("@/lib/us-cdcb/trait-catalog");
+  const byCode = new Map(US_TRAIT_CATALOG.map((t) => [t.code, t]));
   const gpta = parseNumMap(e.gptaJson), rel = parseNumMap(e.relJson), pa = parseNumMap(e.paJson);
   const published = [...new Set([...Object.keys(gpta), ...Object.keys(pa)])]
     .map((code) => {

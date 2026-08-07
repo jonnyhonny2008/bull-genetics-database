@@ -9,7 +9,7 @@ import { US_KEY_TRAITS, formatUsTrait, type UsKeyTrait } from "@/lib/us-cdcb/key
 import { cdcbRoundLabel, cdcbRunKindLabel, type CdcbRunKind } from "@/lib/us-cdcb/file-kind";
 import { computeTpi, TpiUnavailable, type TpiResult, type TpiInputKey } from "@/lib/us-cdcb/index-registry";
 import { computeJpi, JpiUnavailable, type JpiResult } from "@/lib/us-cdcb/jpi";
-import { US_SPECIALIST_CATALOG, type UsSpecialistDirection } from "@/lib/us-cdcb/specialists";
+import { US_TRAIT_CATALOG, type UsTraitDirection } from "@/lib/us-cdcb/trait-catalog";
 import { parseId17 } from "@/lib/us-cdcb/identity";
 import CrossSystemBanner from "@/components/CrossSystemBanner";
 import { LinearGraph } from "@/components/LinearGraph";
@@ -1169,8 +1169,8 @@ function IndexBreakdown({
 // CDCB ships trait CODES and nothing else — no labels, no units, no direction.
 // This is the display dictionary for them: labels, units and decimals only.
 //
-// DIRECTION IS NOT DEFINED HERE. It comes from US_SPECIALIST_CATALOG in
-// specialists.ts, which is this repository's single reasoned source for which way
+// DIRECTION IS NOT DEFINED HERE. It comes from US_TRAIT_CATALOG in
+// trait-catalog.ts, which is this repository's single reasoned source for which way
 // is better and carries an explicit "unknown" for codes whose meaning has not been
 // confirmed. Keeping a second direction list on this page produced a real
 // disagreement — Stature and Dairy Form were "higher" here and "intermediate"
@@ -1217,7 +1217,7 @@ const US_TRAITS: Record<string, UsTraitDef> = {
   LIV: d("Cow Livability", HEALTH, 1, { unit: "%" }),
   HLV: d("Heifer Livability", HEALTH, 1, { unit: "%" }),
   // SCS is published on an absolute scale around 3.0, not as a deviation, so it
-  // takes no sign — and lower is better (see specialists.ts).
+  // takes no sign — and lower is better (see trait-catalog.ts).
   SCS: d("Somatic Cell Score", HEALTH, 2, { signed: false }),
   MFV: d("Milk Fever resistance", HEALTH, 1, { unit: "%" }),
   DAB: d("Displaced Abomasum resistance", HEALTH, 1, { unit: "%" }),
@@ -1269,11 +1269,11 @@ function byCatalogue(x: string, y: string): number {
   return (ix < 0 ? 999 : ix) - (iy < 0 ? 999 : iy) || x.localeCompare(y);
 }
 
-/** Direction comes from specialists.ts — the repo's reasoned catalogue — and is
+/** Direction comes from trait-catalog.ts — the repo's reasoned catalogue — and is
  *  "unknown" for anything it does not cover. An unknown direction is never ranked,
  *  highlighted, or described as good or bad. */
-const DIRECTIONS = new Map<string, UsSpecialistDirection>(US_SPECIALIST_CATALOG.map((t) => [t.code, t.direction]));
-function directionOf(code: string): UsSpecialistDirection {
+const DIRECTIONS = new Map<string, UsTraitDirection>(US_TRAIT_CATALOG.map((t) => [t.code, t.direction]));
+function directionOf(code: string): UsTraitDirection {
   return DIRECTIONS.get(code) ?? "unknown";
 }
 
@@ -1297,7 +1297,7 @@ function groupTraits(gpta: NumMap, dgv: NumMap, pa: NumMap) {
   }));
 }
 
-/** The linear type traits, split into the same three sections specialists.ts uses
+/** The linear type traits, split into the same three sections trait-catalog.ts uses
  *  (udder / feet & legs / body) so the Type tab reads like a type page rather than
  *  one long alphabetical list. */
 const LINEAR_SECTIONS: { group: string; codes: string[] }[] = [
