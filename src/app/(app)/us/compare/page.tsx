@@ -242,7 +242,7 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
   }
 
   const { bulls, pickerBulls, aiByAnimal } = data;
-  const selected = bulls.map((b) => ({ id: b.animalId, name: b.animal.primaryName }));
+  const selected = bulls.map((b) => ({ id: b.usAnimalId, name: (b.usAnimal.name ?? b.usAnimal.id17) }));
 
   // code -> value per bull, one map each, so a row lookup is O(1) per column.
   const valueMaps = bulls.map((b) => {
@@ -323,10 +323,10 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left font-semibold text-slate-500">Trait</th>
                   {bulls.map((b) => {
-                    const ai = aiByAnimal.get(b.animalId);
+                    const ai = aiByAnimal.get(b.id17);
                     return (
-                      <th key={b.animalId} className="min-w-[10rem] px-3 py-3 text-left align-top">
-                        <Link href={`/us/animals/${b.animalId}`} className="font-semibold text-brand-700 hover:underline">{b.animal.primaryName}</Link>
+                      <th key={b.usAnimalId} className="min-w-[10rem] px-3 py-3 text-left align-top">
+                        <Link href={`/us/animals/${b.usAnimalId}`} className="font-semibold text-brand-700 hover:underline">{(b.usAnimal.name ?? b.usAnimal.id17)}</Link>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           {/* Proven vs genomic is CDCB's per-trait-group flag, not a
                               property of the bull — IS_PTA_MILK is the production one. */}
@@ -366,7 +366,7 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
                             const rel = relMaps[i][trait.code];
                             return (
                               <td
-                                key={bulls[i].animalId}
+                                key={bulls[i].usAnimalId}
                                 title={typeof rel === "number" ? `Reliability ${rel}%` : undefined}
                                 className={`px-3 py-2 tabular-nums ${isBest ? "bg-emerald-50 font-semibold text-emerald-800" : "text-slate-700"}`}
                               >
@@ -415,22 +415,22 @@ async function load(ids: string[]) {
     prisma.usEvaluation.findMany({
       where: officialPreferred,
       orderBy: { animal: { primaryName: "asc" } },
-      select: { animalId: true, animal: { select: { primaryName: true } } },
+      select: { usAnimalId: true, id17: true, usAnimal: { select: { name: true, id17: true } } },
     }),
     ids.length
       ? prisma.usEvaluation.findMany({
           where: { ...officialPreferred, animalId: { in: ids } },
           select: {
-            animalId: true, evalBreed: true, naabCode: true, roundCode: true, isPtaMilk: true,
+            usAnimalId: true, id17: true, evalBreed: true, naabCode: true, roundCode: true, isPtaMilk: true,
             tpi: true, jpi: true, udc: true, flc: true, gptaJson: true, relJson: true,
-            animal: { select: { primaryName: true } },
+            usAnimal: { select: { name: true, id17: true } },
           },
         })
       : Promise.resolve([]),
   ]);
 
   // Preserve the order the bulls were listed in the URL.
-  const byId = new Map(rows.map((r) => [r.animalId, r]));
+  const byId = new Map(rows.map((r) => [r.usAnimalId, r]));
   const bulls = ids.map((id) => byId.get(id)).filter((b): b is (typeof rows)[number] => Boolean(b));
 
   // AI status is per round; take each bull's most recent one rather than pinning
@@ -438,17 +438,17 @@ async function load(ids: string[]) {
   // the last status CDCB published for him.
   const aiRows = bulls.length
     ? await prisma.usAiStatus.findMany({
-        where: { animalId: { in: bulls.map((b) => b.animalId) } },
+        where: { id17: { in: bulls.map((b) => b.id17) } },
         orderBy: { roundCode: "desc" },
-        select: { animalId: true, code: true },
+        select: { id17: true, code: true },
       })
     : [];
   const aiByAnimal = new Map<string, string>();
-  for (const r of aiRows) if (r.animalId && !aiByAnimal.has(r.animalId)) aiByAnimal.set(r.animalId, r.code);
+  for (const r of aiRows) if (!aiByAnimal.has(r.id17)) aiByAnimal.set(r.id17, r.code);
 
   return {
     bulls,
-    pickerBulls: pickerRows.map((r) => ({ id: r.animalId, name: r.animal.primaryName })),
+    pickerBulls: pickerRows.map((r) => ({ id: r.usAnimalId, name: (r.usAnimal.name ?? r.usAnimal.id17) })),
     aiByAnimal,
   };
 }

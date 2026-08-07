@@ -50,8 +50,8 @@ export function systemFromPathname(pathname: string | null | undefined): Genetic
  *
  * The fallback is the whole point. The two sides are not mirror images: Canada
  * has pages America will never have (interim proofs, the mating program, live
- * Lactanet lookups, the whole Data In and Configuration groups), and America has
- * one Canada does not (/specialists). Mapping the path across blindly mints URLs
+ * Lactanet lookups, the whole Data In and Configuration groups). Mapping the path
+ * across blindly mints URLs
  * for pages that do not exist, so the toggle would 404 from roughly half the app
  * — including every animal detail page, which is exactly where someone is most
  * likely to want the other country's view.
@@ -118,7 +118,6 @@ export const US_ROUTES = new Set<string>([
   "/animals",
   "/analysis",
   "/compare",
-  "/specialists",
   "/reports",
   "/admin/data-quality",
 ]);
@@ -137,12 +136,15 @@ export const US_EXCLUDED_ROUTES = new Set<string>([
 ]);
 
 /**
- * Routes that exist ONLY on the American side.
+ * Canadian routes that do not exist.
  *
- * Specialists is its own page here because the US trait vocabulary and its
- * SD-relative thresholds differ from the Canadian ones; on the Canadian side the
- * equivalent is a picker embedded in the animals list, so there is no /specialists
- * page to link to and offering one would 404.
+ * Canada's check is a DENYLIST — everything not listed is assumed to exist — so a
+ * page that is removed has to be added here or the toggle starts minting a URL for
+ * it. /specialists used to be an American-only page; it is a SEARCH, not a place,
+ * and now sits inside each side's animals list as a trait picker that composes
+ * with breed, role, favourites, sorting and paging. A separate ranked page could
+ * honour none of those, which is precisely why it was wrong. It exists on neither
+ * side, so it is denied here and simply absent from US_ROUTES.
  */
 export const CA_EXCLUDED_ROUTES = new Set<string>([
   "/specialists",

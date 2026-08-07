@@ -179,9 +179,9 @@ export default async function UsDataQualityPage() {
               <th className="th">CDCB says</th>
             </>}>
               {naabConflicts.slice(0, SAMPLE).map((c) => (
-                <tr key={c.animalId + c.id17}>
+                <tr key={c.usAnimalId + c.id17}>
                   <td className="td">
-                    <Link href={`/us/animals/${c.animalId}`} className="link font-medium">{c.name}</Link>
+                    <Link href={`/us/animals/${c.usAnimalId}`} className="link font-medium">{c.name}</Link>
                     <span className="mt-0.5 block font-mono text-[10px] text-slate-400">{c.id17}</span>
                   </td>
                   <td className="td font-mono text-xs text-slate-600">{c.stored.join(" · ")}</td>
@@ -219,8 +219,8 @@ export default async function UsDataQualityPage() {
               <th className="th">Evaluated as</th>
             </>}>
               {breedMismatch.slice(0, SAMPLE).map((m) => (
-                <tr key={m.animalId + m.id17}>
-                  <td className="td"><Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link></td>
+                <tr key={m.usAnimalId + m.id17}>
+                  <td className="td"><Link href={`/us/animals/${m.usAnimalId}`} className="link font-medium">{m.name}</Link></td>
                   <td className="td text-xs text-slate-600">{m.stored}</td>
                   <td className="td text-xs font-medium text-amber-700">{m.evaluated}</td>
                 </tr>
@@ -320,7 +320,7 @@ async function load() {
     prisma.animal.count({ where: { ...cdcbTagged, usEvaluations: { none: {} } } }),
     prisma.animal.findMany({ where: { ...cdcbTagged, usEvaluations: { none: {} } }, select: { id: true, primaryName: true }, take: SAMPLE }),
     prisma.usEvaluation.count({ where: evalNoId17 }),
-    prisma.usEvaluation.findMany({ where: evalNoId17, select: { animalId: true, id17: true, animal: { select: { primaryName: true } } }, take: SAMPLE }),
+    prisma.usEvaluation.findMany({ where: evalNoId17, select: { usAnimalId: true, id17: true, usAnimal: { select: { name: true, id17: true } } }, take: SAMPLE }),
     prisma.usEvaluation.count({ where: { approvalStatus: "pending" } }),
     prisma.usEvaluation.count({ where: { approvalStatus: "rejected" } }),
     prisma.usEvaluation.groupBy({ by: ["periodKey", "runKind"], _count: { _all: true }, _max: { evaluationDate: true } }),
@@ -334,7 +334,8 @@ async function load() {
       where: officialPreferred,
       take: MAX_SCAN,
       select: {
-        animalId: true, id17: true, naabCode: true, evalBreed: true, blendCode: true,
+        usAnimalId: true, id17: true, naabCode: true, evalBreed: true, blendCode: true,
+        usAnimal: { select: { name: true, id17: true } },
         animal: {
           select: {
             primaryName: true,
@@ -353,14 +354,15 @@ async function load() {
 
   // NAAB: only a row where the app holds a code AND CDCB reports one can disagree.
   // A missing code on either side is silence, not a contradiction.
-  const naabConflicts: { animalId: string; id17: string; name: string; stored: string[]; cdcb: string }[] = [];
-  const breedMismatch: { animalId: string; id17: string; name: string; stored: string; evaluated: string }[] = [];
+  const naabConflicts: { usAnimalId: string; id17: string; name: string; stored: string[]; cdcb: string }[] = [];
+  const breedMismatch: { usAnimalId: string; id17: string; name: string; stored: string; evaluated: string }[] = [];
   let crossbredMismatch = 0;
 
   for (const r of scanRows) {
+    if (!r.animal) continue; // not dual-registered: nothing here to disagree with
     const stored = r.animal.identifiers.map((i) => i.idValue);
     if (r.naabCode && stored.length > 0 && !stored.some((v) => sameNaab(v, r.naabCode))) {
-      naabConflicts.push({ animalId: r.animalId, id17: r.id17, name: r.animal.primaryName, stored, cdcb: r.naabCode });
+      naabConflicts.push({ usAnimalId: r.usAnimalId, id17: r.id17, name: (r.usAnimal.name ?? r.usAnimal.id17), stored, cdcb: r.naabCode });
     }
     const storedBreed = r.animal.breed?.breedCode ?? null;
     if (storedBreed && r.evalBreed && storedBreed !== r.evalBreed) {
@@ -368,7 +370,7 @@ async function load() {
       // evaluated in a breed other than the one it is registered in, so counting
       // those alongside genuine disagreements would bury the ones that matter.
       if (r.blendCode === "M") crossbredMismatch++;
-      else breedMismatch.push({ animalId: r.animalId, id17: r.id17, name: r.animal.primaryName, stored: storedBreed, evaluated: r.evalBreed });
+      else breedMismatch.push({ usAnimalId: r.usAnimalId, id17: r.id17, name: (r.usAnimal.name ?? r.usAnimal.id17), stored: storedBreed, evaluated: r.evalBreed });
     }
   }
 
@@ -382,7 +384,7 @@ async function load() {
     evalsNoId17,
     // One animal can hold several rounds, so the sample is per ANIMAL — otherwise
     // the same bull would be listed once per evaluation he carries.
-    evalsNoId17S: [...new Map(evalsNoId17Rows.map((r) => [r.animalId, { id: r.animalId, primaryName: r.animal.primaryName }])).values()],
+    evalsNoId17S: [...new Map(evalsNoId17Rows.map((r) => [r.usAnimalId, { id: r.usAnimalId, primaryName: (r.usAnimal.name ?? r.usAnimal.id17) }])).values()],
     pending, rejected, periods, officialRounds,
     naabConflicts, breedMismatch, crossbredMismatch,
     ai: { total: aiTotal, orphans: aiOrphans, byRound },

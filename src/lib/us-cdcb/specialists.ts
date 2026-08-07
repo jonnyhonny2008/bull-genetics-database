@@ -286,10 +286,10 @@ export async function usSpecialists(opts: {
   const evals = await prisma.usEvaluation.findMany({
     where,
     select: {
-      animalId: true, evalBreed: true, naabCode: true, roundCode: true,
+      usAnimalId: true, evalBreed: true, naabCode: true, roundCode: true,
       tpi: true, tpiFormulaVersion: true, nmDollar: true, ptat: true,
       milk: true, rpa: true, dpr: true, ccr: true, gptaJson: true,
-      animal: { select: { primaryName: true } },
+      usAnimal: { select: { name: true } }, id17: true,
     },
   });
 
@@ -341,8 +341,8 @@ export async function usSpecialists(opts: {
     }
     if (!ok) continue;
     rows.push({
-      animalId: ev.animalId,
-      name: ev.animal?.primaryName ?? ev.animalId,
+      animalId: ev.usAnimalId,
+      name: ev.usAnimal?.name ?? ev.id17,
       naabCode: ev.naabCode,
       evalBreed: ev.evalBreed,
       roundCode: ev.roundCode,

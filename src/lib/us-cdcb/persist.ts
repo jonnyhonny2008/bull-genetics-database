@@ -44,8 +44,12 @@ const HAPLOTYPE_KEYS = /^(HH\d|HH[BCDMPR]|HMW|JH1|JHP|JNS|BH\d+|BH[DMPW]|AH\d|AH
 
 export interface PersistOutcome {
   usEvaluationId: string;
-  animalId: string;
-  /** True when this import created a brand-new Animal rather than linking. */
+  /** The American roster row this evaluation belongs to. Always set. */
+  usAnimalId: string;
+  /** The Canadian Animal this bull is ALSO registered as, when there is one.
+   *  Null is the ordinary case: most American bulls are not Canadian bulls. */
+  animalId: string | null;
+  /** True when this import created a brand-new UsAnimal rather than updating one. */
   createdAnimal: boolean;
   linked: "existing-cdcb-id" | "registration" | "new";
   /** Set when a plausible match was REFUSED — route these to review rather than
@@ -60,12 +64,14 @@ export interface PersistOutcome {
  * resort. Returns a conflict instead of linking when the evidence disagrees.
  */
 async function resolveAnimal(a: CdcbAnimal): Promise<{ animalId: string | null; how: PersistOutcome["linked"]; conflict?: string }> {
-  // 1. Already linked on a previous import.
-  const existing = await prisma.animalIdentifier.findFirst({
-    where: { idType: CDCB_ID_TYPE, idValue: a.id17 },
+  // 1. A bridge this bull already carries from a previous import. It lives on the
+  //    UsAnimal row now rather than on an AnimalIdentifier — the identifier was
+  //    written in a second pass, so an interrupted run left rows unmarked.
+  const existing = await prisma.usAnimal.findUnique({
+    where: { id17: a.id17 },
     select: { animalId: true },
   });
-  if (existing) return { animalId: existing.animalId, how: "existing-cdcb-id" };
+  if (existing?.animalId) return { animalId: existing.animalId, how: "existing-cdcb-id" };
 
   // 2. A stored Canadian registration that transforms to this id17. Rather than
   //    transforming every registration in the table, invert: build the candidate
@@ -140,43 +146,33 @@ export async function persistCdcbAnimal(
   const evaluationDate = cdcbRoundDate(file);
   if (!evaluationDate) throw new Error(`Could not derive an evaluation date for ${ctx.sourceFile}`);
 
+  // Resolving a Canadian Animal no longer decides whether a row is created. Every
+  // American bull gets a UsAnimal of his own; a match only supplies the OPTIONAL
+  // bridge that makes the double card and the nav toggle work for a bull who is
+  // registered in both countries.
   const resolved = await resolveAnimal(a);
-  let animalId = resolved.animalId;
-  let createdAnimal = false;
+  const bridge = resolved.animalId ?? null;
 
-  if (!animalId) {
-    const sex = a.info.SEX === "F" ? "F" : "M";
-    const breed = a.info.EVAL_BREED
-      ? await prisma.breed.findUnique({ where: { breedCode: a.info.EVAL_BREED }, select: { breedId: true } })
-      : null;
-    const created = await prisma.animal.create({
-      data: {
-        primaryName: a.info.ANIM_NAME?.trim() || a.id17,
-        sex,
-        breedId: breed?.breedId ?? null,
-        birthDate: dateFromYmd(a.info.BIRTH),
-        // The id17's country segment is the REGISTRY country.
-        countryOfOrigin: parseId17(a.id17)?.country === "CAN" ? "CA" : "US",
-        currentStatus: "active",
-        createdById: ctx.userId ?? undefined,
-        notes: `Imported from CDCB (${ctx.sourceFile}).`,
-      },
-      select: { id: true },
-    });
-    animalId = created.id;
-    createdAnimal = true;
-  }
+  const existing = await prisma.usAnimal.findUnique({ where: { id17: a.id17 }, select: { usAnimalId: true } });
+  const createdAnimal = !existing;
 
-  // Record the CDCB id so the next import resolves in one indexed query.
-  // AnimalIdentifier has no unique constraint on (idType, idValue) today, so this
-  // is a guarded create rather than an upsert.
-  const alreadyTagged = await prisma.animalIdentifier.findFirst({
-    where: { animalId, idType: CDCB_ID_TYPE, idValue: a.id17 },
-    select: { identifierId: true },
+  const fields = {
+    name: a.info.ANIM_NAME?.trim() || a.id17,
+    naabCode: a.info.NAAB_CODE ? normalizeNaab(a.info.NAAB_CODE) : null,
+    breedCode: a.info.EVAL_BREED ?? null,
+    sex: a.info.SEX === "F" ? "F" : "M",
+    birthDate: dateFromYmd(a.info.BIRTH),
+    sire17: a.info.SIRE_ID ?? null,
+    dam17: a.info.DAM_ID ?? null,
+  };
+  // Set a bridge when we have one, but never CLEAR one already established — a
+  // later round may resolve a link an earlier one could not.
+  const { usAnimalId } = await prisma.usAnimal.upsert({
+    where: { id17: a.id17 },
+    update: { ...fields, ...(bridge ? { animalId: bridge } : {}) },
+    create: { id17: a.id17, animalId: bridge, ...fields },
+    select: { usAnimalId: true },
   });
-  if (!alreadyTagged) {
-    await prisma.animalIdentifier.create({ data: { animalId, idType: CDCB_ID_TYPE, idValue: a.id17, active: true } });
-  }
 
   const packed = packTraitColumns(a);
   const g = (code: string) => num(a.traits[code]?.gpta);
@@ -243,14 +239,14 @@ export async function persistCdcbAnimal(
   };
 
   const row = await prisma.usEvaluation.upsert({
-    where: { animalId_periodKey_sourceFamily: { animalId, periodKey: file.periodKey, sourceFamily: file.family } },
+    where: { usAnimalId_periodKey_sourceFamily: { usAnimalId, periodKey: file.periodKey, sourceFamily: file.family } },
     update: data,
-    create: { ...data, animalId },
+    create: { ...data, usAnimalId, animalId: bridge },
     select: { usEvaluationId: true },
   });
 
   return {
-    usEvaluationId: row.usEvaluationId, animalId, createdAnimal,
+    usEvaluationId: row.usEvaluationId, usAnimalId, animalId: bridge, createdAnimal,
     linked: createdAnimal ? "new" : resolved.how,
     conflict: resolved.conflict,
     tpi: tpi?.value ?? null, jpi: jpi?.value ?? null,
@@ -264,14 +260,14 @@ export async function persistCdcbAnimal(
  * must never displace an official round. Entirely separate from the Canadian
  * isPreferred, which it must never touch.
  */
-export async function recomputeUsPreferred(animalId: string): Promise<void> {
+export async function recomputeUsPreferred(usAnimalId: string): Promise<void> {
   const rows = await prisma.usEvaluation.findMany({
-    where: { animalId, runKind: "official", approvalStatus: "approved" },
+    where: { usAnimalId, runKind: "official", approvalStatus: "approved" },
     orderBy: [{ evaluationDate: "desc" }, { sourceFamily: "asc" }],
     select: { usEvaluationId: true },
   });
   const winner = rows[0]?.usEvaluationId ?? null;
-  await prisma.usEvaluation.updateMany({ where: { animalId }, data: { isPreferred: false } });
+  await prisma.usEvaluation.updateMany({ where: { usAnimalId }, data: { isPreferred: false } });
   if (winner) await prisma.usEvaluation.update({ where: { usEvaluationId: winner }, data: { isPreferred: true } });
 }
 
@@ -282,13 +278,13 @@ export async function persistAiStatus(lines: string[], roundCode: string): Promi
     const m = /^([A-Z]{2}[A-Z0-9]{3}[A-Z0-9]{12})\s+([AFG])\s*$/.exec(line.trim());
     if (!m) continue;
     const [, id17, code] = m;
-    const ident = await prisma.animalIdentifier.findFirst({ where: { idType: CDCB_ID_TYPE, idValue: id17 }, select: { animalId: true } });
-    if (ident) matched++;
+    const ua = await prisma.usAnimal.findUnique({ where: { id17 }, select: { animalId: true } });
+    if (ua) matched++;
     // Orphans are expected and kept — about 5% of entries match no evaluation.
     await prisma.usAiStatus.upsert({
       where: { id17_roundCode: { id17, roundCode } },
-      update: { code, animalId: ident?.animalId ?? null },
-      create: { id17, roundCode, code, animalId: ident?.animalId ?? null },
+      update: { code, animalId: ua?.animalId ?? null },
+      create: { id17, roundCode, code, animalId: ua?.animalId ?? null },
     });
     rows++;
   }

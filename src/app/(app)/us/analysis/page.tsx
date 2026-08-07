@@ -204,8 +204,8 @@ export default async function UsAnalysisPage({ searchParams }: { searchParams: R
                   <th className="th text-right" title="100 = the cohort average move between these two rounds; every 5 points is one standard deviation">Vs cohort</th>
                 </>}>
                   {movement.top.map((m) => (
-                    <tr key={m.animalId}>
-                      <td className="td"><Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link></td>
+                    <tr key={m.usAnimalId}>
+                      <td className="td"><Link href={`/us/animals/${m.usAnimalId}`} className="link font-medium">{m.name}</Link></td>
                       <td className="td text-right tabular-nums text-slate-500">{m.before}</td>
                       <td className="td text-right tabular-nums text-slate-500">{m.after}</td>
                       <td className={`td text-right tabular-nums ${m.delta > 0 ? "text-brand-700" : m.delta < 0 ? "text-red-600" : "text-slate-500"}`}>{m.delta > 0 ? `+${m.delta}` : m.delta}</td>
@@ -368,22 +368,22 @@ async function loadMovement(from: string, to: string, breed: string) {
       ...(breed ? { evalBreed: breed } : {}),
     },
     take: MAX_ROWS,
-    select: { animalId: true, roundCode: true, tpi: true, animal: { select: { primaryName: true } } },
+    select: { usAnimalId: true, id17: true, roundCode: true, tpi: true, usAnimal: { select: { name: true, id17: true } } },
   });
 
   const before = new Map<string, number>(), after = new Map<string, number>();
   const names = new Map<string, string>();
   for (const r of rows) {
     if (r.tpi == null) continue;
-    names.set(r.animalId, r.animal.primaryName);
-    (r.roundCode === from ? before : after).set(r.animalId, r.tpi);
+    names.set(r.usAnimalId, (r.usAnimal.name ?? r.usAnimal.id17));
+    (r.roundCode === from ? before : after).set(r.usAnimalId, r.tpi);
   }
 
-  const pairs: { animalId: string; name: string; before: number; after: number; delta: number }[] = [];
+  const pairs: { usAnimalId: string; name: string; before: number; after: number; delta: number }[] = [];
   for (const [animalId, b] of before) {
     const a = after.get(animalId);
     if (a == null) continue;
-    pairs.push({ animalId, name: names.get(animalId) ?? animalId, before: b, after: a, delta: a - b });
+    pairs.push({ usAnimalId: animalId, name: names.get(animalId) ?? animalId, before: b, after: a, delta: a - b });
   }
   if (pairs.length < MIN_COHORT) return null;
 

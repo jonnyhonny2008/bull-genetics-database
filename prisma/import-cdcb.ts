@@ -50,6 +50,9 @@ function findPairs(folder: string) {
 
 async function main() {
   const persist = dryRun ? null : await import("../src/lib/us-cdcb/persist");
+  // Hoisted: the preferred-evaluation recompute at the end of the run needs both.
+  const bulk = dryRun ? null : await import("../src/lib/us-cdcb/persist-bulk");
+  const db = dryRun ? null : await import("../src/lib/db");
   const pairs = findPairs(dir!);
   if (!pairs.length) {
     console.error(`No infoANIM/infoEVAL pairs found in ${dir}`);
@@ -113,8 +116,7 @@ async function main() {
     // BULK path: a fixed number of queries per file rather than ~6 per animal.
     // The Holstein round alone is 51,497 animals, so per-animal writes would be
     // ~300,000 round-trips to a remote database.
-    const bulk = await import("../src/lib/us-cdcb/persist-bulk");
-    const r = await bulk.persistCdcbRound(parsed.animals, id, {
+    const r = await bulk!.persistCdcbRound(parsed.animals, id, {
       sourceFile: p.evalF,
       onProgress: (done, total) => { if (done % 5000 === 0 || done === total) console.log(`      … ${done}/${total}`); },
     });
@@ -142,7 +144,27 @@ async function main() {
   }
 
   if (!dryRun) {
-    console.log(`\nrecomputing preferred US evaluation for ${touched.size} animals…`);
+    // THIS STEP USED TO DO NOTHING. It looped over `touched`, which the bulk path
+    // never populates — the bulk path collects id17s in `bulkTouched` — so the set
+    // was always empty and isPreferred stayed false on every row imported. The US
+    // lineup reads isPreferred, so a "successful" import produced an empty list.
+    //
+    // Resolve the id17s this run wrote to their UsAnimal ids and hand the whole
+    // set to the bulk recompute, rather than awaiting once per animal: at 70,000
+    // animals that difference is minutes against hours.
+    const ids = [...new Set(bulkTouched)];
+    const usAnimalIds: string[] = [];
+    for (let i = 0; i < ids.length; i += 2000) {
+      const rows = await db!.prisma.usAnimal.findMany({
+        where: { id17: { in: ids.slice(i, i + 2000) } },
+        select: { usAnimalId: true },
+      });
+      usAnimalIds.push(...rows.map((r) => r.usAnimalId));
+    }
+    console.log(`\nrecomputing preferred US evaluation for ${usAnimalIds.length} animals…`);
+    const n = await bulk!.recomputeUsPreferredBulk(usAnimalIds);
+    console.log(`  ${n} marked preferred`);
+    // The single-animal path is still used by the agent and the review queue.
     for (const id of touched) await persist!.recomputeUsPreferred(id);
   }
 

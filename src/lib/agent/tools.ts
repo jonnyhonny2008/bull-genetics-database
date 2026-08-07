@@ -693,14 +693,21 @@ const AI_CODE_LABEL: Record<string, string> = {
   A: "active AI", G: "genomic young bull being marketed", F: "foreign",
 };
 
+// The AMERICAN roster row, not the Canadian one. An American bull no longer has
+// an Animal at all unless he is also registered in Canada, and reading identity
+// off a Canadian row would have meant inventing one for every CDCB bull — which
+// is exactly the mistake that put 35,766 strangers in the Canadian lineup.
+//
+// Marketed-or-not comes from CDCB's AI-status file, which is fetched separately
+// by id17: it is deliberately NOT a foreign key, because ~5% of its entries name
+// a bull no evaluation mentions and those orphans are kept.
 const US_ANIMAL_CARD = {
-  id: true, primaryName: true, birthDate: true, sex: true,
-  breed: { select: { breedName: true } },
-  identifiers: { where: { active: true }, orderBy: [{ isPrimary: "desc" }, { idType: "asc" }], take: 8, select: { idType: true, idValue: true, isPrimary: true } },
-  // Marketed-or-not is CDCB's AI-status file, NOT the presence of a NAAB code —
-  // plenty of evaluated bulls carry a code and are not being sold.
-  usAiStatus: { orderBy: { roundCode: "desc" }, take: 1, select: { code: true, roundCode: true } },
-} satisfies Prisma.AnimalSelect;
+  usAnimalId: true, id17: true, name: true, birthDate: true, sex: true,
+  naabCode: true, breedCode: true,
+  // The bridge to the Canadian side, present only for a dual-registered bull.
+  animalId: true,
+  animal: { select: { id: true, primaryName: true, breed: { select: { breedName: true } } } },
+} satisfies Prisma.UsAnimalSelect;
 
 const US_EVAL_SELECT = {
   usEvaluationId: true, roundCode: true, runKind: true, evaluationDate: true, isPreferred: true,
@@ -711,7 +718,7 @@ const US_EVAL_SELECT = {
   pl: true, scs: true, dpr: true, ccr: true, ptat: true, rpa: true, liv: true, udc: true, flc: true,
 } satisfies Prisma.UsEvaluationSelect;
 
-type UsCard = Prisma.UsEvaluationGetPayload<{ select: typeof US_EVAL_SELECT & { animal: { select: typeof US_ANIMAL_CARD } } }>;
+type UsCard = Prisma.UsEvaluationGetPayload<{ select: typeof US_EVAL_SELECT & { usAnimal: { select: typeof US_ANIMAL_CARD } } }>;
 
 /**
  * CDCB's proven-vs-genomic answer, which is PER TRAIT GROUP rather than per
@@ -737,21 +744,21 @@ function usMarketed(rows: { code: string; roundCode: string }[]) {
 }
 
 /** One American bull, flattened for the model. Every field is a US figure. */
-function usFlatten(e: UsCard) {
-  const a = e.animal;
+function usFlatten(e: UsCard, aiStatus: { code: string; roundCode: string }[] = []) {
+  const a = e.usAnimal;
   return {
     system: "us" as const,
     units: US_UNITS_NOTE,
-    name: a.primaryName,
-    reg: a.identifiers.find((i) => i.isPrimary)?.idValue ?? null,
-    id17: a.identifiers.find((i) => i.idType === "cdcb_id17")?.idValue ?? null,
-    breed: a.breed?.breedName ?? null,
+    name: a.name ?? a.id17,
+    reg: a.animal?.primaryName ?? null,
+    id17: a.id17,
+    breed: a.animal?.breed?.breedName ?? a.breedCode ?? null,
     evalBreed: e.evalBreed,
     naab: e.naabCode,
     round: e.roundCode ? usRoundLabel(e.roundCode) : null,
     roundCode: e.roundCode,
     runKind: e.runKind,
-    marketed: usMarketed(a.usAiStatus),
+    marketed: usMarketed(aiStatus),
     evaluationBasis: usBasis(e),
     isGraduation: e.isGraduation,
     gtpi: e.tpi,
@@ -894,10 +901,17 @@ async function usTraitRows(e: { gptaJson: string | null; relJson: string | null;
 
 /** The exhaustive American record for one animal. */
 async function buildUsProfile(animalId: string, animalName: string) {
-  const [animal, evals] = await Promise.all([
-    prisma.animal.findUnique({ where: { id: animalId }, select: US_ANIMAL_CARD }),
+  // `animalId` may be a Canadian Animal id (the agent found the bull on that
+  // side) or an id17. Accept either rather than making the caller know which.
+  const animal = await prisma.usAnimal.findFirst({
+    where: { OR: [{ usAnimalId: animalId }, { animalId }, { id17: animalId }] },
+    select: US_ANIMAL_CARD,
+  });
+  if (!animal) return null;
+  const [aiStatus, evals] = await Promise.all([
+    prisma.usAiStatus.findMany({ where: { id17: animal.id17 }, orderBy: { roundCode: "desc" }, take: 1, select: { code: true, roundCode: true } }),
     prisma.usEvaluation.findMany({
-      where: { animalId, approvalStatus: "approved" },
+      where: { usAnimalId: animal.usAnimalId, approvalStatus: "approved" },
       orderBy: { evaluationDate: "desc" },
       select: {
         ...US_EVAL_SELECT, sourceFamily: true, periodKey: true,
@@ -906,7 +920,6 @@ async function buildUsProfile(animalId: string, animalName: string) {
       },
     }),
   ]);
-  if (!animal) return null;
 
   const official = evals.filter((e) => e.runKind === "official");
   const pref = evals.find((e) => e.isPreferred) ?? official[0] ?? null;
@@ -918,12 +931,15 @@ async function buildUsProfile(animalId: string, animalName: string) {
     units: US_UNITS_NOTE,
     found: true,
     animal: {
-      name: animal.primaryName,
+      name: animal.name ?? animal.id17,
       sex: animal.sex,
-      breed: animal.breed?.breedName ?? null,
+      breed: animal.animal?.breed?.breedName ?? animal.breedCode ?? null,
       birthDate: animal.birthDate ? animal.birthDate.toISOString().slice(0, 10) : null,
-      identifiers: animal.identifiers.map((i) => ({ idType: i.idType, idValue: i.idValue, isPrimary: i.isPrimary })),
-      marketed: usMarketed(animal.usAiStatus),
+      id17: animal.id17,
+      naab: animal.naabCode,
+      // Present only when this bull is ALSO registered in Canada.
+      canadianAnimalId: animal.animalId,
+      marketed: usMarketed(aiStatus),
     },
     preferredEvaluation: pref
       ? {
@@ -998,9 +1014,9 @@ export const AGENT_TOOLS: AgentTool[] = [
         const rows = await prisma.usEvaluation.findMany({
           where: { AND }, take: clamp(input.limit, 1, 50, 15),
           orderBy: { animal: { primaryName: "asc" } },
-          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+          select: { ...US_EVAL_SELECT, usAnimal: { select: US_ANIMAL_CARD } },
         });
-        return { summary: `${rows.length} bull(s) with an official US (CDCB) evaluation matched${q ? ` "${q}"` : ""}. ${US_UNITS_NOTE}`, records: rows.map(usFlatten) };
+        return { summary: `${rows.length} bull(s) with an official US (CDCB) evaluation matched${q ? ` "${q}"` : ""}. ${US_UNITS_NOTE}`, records: rows.map((e) => usFlatten(e)) };
       });
       const base = await animalFilter(input);
       const q = typeof input.query === "string" ? input.query.trim() : "";
@@ -1031,7 +1047,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         const row = await prisma.usEvaluation.findFirst({
           where: { animalId: hit.id, runKind: "official", approvalStatus: "approved" },
           orderBy: [{ isPreferred: "desc" }, { evaluationDate: "desc" }],
-          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+          select: { ...US_EVAL_SELECT, usAnimal: { select: US_ANIMAL_CARD } },
         });
         if (!row) {
           return { summary: `${hit.primaryName} is in the database but has no official CDCB evaluation — he has no American proof here. Do not substitute his Canadian figures.`, records: { system: "us", name: hit.primaryName, usEvaluation: null } };
@@ -1074,10 +1090,10 @@ export const AGENT_TOOLS: AgentTool[] = [
         const rows = await prisma.usEvaluation.findMany({
           where: { AND: [...(f.where.AND as Prisma.UsEvaluationWhereInput[]), { [col]: { not: null } }] },
           orderBy: { [col]: dir }, take: clamp(input.limit, 1, 30, 10),
-          select: { ...US_EVAL_SELECT, animal: { select: US_ANIMAL_CARD } },
+          select: { ...US_EVAL_SELECT, usAnimal: { select: US_ANIMAL_CARD } },
         });
         const note = col === "tpi" ? ` ${GTPI_NOTE}` : "";
-        return { summary: `${input.order === "bottom" ? "Lowest" : "Highest"} ${rows.length} on the AMERICAN side by ${col} (official CDCB rounds only). ${US_UNITS_NOTE}${note}`, records: rows.map(usFlatten) };
+        return { summary: `${input.order === "bottom" ? "Lowest" : "Highest"} ${rows.length} on the AMERICAN side by ${col} (official CDCB rounds only). ${US_UNITS_NOTE}${note}`, records: rows.map((e) => usFlatten(e)) };
       });
       const col = traitCol(input.trait as string);
       const dir = input.order === "bottom" ? "asc" : "desc";

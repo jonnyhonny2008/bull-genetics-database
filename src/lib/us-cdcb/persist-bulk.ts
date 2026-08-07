@@ -73,13 +73,13 @@ export async function persistCdcbRound(
 
   // ---- 1. Pre-load the lookup maps. Three queries, not 3 x 51,497. ----------
   const id17s = animals.map((a) => a.id17);
-  const byId17 = new Map<string, string>();
+  const byId17 = new Map<string, string>(); // id17 -> usAnimalId
   for (let i = 0; i < id17s.length; i += 2000) {
-    const rows = await prisma.animalIdentifier.findMany({
-      where: { idType: CDCB_ID_TYPE, idValue: { in: id17s.slice(i, i + 2000) } },
-      select: { animalId: true, idValue: true },
+    const rows = await prisma.usAnimal.findMany({
+      where: { id17: { in: id17s.slice(i, i + 2000) } },
+      select: { usAnimalId: true, id17: true },
     });
-    for (const r of rows) byId17.set(r.idValue, r.animalId);
+    for (const r of rows) byId17.set(r.id17, r.usAnimalId);
   }
 
   // Registration forms for the animals we have NOT already linked.
@@ -110,13 +110,17 @@ export async function persistCdcbRound(
   }
 
   // ---- 2. Resolve every animal in memory ----------------------------------
-  const breeds = new Map((await prisma.breed.findMany({ select: { breedId: true, breedCode: true } })).map((b) => [b.breedCode, b.breedId]));
-  const toCreate: { a: CdcbAnimal }[] = [];
-  const resolved = new Map<string, string>(); // id17 -> animalId
+  //
+  // "Resolve" now means resolve to a UsAnimal, not to an Animal. Matching a
+  // Canadian registration no longer DECIDES whether a row is created — every
+  // American bull gets his own UsAnimal either way. It only decides whether that
+  // row carries a bridge back to a Canadian Animal, which is what makes the
+  // double card and the nav toggle work for a dual-registered bull.
+  const toUpsert: { a: CdcbAnimal; animalId: string | null }[] = [];
+  const resolved = new Map<string, string>(); // id17 -> usAnimalId
 
   for (const a of animals) {
-    const already = byId17.get(a.id17);
-    if (already) { resolved.set(a.id17, already); out.linked++; continue; }
+    let bridge: string | null = null;
 
     let hit: { animalId: string; idValue: string; name: string } | undefined;
     for (const r of regCandidatesFor(a.id17, a.info.SEX === "F" ? "F" : "M")) {
@@ -130,61 +134,68 @@ export async function persistCdcbRound(
         storedName: hit.name, cdcbName: a.info.ANIM_NAME,
         storedNaab: naabByAnimal.get(hit.animalId), cdcbNaab: a.info.NAAB_CODE,
       });
-      if (check.linked) { resolved.set(a.id17, hit.animalId); out.linked++; continue; }
-      // Refused: a plausible match whose evidence disagrees. Record it and import
-      // as a separate animal rather than writing over another bull's identity.
-      out.conflicts.push({ id17: a.id17, reason: check.conflict ?? "unconfirmed candidate match" });
+      if (check.linked) { bridge = hit.animalId; out.linked++; }
+      else {
+        // A plausible match whose evidence disagrees. Record it and leave the
+        // bridge unset rather than claiming this is the same bull.
+        out.conflicts.push({ id17: a.id17, reason: check.conflict ?? "unconfirmed candidate match" });
+      }
     }
-    toCreate.push({ a });
+    toUpsert.push({ a, animalId: bridge });
   }
 
-  // ---- 3. Create the new animals in chunks --------------------------------
-  for (let i = 0; i < toCreate.length; i += CHUNK) {
-    const slice = toCreate.slice(i, i + CHUNK);
-    // createMany cannot return ids, so create then re-read by a marker we control:
-    // the cdcb id17 identifier we write immediately after.
+  // ---- 3. Upsert the UsAnimal rows ----------------------------------------
+  //
+  // ONE PASS, KEYED ON id17. The old code created Animal rows in one pass and
+  // tagged them with an identifier in the next, which left every row created
+  // before an interruption indistinguishable from a Canadian animal — 27,000 of
+  // them on 2026-08-07. id17 is CDCB's own primary key and it is unique on this
+  // table, so a row is identified the moment it exists and a re-run simply
+  // updates it. There is no window.
+  for (let i = 0; i < toUpsert.length; i += CHUNK) {
+    const slice = toUpsert.slice(i, i + CHUNK);
     const made = await prisma.$transaction(
-      slice.map(({ a }) => prisma.animal.create({
-        data: {
-          primaryName: a.info.ANIM_NAME?.trim() || a.id17,
+      slice.map(({ a, animalId }) => {
+        const fields = {
+          name: a.info.ANIM_NAME?.trim() || a.id17,
+          naabCode: a.info.NAAB_CODE ? normalizeNaab(a.info.NAAB_CODE) : null,
+          breedCode: a.info.EVAL_BREED ?? null,
           sex: a.info.SEX === "F" ? "F" : "M",
-          breedId: a.info.EVAL_BREED ? breeds.get(a.info.EVAL_BREED) ?? null : null,
           birthDate: dateFromYmd(a.info.BIRTH),
-          countryOfOrigin: parseId17(a.id17)?.country === "CAN" ? "CA" : "US",
-          currentStatus: "active",
-          createdById: ctx.userId ?? undefined,
-          notes: `Imported from CDCB (${ctx.sourceFile}).`,
-        },
-        select: { id: true },
-      })),
+          sire17: a.info.SIRE_ID ?? null,
+          dam17: a.info.DAM_ID ?? null,
+        };
+        return prisma.usAnimal.upsert({
+          where: { id17: a.id17 },
+          // A later round may resolve a bridge an earlier one could not, so set it
+          // when we have one — but never CLEAR a bridge already established.
+          update: { ...fields, ...(animalId ? { animalId } : {}) },
+          create: { id17: a.id17, animalId, ...fields },
+          select: { usAnimalId: true, id17: true },
+        });
+      }),
     );
-    made.forEach((m, k) => resolved.set(slice[k].a.id17, m.id));
-    out.createdAnimals += made.length;
-  }
-
-  // ---- 4. Tag every animal with its CDCB id (skip ones already tagged) -----
-  const needTag = animals.filter((a) => !byId17.has(a.id17)).map((a) => ({
-    animalId: resolved.get(a.id17)!, idType: CDCB_ID_TYPE, idValue: a.id17, active: true,
-  })).filter((r) => r.animalId);
-  for (let i = 0; i < needTag.length; i += CHUNK) {
-    await prisma.animalIdentifier.createMany({ data: needTag.slice(i, i + CHUNK) });
+    for (const m of made) {
+      if (!byId17.has(m.id17)) out.createdAnimals++;
+      resolved.set(m.id17, m.usAnimalId);
+    }
   }
 
   // ---- 5. Write the evaluations -------------------------------------------
   // Delete-then-create for this (period, family) so a re-import is idempotent —
   // the same pattern the Canadian importer uses. Scoped to the animals in THIS
   // file, so it can never touch a round it is not importing.
-  const animalIds = [...resolved.values()];
-  for (let i = 0; i < animalIds.length; i += 2000) {
+  const usAnimalIds = [...resolved.values()];
+  for (let i = 0; i < usAnimalIds.length; i += 2000) {
     await prisma.usEvaluation.deleteMany({
-      where: { animalId: { in: animalIds.slice(i, i + 2000) }, periodKey: file.periodKey, sourceFamily: file.family },
+      where: { usAnimalId: { in: usAnimalIds.slice(i, i + 2000) }, periodKey: file.periodKey, sourceFamily: file.family },
     });
   }
 
   const rows: Prisma.UsEvaluationCreateManyInput[] = [];
   for (const a of animals) {
-    const animalId = resolved.get(a.id17);
-    if (!animalId) continue;
+    const usAnimalId = resolved.get(a.id17);
+    if (!usAnimalId) continue;
 
     const gpta: Record<string, number> = {}, rel: Record<string, number> = {};
     const gsons: Record<string, number> = {}, dgv: Record<string, number> = {}, pa: Record<string, number> = {};
@@ -214,7 +225,7 @@ export async function persistCdcbRound(
     for (const [k, v] of Object.entries(a.info)) if (HAPLO.test(k) && v) haplo[k] = v;
 
     rows.push({
-      animalId, id17: a.id17,
+      usAnimalId, id17: a.id17,
       sourceFamily: file.family!, runKind: file.kind!, roundCode: file.roundCode, periodKey: file.periodKey!,
       evaluationDate, evalBreed: a.info.EVAL_BREED || null,
       isPtaMilk: yn(a.info.IS_PTA_MILK), isPtaCt: yn(a.info.IS_PTA_CT),
@@ -253,18 +264,18 @@ export async function persistCdcbRound(
  * Only triannual ('official') rows are candidates, so a provisional monthly add
  * can never become an animal's authoritative US proof.
  */
-export async function recomputeUsPreferredBulk(animalIds: string[]): Promise<number> {
+export async function recomputeUsPreferredBulk(usAnimalIds: string[]): Promise<number> {
   let set = 0;
-  for (let i = 0; i < animalIds.length; i += 2000) {
-    const slice = animalIds.slice(i, i + 2000);
-    await prisma.usEvaluation.updateMany({ where: { animalId: { in: slice } }, data: { isPreferred: false } });
+  for (let i = 0; i < usAnimalIds.length; i += 2000) {
+    const slice = usAnimalIds.slice(i, i + 2000);
+    await prisma.usEvaluation.updateMany({ where: { usAnimalId: { in: slice } }, data: { isPreferred: false } });
     const rows = await prisma.usEvaluation.findMany({
-      where: { animalId: { in: slice }, runKind: "official", approvalStatus: "approved" },
+      where: { usAnimalId: { in: slice }, runKind: "official", approvalStatus: "approved" },
       orderBy: [{ evaluationDate: "desc" }, { sourceFamily: "asc" }],
-      select: { usEvaluationId: true, animalId: true },
+      select: { usEvaluationId: true, usAnimalId: true },
     });
     const winner = new Map<string, string>();
-    for (const r of rows) if (!winner.has(r.animalId)) winner.set(r.animalId, r.usEvaluationId);
+    for (const r of rows) if (!winner.has(r.usAnimalId)) winner.set(r.usAnimalId, r.usEvaluationId);
     const ids = [...winner.values()];
     for (let k = 0; k < ids.length; k += 1000) {
       const res = await prisma.usEvaluation.updateMany({ where: { usEvaluationId: { in: ids.slice(k, k + 1000) } }, data: { isPreferred: true } });

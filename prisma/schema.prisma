@@ -230,6 +230,7 @@ model Animal {
   reviewItems     ImportReviewQueue[]
   watchers        Watchlist[]
   usEvaluations   UsEvaluation[]
+  usAnimals       UsAnimal[]
   usAiStatus      UsAiStatus[]
 
   @@index([primaryName])
@@ -632,9 +633,62 @@ model Watchlist {
 // female files use the same layout and are expected — nothing here assumes sex.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// THE AMERICAN ROSTER — a table of its own, deliberately.
+//
+// The two programs shared the Animal table until 2026-08-07, and it did not hold.
+// The CDCB extract names a sire and a dam for every bull, so importing one round
+// created ~21,500 bare Animal rows for ancestors carrying no identifier, no
+// evaluation and no mark of any kind. Nothing in the data distinguished them from
+// a hand-entered Canadian animal, so no filter could keep them out of the Canadian
+// lineup — two predicates were tried and leaked 18,500 and 20,000 rows. The fix is
+// not a cleverer predicate. It is not sharing the table.
+//
+// IDENTITY IS id17, NOT A CUID. CDCB publishes a real primary key, so this table
+// uses it as the unique axis; that is what makes the importer idempotent.
+//
+// animalId IS THE BRIDGE, AND IT IS OPTIONAL. A bull registered in both countries
+// points at his Canadian Animal row, which is what lets the nav toggle carry him
+// across and the double card show both evaluations. Most rows will never have one,
+// and that is the normal case — an American bull is not a defective Canadian one.
+// ---------------------------------------------------------------------------
+model UsAnimal {
+  usAnimalId String    @id @default(cuid())
+  // CDCB's 17-char id: 2-char breed + 3-char country + 12-digit herdbook number.
+  id17       String    @unique
+  name       String?
+  // Zero-padded NAAB/stud code, e.g. 007HO16276. Absence means no AI code.
+  naabCode   String?
+  breedCode  String?
+  sex        String?
+  birthDate  DateTime?
+  // id17 of sire and dam as CDCB names them. Plain strings ON PURPOSE: an
+  // ancestor is a REFERENCE, not a reason to manufacture a row. Treating one as
+  // the other is the entire defect that moved this roster out of Animal.
+  sire17     String?
+  dam17      String?
+  // Set when this bull is also registered in Canada — the double-card bridge.
+  animalId   String?
+  isBlondin  Boolean   @default(false)
+  archived   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  animal      Animal?        @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  evaluations UsEvaluation[]
+
+  @@index([animalId])
+  @@index([naabCode])
+  @@index([breedCode])
+  @@index([name])
+}
+
 model UsEvaluation {
   usEvaluationId String   @id @default(cuid())
-  animalId       String
+  usAnimalId     String
+  // Legacy bridge to the Canadian Animal row. Optional now that UsAnimal owns the
+  // American roster; still set for dual-registered bulls.
+  animalId       String?
   // CDCB's 17-char id: 2-char breed + 3-char country + 12-digit herdbook number.
   id17           String
 
@@ -731,16 +785,18 @@ model UsEvaluation {
   createdById    String?
   createdAt      DateTime @default(now())
 
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  usAnimal UsAnimal @relation(fields: [usAnimalId], references: [usAnimalId], onDelete: Cascade)
+  animal   Animal?  @relation(fields: [animalId], references: [id], onDelete: SetNull)
 
-  @@unique([animalId, periodKey, sourceFamily])
+  @@unique([usAnimalId, periodKey, sourceFamily])
   @@index([id17])
   @@index([roundCode, runKind])
   @@index([isPreferred, tpi])
   @@index([isPreferred, nmDollar])
   @@index([isPreferred, ptat])
   @@index([isPreferred, jpi])
-  @@index([animalId, evaluationDate])
+  @@index([usAnimalId, evaluationDate])
+  @@index([animalId])
 }
 
 // CDCB's AI status file — the US answer to "is this bull actually marketed".
@@ -758,9 +814,15 @@ model UsAiStatus {
   createdAt DateTime @default(now())
 
   animal Animal? @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  // DELIBERATELY NOT a Prisma relation to UsAnimal. A foreign key would REJECT
+  // the orphans, and the orphans are real: the status file and the evaluation
+  // files are published independently, and about 5% of status entries name a bull
+  // no evaluation in that round mentions. Those rows are evidence, not corruption.
+  // Code joins on id17 with an explicit lookup instead.
 
   @@unique([id17, roundCode])
   @@index([animalId])
+  @@index([id17])
   @@index([roundCode, code])
 }
 

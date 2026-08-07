@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Card, Badge, EmptyState, Table } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { US_KEY_TRAITS, US_SORTABLE_KEY_TRAITS, formatUsTrait } from "@/lib/us-cdcb/key-traits";
+import { usSpecialists, parseUsSpecialistCodes, parseUsSpecialistLevel, US_SPECIALIST_TRAITS, type UsSpecialistLevel } from "@/lib/us-cdcb/specialists";
+import { SpecialistPicker } from "@/components/SpecialistPicker";
 import { CDCB_BREEDS } from "@/lib/us-cdcb/file-kind";
 import { usRoundLabel } from "@/lib/us-cdcb/proof-change";
 import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound } from "@/lib/us-cdcb/list-filters";
@@ -40,6 +42,12 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
   const q = (sp.q ?? "").trim();
   const role = sp.role ?? "";
   const favUserId = sp.fav === "1" && user ? user.uid : null;
+  // SPECIALISTS IS A SEARCH, NOT A PLACE. It narrows this list to the bulls that
+  // are solidly positive for every picked trait, so it composes with breed, role,
+  // favourites, sorting and paging instead of being a separate ranked page that
+  // silently ignores them.
+  const specCodes = parseUsSpecialistCodes(sp.spec);
+  const specLevel = parseUsSpecialistLevel(sp.specLevel);
 
   // Only rankable traits may be sorted on — rump angle has an intermediate
   // optimum, so "highest first" would be a meaningless ordering.
@@ -47,10 +55,10 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
     ?? US_SORTABLE_KEY_TRAITS[0];
 
   let rows: Awaited<ReturnType<typeof loadRows>> = {
-    list: [], total: 0, roleCounts: {}, statusRound: null, aiByAnimal: new Map<string, string>(), missingTables: false,
+    list: [], total: 0, roleCounts: {}, statusRound: null, aiByAnimal: new Map<string, string>(), spec: null, missingTables: false,
   };
   try {
-    rows = await loadRows({ page, dir, breed, q, role, favUserId, sortColumn: sortTrait.column });
+    rows = await loadRows({ page, dir, breed, q, role, favUserId, sortColumn: sortTrait.column, specCodes, specLevel });
   } catch (e) {
     // The US tables are created by `prisma db push`. Until that has run, say so
     // plainly rather than rendering a 500 — this is a setup state, not a fault.
@@ -64,7 +72,7 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
   const favIds = user && rows.list.length
     ? new Set(
         (await prisma.watchlist.findMany({
-          where: { userId: user.uid, animalId: { in: rows.list.map((r) => r.animalId) } },
+          where: { userId: user.uid, animalId: { in: rows.list.map((r) => r.animalId).filter((x): x is string => !!x) } },
           select: { animalId: true },
         })).map((w) => w.animalId),
       )
@@ -138,9 +146,25 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
           <UsRolePills sp={sp} counts={rows.roleCounts} statusRound={rows.statusRound} />
 
           <div className="mb-3 flex flex-wrap items-center gap-3">
+            <SpecialistPicker traits={US_SPECIALIST_TRAITS.map((t) => ({ code: t.code, name: t.name, group: t.group }))} />
             <UsFavouritesToggle sp={sp} signedIn={Boolean(user)} />
             {user && <UsSavedSearches path="/us/animals" currentQuery={currentQuery} searches={savedSearches} />}
           </div>
+
+          {/* What the bar actually was, stated in the results rather than hidden in
+              the picker: a specialist search is only as meaningful as the pool it
+              was measured against. */}
+          {rows.spec && (
+            <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900">
+              <strong>Specialist search.</strong> {rows.spec.rows.length} of {fmtNum(rows.spec.scoredN)} bulls in the
+              official {breed || "all-breed"} pool are solidly positive for {specCodes.join(", ")}
+              {rows.spec.bars.length > 0 && (
+                <> — the bar is {rows.spec.bars.filter((b) => b.threshold != null).map((b) => `${b.code} ≥ ${b.threshold!.toFixed(2)}`).join(", ")}</>
+              )}
+              . Every other filter, the sort and the paging still apply.
+              {rows.spec.truncated && <> Only the strongest matches are shown.</>}
+            </div>
+          )}
 
           {rows.list.length === 0 ? (
             <EmptyState message="No bulls match. Try widening the search, breed or role." />
@@ -166,13 +190,12 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
                   <th className="th">Round</th>
                 </>}>
                   {rows.list.map((r) => {
-                    const ai = rows.aiByAnimal.get(r.animalId) ?? null;
+                    const ai = rows.aiByAnimal.get(r.id17) ?? null;
                     return (
                       <tr key={r.usEvaluationId} className="hover:bg-slate-50">
-                        <td className="td text-center"><FavouriteStar animalId={r.animalId} initial={favIds.has(r.animalId)} size="sm" /></td>
+                        <td className="td text-center">{r.animalId ? <FavouriteStar animalId={r.animalId} initial={favIds.has(r.animalId)} size="sm" /> : null}</td>
                         <td className="td">
-                          <Link href={`/us/animals/${r.animalId}`} className="link font-medium">{r.animal.primaryName}</Link>
-                          {r.animal.shortName && <span className="ml-1 text-xs text-slate-400">({r.animal.shortName})</span>}
+                          <Link href={`/us/animals/${r.usAnimalId}`} className="link font-medium">{r.usAnimal.name ?? r.id17}</Link>
                           {r.naabCode && <span className="mt-0.5 block font-mono text-[10px] text-slate-400">NAAB {r.naabCode}</span>}
                         </td>
                         <td className="td text-xs text-slate-500">{r.evalBreed ?? "—"}</td>
@@ -252,6 +275,8 @@ async function loadRows(opts: {
   role: string;
   favUserId: string | null;
   sortColumn: string;
+  specCodes: string[];
+  specLevel: UsSpecialistLevel;
 }) {
   // The AI-status file is published per round, so "active" means active in the
   // latest file we hold — not "has ever been marketed".
@@ -264,6 +289,15 @@ async function loadRows(opts: {
   if (opts.favUserId) AND.push(usFavouriteWhere(opts.favUserId));
   const roleWhere = usRoleWhere(opts.role, statusRound);
   if (roleWhere) AND.push(roleWhere);
+
+  // The bar is set against the whole official pool for the breed — a stable
+  // reference — and the qualifying ids are folded back into the query so every
+  // other filter, the sort and the paging still apply.
+  let spec: Awaited<ReturnType<typeof usSpecialists>> | null = null;
+  if (opts.specCodes.length) {
+    spec = await usSpecialists({ codes: opts.specCodes, level: opts.specLevel, breed: opts.breed || undefined, limit: 5000 });
+    AND.push({ usAnimalId: { in: spec.rows.map((r) => r.animalId) } });
+  }
   const where: Prisma.UsEvaluationWhereInput = { AND };
 
   // The pill counts answer "what would this pill give me", so they honour every
@@ -279,10 +313,10 @@ async function loadRows(opts: {
       skip: (opts.page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        usEvaluationId: true, animalId: true, evalBreed: true, naabCode: true,
+        usEvaluationId: true, usAnimalId: true, id17: true, animalId: true, evalBreed: true, naabCode: true,
         roundCode: true, runKind: true, tpi: true, tpiFormulaVersion: true, isPtaMilk: true,
         nmDollar: true, ptat: true, milk: true, rpa: true, dpr: true, ccr: true,
-        animal: { select: { primaryName: true, shortName: true } },
+        usAnimal: { select: { name: true, id17: true, animalId: true } },
       },
     }),
     usRoleCounts(roleBase, statusRound),
@@ -292,12 +326,12 @@ async function loadRows(opts: {
   // filter on so a badge and a pill can never disagree.
   const aiRows = list.length && statusRound
     ? await prisma.usAiStatus.findMany({
-        where: { roundCode: statusRound, animalId: { in: list.map((r) => r.animalId) } },
-        select: { animalId: true, code: true },
+        where: { roundCode: statusRound, id17: { in: list.map((r) => r.id17) } },
+        select: { id17: true, code: true },
       })
     : [];
   const aiByAnimal = new Map<string, string>();
-  for (const a of aiRows) if (a.animalId) aiByAnimal.set(a.animalId, a.code);
+  for (const a of aiRows) aiByAnimal.set(a.id17, a.code);
 
-  return { list, total, roleCounts, statusRound, aiByAnimal, missingTables: false };
+  return { list, total, roleCounts, statusRound, aiByAnimal, spec, missingTables: false };
 }

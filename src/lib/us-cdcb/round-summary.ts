@@ -50,7 +50,7 @@ export const LIST_LIMIT = 25;
 const MIN_COHORT = 3;
 
 export interface Mover {
-  animalId: string;
+  usAnimalId: string;
   name: string;
   naabCode: string | null;
   evalBreed: string | null;
@@ -164,32 +164,32 @@ export async function getUsRoundSummary(): Promise<UsRoundSummary> {
       // and prefers the daughter-proven publication.
       orderBy: { sourceFamily: "asc" },
       select: {
-        animalId: true, tpi: true, isGraduation: true, naabCode: true, evalBreed: true,
-        animal: { select: { primaryName: true } },
+        usAnimalId: true, tpi: true, isGraduation: true, naabCode: true, evalBreed: true,
+        usAnimal: { select: { name: true } }, id17: true,
       },
     }),
     prisma.usEvaluation.findMany({
       where: { roundCode: previousRound, runKind: "official", approvalStatus: "approved", tpi: { not: null } },
       orderBy: { sourceFamily: "asc" },
-      select: { animalId: true, tpi: true },
+      select: { usAnimalId: true, tpi: true },
     }),
   ]);
 
   const previousTpi = new Map<string, number>();
-  for (const r of previousRows) if (r.tpi != null && !previousTpi.has(r.animalId)) previousTpi.set(r.animalId, r.tpi);
+  for (const r of previousRows) if (r.tpi != null && !previousTpi.has(r.usAnimalId)) previousTpi.set(r.usAnimalId, r.tpi);
 
   const seen = new Set<string>();
   const movers: Mover[] = [];
   let updated = 0;
   for (const r of latestRows) {
-    if (seen.has(r.animalId)) continue;
-    seen.add(r.animalId);
+    if (seen.has(r.usAnimalId)) continue;
+    seen.add(r.usAnimalId);
     updated++;
-    const previous = previousTpi.get(r.animalId);
+    const previous = previousTpi.get(r.usAnimalId);
     if (previous == null || r.tpi == null) continue;
     movers.push({
-      animalId: r.animalId,
-      name: r.animal.primaryName,
+      usAnimalId: r.usAnimalId,
+      name: r.usAnimal.name ?? r.id17,
       naabCode: r.naabCode,
       evalBreed: r.evalBreed,
       previous,

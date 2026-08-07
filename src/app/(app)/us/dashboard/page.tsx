@@ -207,9 +207,9 @@ async function load() {
     isPreferred: true, runKind: "official", approvalStatus: "approved",
   };
   const topSelect = {
-    usEvaluationId: true, animalId: true, evalBreed: true, naabCode: true,
+    usEvaluationId: true, usAnimalId: true, evalBreed: true, naabCode: true,
     tpi: true, tpiFormulaVersion: true, nmDollar: true, ptat: true,
-    animal: { select: { primaryName: true } },
+    usAnimal: { select: { name: true, id17: true } },
   } as const;
 
   const [total, roundGroups, breedGroups, provenGroups, topTpi, topNm, fileGroups] = await Promise.all([
@@ -338,14 +338,16 @@ function roundLabel(code: string | null | undefined): string {
 
 interface TopRow {
   usEvaluationId: string;
-  animalId: string;
+  usAnimalId: string;
   evalBreed: string | null;
   naabCode: string | null;
   tpi: number | null;
   tpiFormulaVersion: string | null;
   nmDollar: number | null;
   ptat: number | null;
-  animal: { primaryName: string };
+  // Identity comes off the AMERICAN roster: an American bull has no Canadian
+  // Animal row unless he happens to be registered in Canada too.
+  usAnimal: { name: string | null; id17: string };
 }
 
 /**
@@ -367,7 +369,7 @@ function TopTable({ rows, valueLabel }: { rows: TopRow[]; valueLabel: "GTPI" | "
           <tr key={r.usEvaluationId} className="hover:bg-slate-50">
             <td className="td text-slate-400">{i + 1}</td>
             <td className="td">
-              <Link href={`/us/animals/${r.animalId}`} className="link font-medium">{r.animal.primaryName}</Link>
+              <Link href={`/us/animals/${r.usAnimalId}`} className="link font-medium">{(r.usAnimal.name ?? r.usAnimal.id17)}</Link>
               {r.naabCode && <span className="mt-0.5 block font-mono text-[10px] text-slate-400">NAAB {r.naabCode}</span>}
             </td>
             <td className="td text-xs text-slate-500">{r.evalBreed ?? "—"}</td>

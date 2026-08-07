@@ -48,8 +48,11 @@ test("a page the other side does not have falls back to its dashboard, never a 4
   for (const p of ["/parent-average", "/uploads", "/import-proofs", "/animal-import", "/review", "/sources", "/traits", "/breeds", "/admin", "/admin/errors"]) {
     assert.equal(toSystem(p, "us"), "/us/dashboard", p);
   }
-  // And America has one Canada does not.
+  // Specialists was America's one exclusive page. It is now a trait picker inside
+  // BOTH animals lists — a search, not a place — so the path is dead on both sides
+  // and must land on a dashboard rather than a 404.
   assert.equal(toSystem("/us/specialists", "ca"), "/dashboard");
+  assert.equal(toSystem("/specialists", "us"), "/us/dashboard");
 });
 
 test("nested report pages cross over only where they really exist", () => {
@@ -86,8 +89,9 @@ test("systemFromPathname does not mistake a lookalike path for the US side", () 
 test("route availability reflects what each side actually has", () => {
   assert.ok(routeAvailable("/animals", "us"));
   assert.ok(!routeAvailable("/parent-average", "us"), "needs female data CDCB does not publish");
-  assert.ok(!routeAvailable("/specialists", "ca"), "Canada has this as a picker inside the animals list");
-  assert.ok(routeAvailable("/specialists", "us"));
+  // Neither side has a specialists PAGE: both have the picker in their list.
+  assert.ok(!routeAvailable("/specialists", "ca"));
+  assert.ok(!routeAvailable("/specialists", "us"));
   assert.equal(systemHref("/animals", "us"), "/us/animals");
   assert.equal(systemHref("/animals", "ca"), "/animals");
 });

@@ -69,29 +69,57 @@ export default async function UsSireCard({
   const user = currentUser();
   if (!can(user?.role, "animal:read")) redirect("/dashboard");
 
-  const animal = await prisma.animal.findFirst({
-    where: { id: params.id, archived: false },
+  // THE ID IN THE URL MAY BE EITHER SIDE'S. The nav toggle is a pure function of
+  // the pathname — it cannot query — so when it carries a bull across from
+  // /animals/<canadian-id> it hands that id straight to this page. Accepting the
+  // American key, the CDCB id17, and the Canadian id keeps the toggle a one-click
+  // move instead of a lookup, and makes /us/animals/<id17> a usable URL to type.
+  const usAnimal = await prisma.usAnimal.findFirst({
+    where: {
+      archived: false,
+      OR: [{ usAnimalId: params.id }, { id17: params.id }, { animalId: params.id }],
+    },
     select: {
-      id: true, primaryName: true, shortName: true, sex: true, birthDate: true,
-      breed: { select: { breedName: true } },
-      identifiers: {
-        orderBy: [{ isPrimary: "desc" }, { idType: "asc" }],
-        select: { identifierId: true, idType: true, idValue: true, isPrimary: true, source: { select: { sourceName: true } } },
+      usAnimalId: true, id17: true, name: true, sex: true, birthDate: true,
+      naabCode: true, breedCode: true, sire17: true, dam17: true, animalId: true,
+      // The Canadian record, when this bull has one. Its absence is the ordinary
+      // case and is not an error: most American bulls are not Canadian bulls.
+      animal: {
+        select: {
+          id: true, primaryName: true, shortName: true,
+          breed: { select: { breedName: true } },
+          identifiers: {
+            orderBy: [{ isPrimary: "desc" }, { idType: "asc" }],
+            select: { identifierId: true, idType: true, idValue: true, isPrimary: true, source: { select: { sourceName: true } } },
+          },
+        },
       },
     },
   });
-  if (!animal) notFound();
+  if (!usAnimal) notFound();
 
-  const isFav = user
+  // A shape the rest of the page can read the way it always has, with the
+  // American roster as the source of identity and the Canadian row as the extra.
+  const animal = {
+    id: usAnimal.usAnimalId,
+    primaryName: usAnimal.name ?? usAnimal.id17,
+    shortName: usAnimal.animal?.shortName ?? null,
+    sex: usAnimal.sex ?? "M",
+    birthDate: usAnimal.birthDate,
+    breed: usAnimal.animal?.breed ?? (usAnimal.breedCode ? { breedName: usAnimal.breedCode } : null),
+    identifiers: usAnimal.animal?.identifiers ?? [],
+  };
+
+  const isFav = user && usAnimal.animalId
     ? !!(await prisma.watchlist.findUnique({
-        where: { userId_animalId: { userId: user.uid, animalId: animal.id } },
+        where: { userId_animalId: { userId: user.uid, animalId: usAnimal.animalId } },
         select: { id: true },
       }))
     : false;
 
   let us: UsData = { rounds: [], betweenRoundRows: 0, betweenRoundLatest: null, aiStatuses: [], missingTables: false };
   try {
-    us = await loadUs(animal.id);
+    us = await loadUs(usAnimal.usAnimalId, usAnimal.id17);
   } catch (e) {
     // The US tables are created by `prisma db push`. Until that has run this is a
     // setup state, not a fault — say so rather than rendering a 500.
@@ -783,9 +811,9 @@ interface UsData {
 
 type UsRound = Awaited<ReturnType<typeof loadRounds>>[number];
 
-function loadRounds(animalId: string) {
+function loadRounds(usAnimalId: string) {
   return prisma.usEvaluation.findMany({
-    where: { animalId, runKind: "official", approvalStatus: "approved" },
+    where: { usAnimalId, runKind: "official", approvalStatus: "approved" },
     orderBy: { evaluationDate: "desc" },
     select: {
       usEvaluationId: true, id17: true, roundCode: true, periodKey: true, sourceFamily: true, runKind: true,
@@ -802,12 +830,12 @@ function loadRounds(animalId: string) {
   });
 }
 
-async function loadUs(animalId: string): Promise<UsData> {
+async function loadUs(usAnimalId: string, id17: string): Promise<UsData> {
   const [rounds, betweenRoundRows, betweenLatest, aiStatuses] = await Promise.all([
-    loadRounds(animalId),
-    prisma.usEvaluation.count({ where: { animalId, runKind: { not: "official" } } }),
+    loadRounds(usAnimalId),
+    prisma.usEvaluation.count({ where: { usAnimalId, runKind: { not: "official" } } }),
     prisma.usEvaluation.findFirst({
-      where: { animalId, runKind: { not: "official" } },
+      where: { usAnimalId, runKind: { not: "official" } },
       orderBy: { evaluationDate: "desc" },
       select: { periodKey: true },
     }),
@@ -815,8 +843,11 @@ async function loadUs(animalId: string): Promise<UsData> {
     // carrying a NAAB code is not that answer. It is keyed on the round, so the
     // header shows only the code matching the round on display; the full list is
     // on the Provenance tab.
+    // Keyed on id17, not on any animal id: the status file is published
+    // independently of the evaluation files, so its rows are matched by CDCB's
+    // own identifier rather than by a foreign key that would reject the orphans.
     prisma.usAiStatus.findMany({
-      where: { animalId },
+      where: { id17 },
       orderBy: { roundCode: "desc" },
       select: { roundCode: true, code: true },
     }),
@@ -842,15 +873,18 @@ async function resolveParents(sire17: string | null, dam17: string | null) {
   const ids = [sire17, dam17].filter((x): x is string => !!x);
   const none = { sire: null, dam: null };
   if (ids.length === 0) return none;
-  const rows = await prisma.animalIdentifier.findMany({
-    where: { idType: "cdcb_id17", idValue: { in: ids } },
-    select: { idValue: true, animalId: true, animal: { select: { primaryName: true, archived: true } } },
+  // A parent links ONLY if CDCB evaluated him too and he is therefore already on
+  // the American roster. This is the honest version of what the old code did:
+  // it resolved through cdcb_id17 identifiers, and the importer manufactured an
+  // Animal row for every sire and dam it met so those identifiers would exist —
+  // which is how 35,766 unproofed strangers ended up in the Canadian lineup. A
+  // named ancestor is a REFERENCE. If he is not evaluated, he gets no row and no
+  // link, and the card simply shows his id17.
+  const rows = await prisma.usAnimal.findMany({
+    where: { id17: { in: ids }, archived: false },
+    select: { id17: true, usAnimalId: true, name: true },
   });
-  const byId = new Map(
-    rows
-      .filter((r) => !r.animal?.archived)
-      .map((r) => [r.idValue, { animalId: r.animalId, name: r.animal?.primaryName ?? null }]),
-  );
+  const byId = new Map(rows.map((r) => [r.id17, { animalId: r.usAnimalId, name: r.name }]));
   return {
     sire: sire17 ? byId.get(sire17) ?? null : null,
     dam: dam17 ? byId.get(dam17) ?? null : null,

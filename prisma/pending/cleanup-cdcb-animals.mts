@@ -1,36 +1,62 @@
-// Removes the CDCB-imported rows from the SHARED Animal table, restoring the
-// Canadian side to "only the animals that were in the DB before the American
-// addition". Run with:
+// Clears the ground for the split American roster.
+//
 //   npx dotenv -e .env.production -- npx tsx --conditions=react-server prisma/pending/cleanup-cdcb-animals.mts
 //
-// SAFE BY CONSTRUCTION: it only touches animals whose notes the CDCB importer
-// stamped, and it re-asserts — inside the deleting run, not just beforehand —
-// that none of them carries a Canadian proof, classification or milk record.
-// Verified 2026-08-07 against production: 35,766 matched, 0 carried Canadian data.
-// Everything it deletes is re-creatable from the files in imports/cdcb.
+// WHY THIS HAS TO RUN BEFORE `prisma db push`. The push adds UsEvaluation.usAnimalId
+// as NOT NULL, and Postgres will refuse that against the rows already in the table
+// because there is no value to give them. Those rows are re-creatable in full from
+// the files in imports/cdcb, so emptying the American tables costs nothing and is
+// the honest way through — inventing a placeholder id17 for each one would not be.
+//
+// WHAT IT TOUCHES, AND WHAT IT REFUSES TO
+//
+//   * every UsEvaluation and UsAiStatus row — American data, rebuilt by the import;
+//   * the Animal rows the CDCB importer created, identified by the notes stamp it
+//     writes. Verified against production 2026-08-07: 35,766 matched, and NONE of
+//     them carried a Canadian proof, classification or milk record.
+//
+// It re-asserts that last condition INSIDE the deleting run rather than only
+// beforehand, so it cannot fire against a database whose state moved underneath it.
+// If a single matched animal has Canadian data, nothing is deleted at all.
+//
+// The Canadian side is untouched: after this, Animal holds only what predates the
+// American addition, which is what the owner asked for.
 import { prisma } from "../../src/lib/db";
 
-const CDCB = { notes: { contains: "Imported from CDCB" } };
+const CDCB_CREATED = { notes: { contains: "Imported from CDCB" } };
 
 async function main() {
   const unsafe = await prisma.animal.count({
-    where: { ...CDCB, OR: [{ evaluations: { some: {} } }, { classifications: { some: {} } }, { milkRecords: { some: {} } }] },
+    where: {
+      ...CDCB_CREATED,
+      OR: [{ evaluations: { some: {} } }, { classifications: { some: {} } }, { milkRecords: { some: {} } }],
+    },
   });
-  if (unsafe) { console.error(`ABORT: ${unsafe} carry Canadian data`); process.exit(2); }
+  if (unsafe) {
+    console.error(`ABORT: ${unsafe} CDCB-created animals carry Canadian data. Nothing deleted.`);
+    process.exit(2);
+  }
+
+  const evals = await prisma.usEvaluation.deleteMany({});
+  const status = await prisma.usAiStatus.deleteMany({});
+  console.log(`cleared ${evals.count} UsEvaluation, ${status.count} UsAiStatus`);
 
   let removed = 0;
   for (;;) {
-    const batch = await prisma.animal.findMany({ where: CDCB, select: { id: true }, take: 2000 });
+    const batch = await prisma.animal.findMany({ where: CDCB_CREATED, select: { id: true }, take: 2000 });
     if (!batch.length) break;
     const ids = batch.map((b) => b.id);
-    await prisma.usEvaluation.deleteMany({ where: { animalId: { in: ids } } });
     await prisma.animalIdentifier.deleteMany({ where: { animalId: { in: ids } } });
     await prisma.animalRole.deleteMany({ where: { animalId: { in: ids } } });
+    await prisma.watchlist.deleteMany({ where: { animalId: { in: ids } } });
     removed += (await prisma.animal.deleteMany({ where: { id: { in: ids } } })).count;
-    process.stdout.write(`\rdeleted ${removed}`);
+    process.stdout.write(`\rremoved ${removed} CDCB-created animals`);
   }
-  const [animals, us] = await Promise.all([prisma.animal.count(), prisma.usEvaluation.count()]);
-  console.log(`\nDONE. removed ${removed}. Animal now ${animals}, UsEvaluation now ${us}`);
+
+  const remaining = await prisma.animal.count();
+  console.log(`\nDONE. Animal table now ${remaining} rows — the Canadian roster.`);
+  console.log("Next: npm run db:push:prod, then re-run the CDCB import.");
   await prisma.$disconnect();
 }
+
 main().catch((e) => { console.error(e); process.exit(1); });

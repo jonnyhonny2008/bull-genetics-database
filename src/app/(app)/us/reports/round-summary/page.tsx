@@ -97,9 +97,9 @@ export default async function UsRoundSummaryPage() {
       }
     >
       {list.map((m) => (
-        <tr key={m.animalId} className="hover:bg-slate-50">
+        <tr key={m.usAnimalId} className="hover:bg-slate-50">
           <td className="td">
-            <Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link>
+            <Link href={`/us/animals/${m.usAnimalId}`} className="link font-medium">{m.name}</Link>
             {m.naabCode && <span className="mt-0.5 block font-mono text-[10px] text-slate-400">NAAB {m.naabCode}</span>}
             {showFlag && isUnusualMover(m) && (
               <span className="ml-2 align-middle"><Badge tone="amber">moved ≥{SD_MULT} SD</Badge></span>
@@ -182,8 +182,8 @@ export default async function UsRoundSummaryPage() {
                   {flagged
                     .slice(0, LIST_LIMIT)
                     .map((m) => (
-                      <li key={m.animalId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
-                        <Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link>
+                      <li key={m.usAnimalId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
+                        <Link href={`/us/animals/${m.usAnimalId}`} className="link font-medium">{m.name}</Link>
                         <span className="text-slate-500">
                           GTPI {fmtNum(m.previous)} → {fmtNum(m.latest)} ({signed(m.delta)}), {(m.z as number).toFixed(1)} SD
                           {" "}from a round averaging {signed(Math.round(mean))}

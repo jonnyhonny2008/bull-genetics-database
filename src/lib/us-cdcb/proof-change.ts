@@ -455,22 +455,22 @@ export async function getUsProofChangeReport(sp: Record<string, string | undefin
       ...(breed ? { evalBreed: breed } : {}),
     },
     select: {
-      animalId: true, id17: true, roundCode: true, evalBreed: true, naabCode: true,
+      usAnimalId: true, id17: true, roundCode: true, evalBreed: true, naabCode: true,
       isGraduation: true, tpiFormulaVersion: true,
       tpi: true, nmDollar: true, cmDollar: true, fmDollar: true, gmDollar: true,
       milk: true, fat: true, pro: true, fatPct: true, proPct: true,
       pl: true, scs: true, dpr: true, ccr: true, liv: true,
       ptat: true, rpa: true, udc: true, flc: true,
-      animal: { select: { primaryName: true, shortName: true } },
+      usAnimal: { select: { name: true } },
     },
   });
 
   type EvalRow = (typeof evals)[number];
   const paired = new Map<string, { prev?: EvalRow; latest?: EvalRow }>();
   for (const e of evals) {
-    const slot = paired.get(e.animalId) ?? {};
+    const slot = paired.get(e.usAnimalId) ?? {};
     if (e.roundCode === to) slot.latest = e; else slot.prev = e;
-    paired.set(e.animalId, slot);
+    paired.set(e.usAnimalId, slot);
   }
 
   // Identity is collected in lock-step with the raw diffs: the cohort scoring runs
@@ -478,15 +478,15 @@ export async function getUsProofChangeReport(sp: Record<string, string | undefin
   const identities: Omit<UsProofChangeRow, "change">[] = [];
   const raws: UsRawChange[] = [];
   let notComparable = 0;
-  for (const [animalId, { prev, latest }] of paired) {
+  for (const [usAnimalId, { prev, latest }] of paired) {
     if (!latest) continue;              // not in the later round at all
     if (!prev) { notComparable++; continue; }
     const raw = computeUsRawChange(usTraitsFromColumns(prev), usTraitsFromColumns(latest), latest.isGraduation);
     raws.push(raw);
     identities.push({
-      animalId,
-      name: latest.animal?.primaryName ?? latest.id17,
-      shortName: latest.animal?.shortName ?? null,
+      animalId: usAnimalId,
+      name: latest.usAnimal?.name ?? latest.id17,
+      shortName: null,
       id17: latest.id17,
       naab: latest.naabCode,
       breed: latest.evalBreed,
