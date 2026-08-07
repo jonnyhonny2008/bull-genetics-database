@@ -20,7 +20,7 @@
 // kilograms must never reach a page that labels its columns in pounds.
 // ---------------------------------------------------------------------------
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 /** Where a role comes from: the evaluation basis, or CDCB's AI-status file. */
@@ -140,30 +140,30 @@ export async function usLatestStatusRound(): Promise<string | null> {
 export async function usRoleCounts(
   base: Prisma.UsEvaluationWhereInput,
   statusRound: string | null,
+  breed?: string,
 ): Promise<Record<string, number>> {
   const [basis, status] = await Promise.all([
     prisma.usEvaluation.groupBy({ by: ["isPtaMilk"], where: base, _count: { _all: true } }),
-    // Counted through id17 for the same reason usAiStatusIds exists: the Animal
-    // relation is null for almost every American bull, so the old groupBy through
-    // it returned zero for every pill.
+    // A REAL JOIN, in the database. Two earlier attempts did it in JavaScript and
+    // both were slow enough to notice: inlining 4,926 ids into three counts, then
+    // pulling 68,721 id17s across the wire to intersect in a Set (10 seconds).
+    // Both columns are indexed on id17; this is the query Postgres is built for.
+    //
+    // The breed filter is carried because it is the one users actually combine
+    // with the status pills. Under a free-text search or a specialist selection
+    // the pills describe the round rather than the narrowed list — stated on the
+    // page rather than silently approximated.
     statusRound
-      ? (async () => {
-          const rows = await prisma.usAiStatus.findMany({
-            where: { roundCode: statusRound },
-            select: { id17: true, code: true },
-          });
-          const byCode = new Map<string, string[]>();
-          for (const r of rows) {
-            const a = byCode.get(r.code) ?? [];
-            a.push(r.id17);
-            byCode.set(r.code, a);
-          }
-          const out: { code: string; n: number }[] = [];
-          for (const [code, ids] of byCode) {
-            out.push({ code, n: await prisma.usEvaluation.count({ where: { ...base, id17: { in: ids } } }) });
-          }
-          return out;
-        })()
+      ? prisma.$queryRaw<{ code: string; n: bigint }[]>`
+          SELECT s."code", COUNT(*)::bigint AS n
+          FROM "UsAiStatus" s
+          JOIN "UsEvaluation" e ON e."id17" = s."id17"
+          WHERE s."roundCode" = ${statusRound}
+            AND e."isPreferred" = true
+            AND e."approvalStatus" = 'approved'
+            ${breed ? Prisma.sql`AND e."evalBreed" = ${breed}` : Prisma.empty}
+          GROUP BY s."code"
+        `.then((rows) => rows.map((r) => ({ code: r.code, n: Number(r.n) })))
       : Promise.resolve([] as { code: string; n: number }[]),
   ]);
   const nBasis = (v: boolean) => basis.find((b) => b.isPtaMilk === v)?._count._all ?? 0;

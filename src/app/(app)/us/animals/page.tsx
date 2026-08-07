@@ -69,23 +69,26 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
 
   // Watchlist and SavedSearch are Canadian-era tables that carry no system, so
   // neither query can hit the missing-US-tables case above.
-  const favIds = user && rows.list.length
-    ? new Set(
-        (await prisma.watchlist.findMany({
+  // Two independent queries — awaited together rather than one after the other,
+  // because both sit on the critical path of first paint.
+  const [favRows, savedSearches] = await Promise.all([
+    user && rows.list.length
+      ? prisma.watchlist.findMany({
           where: { userId: user.uid, animalId: { in: rows.list.map((r) => r.animalId).filter((x): x is string => !!x) } },
           select: { animalId: true },
-        })).map((w) => w.animalId),
-      )
-    : new Set<string>();
-  const savedSearches = user && !rows.missingTables
-    ? await prisma.savedSearch.findMany({
+        })
+      : Promise.resolve([] as { animalId: string }[]),
+    user && !rows.missingTables
+    ? prisma.savedSearch.findMany({
         // SavedSearch stores a literal {path, query}, so the American views live
         // under their own path with no schema change.
         where: { userId: user.uid, path: "/us/animals" },
         orderBy: { createdAt: "desc" },
         select: { id: true, name: true, query: true },
       })
-    : [];
+    : Promise.resolve([] as { id: string; name: string; query: string }[]),
+  ]);
+  const favIds = new Set(favRows.map((w) => w.animalId));
 
   const qs = (over: Record<string, string | number | undefined>) => {
     const p = new URLSearchParams();
@@ -322,7 +325,7 @@ async function loadRows(opts: {
         usAnimal: { select: { name: true, id17: true, animalId: true } },
       },
     }),
-    usRoleCounts(roleBase, statusRound),
+    usRoleCounts(roleBase, statusRound, opts.breed || undefined),
   ]);
 
   // One status lookup for the whole page, pinned to the same round the pills
