@@ -14,12 +14,25 @@
 //   American side: the animal has a US evaluation. Nothing else qualifies —
 //   a bull with no CDCB proof has no American number to show.
 //
-//   Canadian side: the animal has a Canadian evaluation, OR it has no American
-//   one either. The second half is the important half and it is not symmetric on
-//   purpose: an animal entered by hand and not yet proofed has no evaluation of
-//   any kind, and it must NOT vanish from the Canadian lineup just because it is
-//   waiting on its first round. Only animals that are American-and-only-American
-//   are excluded.
+//   Canadian side: the animal has a Canadian evaluation, OR the CDCB import never
+//   touched it — "the animals that were in the database before the American
+//   addition", in the owner's words.
+//
+// WHY THE TEST IS THE IDENTIFIER AND NOT "HAS NO US EVALUATION". That was the
+// first attempt and it was wrong by 18,500 rows. The importer writes an Animal
+// for every id17 it meets, INCLUDING the sires and dams named in CDCB pedigrees,
+// and those referenced ancestors never get a UsEvaluation of their own — so
+// "no American evaluation" waved every one of them onto the Canadian side. What
+// every CDCB-touched animal does carry is an AnimalIdentifier of type
+// `cdcb_id17` (persist.ts writes it whether the animal was created or matched),
+// and that is the durable mark of American provenance.
+//
+// The Canadian-evaluation clause has to come first, because a dual-registered
+// bull is MATCHED to an existing Canadian animal and therefore also carries the
+// cdcb_id17 identifier. His Lactanet proof is what keeps him Canadian.
+//
+// An animal entered by hand and never proofed has no identifier of that type
+// either, so it stays Canadian and does not vanish while awaiting a first round.
 //
 // A bull with both proofs — which is most of the Blondin lineup — appears on BOTH
 // sides. That is the whole point of the double card.
@@ -30,6 +43,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Prisma } from "@prisma/client";
+import { CDCB_ID_TYPE } from "./us-cdcb/persist";
 
 /**
  * Animals that belong in the CANADIAN lineup: proofed in Canada, or not yet
@@ -38,7 +52,7 @@ import type { Prisma } from "@prisma/client";
 export const CA_ROSTER: Prisma.AnimalWhereInput = {
   OR: [
     { evaluations: { some: {} } },
-    { usEvaluations: { none: {} } },
+    { identifiers: { none: { idType: CDCB_ID_TYPE } } },
   ],
 };
 
@@ -58,5 +72,5 @@ export function rosterScope(system: "ca" | "us"): Prisma.AnimalWhereInput {
  * and mutate one object literal.
  */
 export function caRosterRelation(): Prisma.AnimalWhereInput {
-  return { OR: [{ evaluations: { some: {} } }, { usEvaluations: { none: {} } }] };
+  return { OR: [{ evaluations: { some: {} } }, { identifiers: { none: { idType: CDCB_ID_TYPE } } }] };
 }

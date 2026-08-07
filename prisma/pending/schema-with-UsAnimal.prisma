@@ -1,0 +1,834 @@
+// Bull Stud Genetics Intelligence Platform — Phase 1
+// Historical Genetic Proof Database
+//
+// Design principles baked into this schema:
+//   * ONE central Animal entity. No separate bull/cow/heifer tables.
+//   * Animals have MANY roles (AnimalRole) and MANY external identifiers
+//     (AnimalIdentifier). The internal `id` (cuid) is the only permanent key.
+//   * HISTORICAL records: genetic proofs, milk, and classification are never
+//     overwritten. Each new arrival is a new dated row. Flexible trait values
+//     hang off each evaluation / classification.
+//   * SOURCE traceability everywhere: every record can point at a Source and
+//     a SourceCapture (the upload / entry it came from).
+//   * SOURCE PRIORITY drives which record is "preferred" (see SourcePriorityRule).
+//   * Demo vs production are separate DATABASES selected by DATABASE_URL.
+//
+// SQLite notes: enums are represented as String columns validated in app code
+// (see src/lib/constants.ts); JSON blobs are stored as String (JSON.stringify).
+// To move to PostgreSQL, change `provider` below to "postgresql" and set
+// DATABASE_URL accordingly — the model shapes are unchanged.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Access control
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  // admin | staff | sales | consultant  (see constants.ts ROLES)
+  role         String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  watchlist     Watchlist[]
+  savedSearches SavedSearch[]
+}
+
+// Reference table so the Admin > Roles screen can describe each role.
+model Role {
+  id              String  @id @default(cuid())
+  roleKey         String  @unique
+  roleName        String
+  description     String?
+  permissionsJson String? // JSON array of capability strings
+  displayOrder    Int     @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Reference / configuration data (seeded into BOTH demo and production)
+// ---------------------------------------------------------------------------
+
+model Breed {
+  breedId             String   @id @default(cuid())
+  breedCode           String   @unique
+  breedName           String
+  speciesType         String // dairy | beef
+  breedCategory       String? // e.g. "Dairy cattle", "Beef cattle"
+  registryOrganization String?
+  active              Boolean  @default(true)
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  animals          Animal[]
+  traitDefinitions TraitDefinition[]
+  priorityRules    SourcePriorityRule[]
+}
+
+model TraitDefinition {
+  traitId       String   @id @default(cuid())
+  traitCode     String
+  traitName     String
+  speciesType   String // dairy | beef | both
+  // Which record domain this trait belongs to: genetic | classification
+  domain        String   @default("genetic")
+  breedId       String?
+  category      String? // Production | Type | Health | Fertility | Index | Carcass ...
+  unit          String?
+  higherIsBetter Boolean @default(true)
+  description   String?
+  displayOrder  Int      @default(0)
+  active        Boolean  @default(true)
+  // Linear-graph metadata (for the classic "linear" chart on a proof).
+  isLinear      Boolean  @default(false)
+  graphMin      Float? // e.g. -15 (Canadian STA scale)
+  graphMax      Float? // e.g. +15
+  leftLabel     String? // descriptor at the low end, e.g. "Short"
+  rightLabel    String? // descriptor at the high end, e.g. "Tall"
+  graphGroup    String? // section on the linear chart, e.g. "Mammary System"
+  createdAt     DateTime @default(now())
+
+  breed Breed? @relation(fields: [breedId], references: [breedId])
+
+  @@unique([traitCode, domain])
+  @@index([domain, speciesType])
+}
+
+model Source {
+  sourceId            String   @id @default(cuid())
+  sourceName          String   @unique
+  sourceType          String // official_portal | uploaded_report | registry | manual | ai_extraction | catalogue
+  baseUrl             String?
+  defaultPriorityRank Int      @default(50)
+  active              Boolean  @default(true)
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  identifiers      AnimalIdentifier[]
+  evaluations      GeneticEvaluation[]
+  milkRecords      MilkRecord[]
+  classifications  ClassificationRecord[]
+  captures         SourceCapture[]
+  priorityRules    SourcePriorityRule[]
+  pedigreeRefs     PedigreeReference[]
+}
+
+model SourcePriorityRule {
+  ruleId        String   @id @default(cuid())
+  // genetic_evaluation | classification | milk_record | animal_identity | pedigree_display
+  dataDomain    String
+  sourceId      String
+  priorityRank  Int // 1 = highest priority (most preferred)
+  breedId       String?
+  countrySystem String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  source Source @relation(fields: [sourceId], references: [sourceId])
+  breed  Breed? @relation(fields: [breedId], references: [breedId])
+
+  @@index([dataDomain, priorityRank])
+}
+
+// Generic lookup values so Admin can view/manage status + animal-role vocabularies.
+model ConfigValue {
+  id           String  @id @default(cuid())
+  category     String // animal_status | animal_role | approval_status | review_status | id_type | country
+  code         String
+  label        String
+  description  String?
+  displayOrder Int     @default(0)
+  active       Boolean @default(true)
+
+  @@unique([category, code])
+  @@index([category])
+}
+
+// Environment marker + free-form app configuration (one row per key).
+model EnvironmentConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  notes     String?
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Core: the central Animal entity
+// ---------------------------------------------------------------------------
+
+model Animal {
+  id             String    @id @default(cuid()) // internal_animal_id — the ONLY permanent key
+  primaryName    String
+  shortName      String?
+  sex            String // M | F
+  breedId        String?
+  birthDate      DateTime?
+  countryOfOrigin String?  // CA | US | INT | ...
+  currentStatus  String    @default("active") // see ConfigValue category=animal_status
+  notes          String?
+  archived       Boolean   @default(false)
+  // Rich Holstein.ca profile captured by the scraper: owners, breeders, the
+  // multi-generation family tree, progeny list, shows/awards. Stored as JSON for
+  // display; the normalized data (evaluations, classifications, identifiers)
+  // still lives in its own tables. Nullable + additive.
+  holsteinProfileJson String?
+
+  // --- Sire classification (derived; recomputed by prisma/classify-sires.ts) ------
+  // Kept as real indexed columns so the animal lists can filter/sort on them in SQL
+  // rather than loading every bull into memory.
+  sireType        String?   // "proven" | "genomic" — from the latest round's Lactanet proof-activity code
+  proofStatus     String?   // "active" | "inactive" — active = has a proof in the most recent round on file
+  rollbackCount   Int       @default(0) // number of April (rollback) rounds this sire has been through
+  proofRoundCount Int       @default(0) // total proof rounds on file for this sire
+  latestProofDate DateTime? // evaluationDate of the sire's most recent round
+  latestProofRun  String?   // e.g. "April 2026"
+  latestActivityCode String? // raw Lactanet proof-activity/genotype code for the latest round
+  // Materialised by prisma/compute-rollback.ts after each import. Two measures:
+  //
+  //   proofPerformance   0-100. Mean retention across EVERY consecutive pair of
+  //                      proof rounds. Absolute, self-contained.
+  //   rollbackResistance base 100. Mean retention across APRIL rounds only (the
+  //                      base changes), expressed at 5 points per standard
+  //                      deviation — the health-trait convention. The baseline is
+  //                      the COHORT of sires (active and inactive) that have been
+  //                      through the same number of Aprils, so career stage is
+  //                      held constant. rollbackRaw keeps the un-scaled input.
+  proofPerformance   Float?
+  proofSteps         Int?
+  rollbackRaw        Float?
+  rollbackResistance Int?
+  rollbackSteps      Int?   // number of April steps behind rollbackResistance
+  rollbackCohortN    Int?   // how many sires the cohort baseline was built from
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  breed           Breed?                 @relation(fields: [breedId], references: [breedId])
+  identifiers     AnimalIdentifier[]
+  roles           AnimalRole[]
+  evaluations     GeneticEvaluation[]
+  milkRecords     MilkRecord[]
+  classifications ClassificationRecord[]
+  animalNotes     AnimalNote[]
+  pedigreeRefs    PedigreeReference[]
+  pedigreeIndex   PedigreeIndexResult[]
+  attachments     FileAttachment[]
+  captures        SourceCapture[]
+  reviewItems     ImportReviewQueue[]
+  watchers        Watchlist[]
+  usEvaluations   UsEvaluation[]
+  usAnimals       UsAnimal[]
+  usAiStatus      UsAiStatus[]
+
+  @@index([primaryName])
+  @@index([breedId])
+  @@index([sex])
+  @@index([currentStatus])
+  @@index([archived])
+  @@index([sireType])
+  @@index([proofStatus])
+  @@index([archived, sireType, proofStatus])
+  @@index([birthDate])
+  @@index([rollbackResistance])
+  @@index([proofPerformance])
+}
+
+model AnimalIdentifier {
+  identifierId        String   @id @default(cuid())
+  animalId            String
+  idType              String // registration_ca | registration_us | naab | semen_code | rfid | tattoo | ear_tag | ...
+  idValue             String
+  issuingCountry      String?
+  issuingOrganization String?
+  sourceId            String?
+  isPrimary           Boolean  @default(false)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  animal Animal  @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  source Source? @relation(fields: [sourceId], references: [sourceId])
+
+  @@index([animalId])
+  @@index([idType, idValue])
+  // resolveAncestors() (src/lib/pedigree.ts) looks registration numbers up by
+  // idValue alone — the pedigree text does not say which registry they belong to.
+  // A composite btree cannot seek on its second column, so this needs its own.
+  @@index([idValue])
+}
+
+model AnimalRole {
+  roleId    String    @id @default(cuid())
+  animalId  String
+  roleType  String // see ConfigValue category=animal_role
+  startDate DateTime?
+  endDate   DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+  @@index([roleType])
+}
+
+// ---------------------------------------------------------------------------
+// Historical genetic evaluations (proofs)
+// ---------------------------------------------------------------------------
+
+model GeneticEvaluation {
+  evaluationId       String   @id @default(cuid())
+  animalId           String
+  sourceId           String?
+  evaluationDate     DateTime
+  proofRun           String? // e.g. "April 2026", "2026-04"
+  countrySystem      String? // CA | US | INT
+  breedContext       String?
+  reliabilityOverall Float?
+  isPreferred        Boolean  @default(false)
+  approvalStatus     String   @default("approved") // pending | approved | rejected
+  approvedById       String?
+  approvedAt         DateTime?
+  createdById        String?
+  captureId          String?
+  notes              String?
+  createdAt          DateTime @default(now())
+
+  // --- Raw Lactanet status codes for this round (see BULL_PROOF_FILE_LAYOUT.pdf) ---
+  // activityCode = col 24 "PROOF ACTIVITY CODE and GENOTYPE INDICATOR" (NOTE 2)
+  // officialCode = col 44 "LPI OFFICIAL CODE" (NOTE 11: 0 unofficial, 1 official,
+  //                2 parent average, 3 MACE)
+  activityCode       String?
+  officialCode       String?
+  genotyped          Boolean  @default(false) // activity code 5–9 → genomics in the breeding values
+  daughters          Int?     // col 63 NUMBER OF DAUGHTERS 120/90 DIM
+  herds              Int?     // col 59 HERDS PROTEIN
+  sireType           String?  // "proven" | "genomic" as of THIS round
+
+  // --- Which Lactanet extract this round came from --------------------------
+  // Lactanet publishes each run as an OFFICIAL file and an INTERIM (unofficial)
+  // one. Both stamp the same GERUN, so both land on the same `proofRun` label —
+  // "April 2025" can legitimately be either. The distinction survives ONLY in
+  // the file name (see src/lib/proof-file-kind.ts); it is NOT derivable from the
+  // row. For April 2025, 82 of the 137 bulls present in both files carry a
+  // different LPI while showing the same `officialCode`.
+  //
+  // `officialCode` is NOT a substitute: it is the per-bull evaluation basis
+  // (0 unofficial LPI, 1 official, 2 parent average, 3 MACE) and appears with
+  // the same values in both files.
+  //
+  // Deliberately NOT part of a unique constraint: persistBull() lets a `pending`
+  // row sit alongside an `approved` one for the same round so that denying an
+  // import cannot destroy an existing proof.
+  runKind            String?  // "official" | "interim"
+  sourceFile         String?  // original Lactanet file name — the evidence for runKind
+  // Weekly release date (YYYYMMDD) stamped in the file name, when present. Lactanet
+  // ships several interim revisions of the same run (April has 4 weekly files); this
+  // lets an import keep the NEWEST revision per round instead of whichever file
+  // happened to be imported last. Null for files/lookups with no dated revision.
+  releaseDate        DateTime?
+
+  // Compact trait storage: all trait values packed here as JSON…
+  traitsJson         String?
+  // …plus real indexed columns for the traits people sort / filter by.
+  lpi       Float?
+  proDollar Float?
+  pi        Float?
+  lti       Float?
+  hwi       Float?
+  ri        Float?
+  mi        Float?
+  ei        Float?
+  milk      Float?
+  fat       Float?
+  prot      Float?
+  fatPct    Float?
+  protPct   Float?
+  scs       Float?
+  conf      Float?
+  mamm      Float?
+  fl        Float?
+  ds        Float?
+  rump      Float?
+  afs       Float?
+  hl        Float?
+  df        Float?
+  mr        Float?
+  mdr       Float?
+  ca        Float?
+  dca       Float?
+
+  animal Animal  @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  source Source? @relation(fields: [sourceId], references: [sourceId])
+
+  @@index([animalId, evaluationDate])
+  @@index([approvalStatus])
+  // Reports that show official rounds only filter on this alongside the round.
+  @@index([runKind, proofRun])
+  @@index([isPreferred, lpi])
+  @@index([isPreferred, proDollar])
+  @@index([isPreferred, conf])
+  @@index([isPreferred, milk])
+  @@index([isPreferred, fat])
+  @@index([isPreferred, prot])
+}
+
+// ---------------------------------------------------------------------------
+// Historical milk / production records
+// ---------------------------------------------------------------------------
+
+model MilkRecord {
+  milkRecordId   String    @id @default(cuid())
+  animalId       String
+  sourceId       String?
+  recordDate     DateTime
+  lactationNumber Int?
+  calvingDate    DateTime?
+  daysInMilk     Int?
+  milkAmount     Float?
+  milkUnit       String?   @default("kg")
+  fatAmount      Float?
+  fatPercent     Float?
+  proteinAmount  Float?
+  proteinPercent Float?
+  recordType     String? // 305d | lactation | test_day | projected
+  testType       String?
+  completionStatus String? // complete | in_progress | projected
+  isPreferred    Boolean   @default(false)
+  approvalStatus String    @default("approved")
+  approvedById   String?
+  approvedAt     DateTime?
+  createdById    String?
+  captureId      String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  animal Animal  @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  source Source? @relation(fields: [sourceId], references: [sourceId])
+
+  @@index([animalId, recordDate])
+  @@index([approvalStatus])
+}
+
+// ---------------------------------------------------------------------------
+// Historical classification records
+// ---------------------------------------------------------------------------
+
+model ClassificationRecord {
+  classificationId   String   @id @default(cuid())
+  animalId           String
+  sourceId           String?
+  classificationDate DateTime
+  lactationNumber    Int?
+  ageAtClassification String?
+  finalScore         Int?
+  classificationCode String? // EX | VG | GP | G | ...
+  isPreferred        Boolean  @default(false)
+  approvalStatus     String   @default("approved")
+  approvedById       String?
+  approvedAt         DateTime?
+  createdById        String?
+  captureId          String?
+  notes              String?
+  createdAt          DateTime @default(now())
+
+  animal      Animal                    @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  source      Source?                   @relation(fields: [sourceId], references: [sourceId])
+  traitValues ClassificationTraitValue[]
+
+  @@index([animalId, classificationDate])
+  @@index([approvalStatus])
+}
+
+model ClassificationTraitValue {
+  classificationTraitValueId String @id @default(cuid())
+  classificationId           String
+  traitCode                  String
+  traitName                  String
+  traitValue                 String // numeric score or linear code, kept flexible
+  displayOrder               Int    @default(0)
+
+  classification ClassificationRecord @relation(fields: [classificationId], references: [classificationId], onDelete: Cascade)
+
+  @@index([classificationId])
+}
+
+// ---------------------------------------------------------------------------
+// Sources, captures, review queue (upload / extraction pipeline)
+// ---------------------------------------------------------------------------
+
+model SourceCapture {
+  captureId         String   @id @default(cuid())
+  sourceId          String?
+  animalId          String? // optional early link to an animal
+  captureType       String // csv | excel | pdf | image | report | manual | browser_lookup
+  originalFileName  String?
+  storedFileUrl     String?
+  sourceUrl         String?
+  capturedById      String?
+  capturedAt        DateTime @default(now())
+  extractionStatus  String   @default("not_extracted") // not_extracted | simulated | extracted | failed
+  confidenceScore   Float?
+  rawExtractedDataJson String?
+  notes             String?
+
+  source      Source?             @relation(fields: [sourceId], references: [sourceId])
+  animal      Animal?             @relation(fields: [animalId], references: [id])
+  reviewItems ImportReviewQueue[]
+  attachments FileAttachment[]
+
+  @@index([sourceId])
+}
+
+model ImportReviewQueue {
+  reviewId          String   @id @default(cuid())
+  captureId         String
+  proposedRecordType String // genetic_evaluation | milk_record | classification | animal | identifier
+  matchedAnimalId   String?
+  matchConfidence   Float?
+  extractedDataJson String?
+  status            String   @default("pending") // pending | approved | rejected | needs_more_info | duplicate | conflict_review
+  reviewedById      String?
+  reviewedAt        DateTime?
+  reviewNotes       String?
+  createdAt         DateTime @default(now())
+
+  capture       SourceCapture @relation(fields: [captureId], references: [captureId], onDelete: Cascade)
+  matchedAnimal Animal?       @relation(fields: [matchedAnimalId], references: [id])
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Attachments, notes, pedigree, audit
+// ---------------------------------------------------------------------------
+
+model FileAttachment {
+  id           String   @id @default(cuid())
+  animalId     String?
+  captureId    String?
+  fileName     String
+  storedUrl    String
+  contentType  String?
+  sizeBytes    Int?
+  uploadedById String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  animal  Animal?        @relation(fields: [animalId], references: [id])
+  capture SourceCapture? @relation(fields: [captureId], references: [captureId])
+}
+
+model AnimalNote {
+  id          String   @id @default(cuid())
+  animalId    String
+  body        String
+  noteType    String   @default("general") // general | data_quality
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+}
+
+model PedigreeReference {
+  pedigreeReferenceId String   @id @default(cuid())
+  animalId            String
+  sourceId            String?
+  sourceUrl           String?
+  lastCheckedAt       DateTime?
+  displayStatus       String   @default("linked") // linked | needs_check | unavailable
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  animal Animal  @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  source Source? @relation(fields: [sourceId], references: [sourceId])
+
+  @@index([animalId])
+}
+
+// Placeholder for FUTURE pedigree-index calculation. Not calculated in Phase 1.
+model PedigreeIndexResult {
+  pedigreeIndexResultId String   @id @default(cuid())
+  animalId              String
+  indexValue            Float?
+  algorithmVersion      String?
+  calculationDate       DateTime?
+  sourceReference       String?
+  confidenceScore       Float?
+  notes                 String?
+  createdAt             DateTime @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String?
+  action      String // create | update | approve | reject | archive | import | login | seed
+  userId      String?
+  userName    String?
+  changesJson String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Per-user conveniences: favourite bulls (a watchlist) and saved searches.
+// ---------------------------------------------------------------------------
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  animalId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, animalId]) // a bull is favourited at most once per user
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// THE AMERICAN SIDE — CDCB evaluations.
+//
+// A PARALLEL TABLE, not a country column on GeneticEvaluation. Three reasons,
+// each verified against this codebase:
+//
+//   1. `isPreferred` is global per animal. priority.ts recomputePreferredForAnimal
+//      loads ALL of an animal's evaluations with no system filter and marks
+//      exactly one winner; `isPreferred: true` is the join condition for the whole
+//      read layer (65 usages across 23 files). A CDCB row in the same table would
+//      compete with the Lactanet row and one would silently blank the other.
+//   2. The same trait CODE means different things. TraitDefinition is
+//      @@unique([traitCode, domain]) so only one MILK can exist — but CA MILK is
+//      kilograms and US MILK is pounds, CA linear traits run +/-15 where US run
+//      about +/-4, and CA SCS is a 100-based rating where US SCS is ~3.0.
+//   3. GeneticEvaluation.countrySystem ('CA | US | INT') ALREADY EXISTS and is
+//      filtered on in exactly ZERO queries. The discriminator was added years ago
+//      and the query discipline never followed; a separate model makes a missed
+//      filter a TypeScript error instead of a silent country mix.
+//
+// Deliberately SEX-AGNOSTIC. The public CDCB /bulls/ files are all male, but the
+// female files use the same layout and are expected — nothing here assumes sex.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// THE AMERICAN ROSTER — a table of its own, deliberately.
+//
+// The two programs shared the Animal table until 2026-08-07, and it did not hold.
+// The CDCB extract names a sire and a dam for every bull, so importing one round
+// created ~21,500 bare Animal rows for ancestors carrying no identifier, no
+// evaluation and no mark of any kind. Nothing in the data distinguished them from
+// a hand-entered Canadian animal, so no filter could keep them out of the Canadian
+// lineup — two predicates were tried and leaked 18,500 and 20,000 rows. The fix is
+// not a cleverer predicate. It is not sharing the table.
+//
+// IDENTITY IS id17, NOT A CUID. CDCB publishes a real primary key, so this table
+// uses it as the unique axis; that is what makes the importer idempotent.
+//
+// animalId IS THE BRIDGE, AND IT IS OPTIONAL. A bull registered in both countries
+// points at his Canadian Animal row, which is what lets the nav toggle carry him
+// across and the double card show both evaluations. Most rows will never have one,
+// and that is the normal case — an American bull is not a defective Canadian one.
+// ---------------------------------------------------------------------------
+model UsAnimal {
+  usAnimalId String    @id @default(cuid())
+  // CDCB's 17-char id: 2-char breed + 3-char country + 12-digit herdbook number.
+  id17       String    @unique
+  name       String?
+  // Zero-padded NAAB/stud code, e.g. 007HO16276. Absence means no AI code.
+  naabCode   String?
+  breedCode  String?
+  sex        String?
+  birthDate  DateTime?
+  // id17 of sire and dam as CDCB names them. Plain strings ON PURPOSE: an
+  // ancestor is a REFERENCE, not a reason to manufacture a row. Treating one as
+  // the other is the entire defect that moved this roster out of Animal.
+  sire17     String?
+  dam17      String?
+  // Set when this bull is also registered in Canada — the double-card bridge.
+  animalId   String?
+  isBlondin  Boolean   @default(false)
+  archived   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  animal      Animal?        @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  evaluations UsEvaluation[]
+
+  @@index([animalId])
+  @@index([naabCode])
+  @@index([breedCode])
+  @@index([name])
+}
+
+model UsEvaluation {
+  usEvaluationId String   @id @default(cuid())
+  usAnimalId     String
+  // Legacy bridge to the Canadian Animal row. Optional now that UsAnimal owns the
+  // American roster; still set for dual-registered bulls.
+  animalId       String?
+  // CDCB's 17-char id: 2-char breed + 3-char country + 12-digit herdbook number.
+  id17           String
+
+  // Which CDCB extract this came from — the ONLY reliable source of run kind.
+  sourceFamily   String // all_evaluated | young_pub | new_young | weekly
+  // official (triannual) | provisional (monthly add) | unofficial (weekly add).
+  runKind        String
+  // YYMM — SET ONLY for the triannual families.
+  roundCode      String?
+  // Unique period identity, always set, PREFIXED: R2604 | M2604 | W20260802.
+  // This is the uniqueness axis rather than roundCode because a monthly add and
+  // the official round share a YYMM — New_young_Pub_2604 and all_evaluated_2604
+  // both stamp DATE:2604. Without the prefix a provisional row could displace the
+  // official round for that animal.
+  periodKey      String
+  evaluationDate DateTime
+
+  // From EVAL_BREED — never the id17 prefix, which is the REGISTRY breed (549
+  // animals in the Holstein file carry a non-HO prefix).
+  evalBreed      String?
+  // CDCB's proven-vs-genomic flag, and it is PER TRAIT GROUP, not per animal: a
+  // bull can be daughter-proven for production and parent-average for calving.
+  isPtaMilk      Boolean?
+  isPtaCt        Boolean?
+  // True on the first all_evaluated round after young_pub — a graduating bull
+  // moves ~6x a normal round and must not be scored as ordinary movement.
+  isGraduation   Boolean  @default(false)
+
+  blendCode      String? // S = straightbred, M = crossbred
+  heterosis      Float?
+  naabCode       String?
+  sire17         String?
+  dam17          String?
+
+  genInb         Float?
+  pedInb         Float?
+  genFutInb      Float?
+  expFutInb      Float?
+
+  chip           String?
+  requesterId    String?
+  dateReceived   DateTime?
+  current        String? // 0 | 1 | U (U = unofficial weekly)
+
+  // The five value columns CDCB publishes per trait, each a code -> value map.
+  // GSONS is stored (it is the correct input for a son's parent average) but is
+  // never rendered — it is not a son count.
+  gptaJson       String?
+  relJson        String?
+  gsonsJson      String?
+  dgvJson        String?
+  paJson         String?
+  // Sparse haplotype / genetic-condition calls, code -> 0..4.
+  haplotypesJson String?
+
+  // Indexed columns for sorting and filtering — the US vocabulary, in POUNDS.
+  nmDollar  Float?
+  cmDollar  Float?
+  fmDollar  Float?
+  gmDollar  Float?
+  milk      Float?
+  fat       Float?
+  pro       Float?
+  fatPct    Float?
+  proPct    Float?
+  pl        Float?
+  scs       Float?
+  dpr       Float?
+  ccr       Float?
+  ptat      Float?
+  // Rump angle. INTERMEDIATE OPTIMUM — neither the highest nor the lowest value
+  // is best, so it must never be sorted or scored as higher-is-better.
+  rpa       Float?
+  liv       Float?
+  udc       Float?
+  flc       Float?
+
+  // COMPUTED indexes — never an official published figure. The formula version
+  // is stored alongside so a value can always be traced to the formula that was
+  // in force for its round, and so a registry change can invalidate the right rows.
+  tpi               Int?
+  tpiFormulaVersion String?
+  tpiConfidence     String? // verified | inferred | contested
+  jpi               Int?
+  jpiFormulaVersion String?
+
+  // Preferred among the US rows for this animal. Its own recompute over its own
+  // rows — it must never interact with the Canadian isPreferred. ONLY triannual
+  // rows are candidates, so a provisional monthly can never win.
+  isPreferred    Boolean  @default(false)
+
+  sourceFile     String?
+  approvalStatus String   @default("approved") // pending | approved | rejected
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  usAnimal UsAnimal @relation(fields: [usAnimalId], references: [usAnimalId], onDelete: Cascade)
+  animal   Animal?  @relation(fields: [animalId], references: [id], onDelete: SetNull)
+
+  @@unique([usAnimalId, periodKey, sourceFamily])
+  @@index([id17])
+  @@index([roundCode, runKind])
+  @@index([isPreferred, tpi])
+  @@index([isPreferred, nmDollar])
+  @@index([isPreferred, ptat])
+  @@index([isPreferred, jpi])
+  @@index([usAnimalId, evaluationDate])
+  @@index([animalId])
+}
+
+// CDCB's AI status file — the US answer to "is this bull actually marketed".
+//
+// This REPLACES the Canadian rule (active = carries a NAAB code), which does not
+// transfer: 35,190 Holstein bulls carry a NAAB code but only 1,332 are marketed.
+// Status is per ROUND, and the table tolerates orphans — about 5% of aistatus
+// entries match no evaluation in the same round.
+model UsAiStatus {
+  id        String   @id @default(cuid())
+  animalId  String?
+  id17      String
+  roundCode String
+  code      String // A = active AI | G = genomic young bull marketed | F = foreign
+  createdAt DateTime @default(now())
+
+  animal Animal? @relation(fields: [animalId], references: [id], onDelete: SetNull)
+
+  @@unique([id17, roundCode])
+  @@index([animalId])
+  @@index([roundCode, code])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  path      String // the page the query belongs to, e.g. "/animals"
+  query     String // the raw querystring, e.g. "spec=MSPD,DF&specLevel=solid"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
