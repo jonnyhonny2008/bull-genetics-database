@@ -53,12 +53,16 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const system = url.searchParams.get("system") === "us" ? "us" : "ca";
+  // The compare pages want SIRES; /uploads and /review are linking a capture to
+  // any animal at all, which includes cows. Defaulting to sires keeps the
+  // compare pages' behaviour unchanged.
+  const scope = url.searchParams.get("scope") === "all" ? "all" : "sires";
 
-  // A blank query returns nothing rather than "the first 20 of 63,052", which
+  // A blank query returns nothing rather than "the first 20 of 99,784", which
   // would look like a ranked shortlist and is not one.
   if (q.length < 2) return NextResponse.json({ hits: [] as BullSearchHit[] });
 
-  const hits = system === "us" ? await searchUs(q) : await searchCa(q);
+  const hits = system === "us" ? await searchUs(q) : await searchCa(q, scope);
   return NextResponse.json({ hits });
 }
 
@@ -90,10 +94,10 @@ async function searchUs(q: string): Promise<BullSearchHit[]> {
 }
 
 /** Canadian animals, keyed on Animal.id — the id /compare expects. */
-async function searchCa(q: string): Promise<BullSearchHit[]> {
+async function searchCa(q: string, scope: "sires" | "all" = "sires"): Promise<BullSearchHit[]> {
   const rows = await prisma.animal.findMany({
     where: {
-      sex: "M",
+      ...(scope === "sires" ? { sex: "M" } : {}),
       archived: false,
       ...CA_ROSTER,
       OR: [

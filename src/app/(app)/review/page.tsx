@@ -5,6 +5,7 @@ import { CA_ROSTER } from "@/lib/roster-scope";
 import { currentUser } from "@/lib/auth";
 import { can, REVIEW_STATUSES, RECORD_TYPES, label } from "@/lib/constants";
 import { PageHeader, Card, Badge, EmptyState, statusTone } from "@/components/ui";
+import AnimalSelect from "@/components/AnimalSelect";
 import { fmtDate } from "@/lib/format";
 import { isBatchImportType } from "@/lib/constants";
 import { approveReview, setReviewStatus, updateReview, approveImport, denyImport, restoreImport } from "./actions";
@@ -22,12 +23,11 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
   const filter = searchParams.status;
   const where = filter ? { status: filter } : { status: { in: ACTIVE } };
 
-  const [items, animals, counts] = await Promise.all([
+  const [items, counts] = await Promise.all([
     prisma.importReviewQueue.findMany({
       where, orderBy: { createdAt: "desc" },
       include: { capture: { include: { source: true } }, matchedAnimal: true },
     }),
-    prisma.animal.findMany({ where: { archived: false, ...CA_ROSTER }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
     prisma.importReviewQueue.groupBy({ by: ["status"], _count: true }),
   ]);
   const countByStatus = new Map(counts.map((c) => [c.status, c._count]));
@@ -74,10 +74,17 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
                   <input type="hidden" name="reviewId" value={r.reviewId} />
                   <div>
                     <label className="label">Matched animal</label>
-                    <select name="matchedAnimalId" defaultValue={r.matchedAnimalId ?? ""} className="input">
-                      <option value="">— none (create new / unmatched) —</option>
-                      {animals.map((a) => <option key={a.id} value={a.id}>{a.primaryName}</option>)}
-                    </select>
+                    {/* Was a <select> holding all 99,784 animals, repeated once
+                        PER QUEUE ITEM on this page. The current match is passed
+                        as `initial` so an already-matched item still shows its
+                        animal without the roster being shipped to find it. */}
+                    <AnimalSelect
+                      name="matchedAnimalId"
+                      initial={r.matchedAnimal && !r.matchedAnimal.archived
+                        ? { id: r.matchedAnimal.id, name: r.matchedAnimal.primaryName }
+                        : null}
+                      emptyLabel="Leave empty for none (create new / unmatched)"
+                    />
                   </div>
                   <div>
                     <label className="label">Extracted data (JSON)</label>

@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { CA_ROSTER } from "@/lib/roster-scope";
 import { getAllSources } from "@/lib/reference";
 import { currentUser } from "@/lib/auth";
 import { can, CAPTURE_TYPES, RECORD_TYPES } from "@/lib/constants";
 import { PageHeader, Card, Table, Badge, EmptyState } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 import { uploadCapture } from "./actions";
+import AnimalSelect from "@/components/AnimalSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +20,27 @@ export default async function UploadsPage() {
   const user = currentUser();
   if (!can(user?.role, "upload:write")) redirect("/dashboard");
 
-  const [sources, animals, captures] = await Promise.all([
+  // The whole roster used to be loaded here to fill a <select> — 99,784 <option>
+  // elements, 22,912 KB of HTML, on every view, so that a user could pick at most
+  // one animal. AnimalSelect searches server-side instead.
+  //
+  // `captures` selects explicit columns rather than include-ing whole rows: the
+  // table below reads five fields, and the wide include was detoasting every
+  // row's JSON payloads to render a date and a filename.
+  const [sources, captures] = await Promise.all([
     getAllSources(),
-    prisma.animal.findMany({ where: { archived: false, ...CA_ROSTER }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
-    prisma.sourceCapture.findMany({ where: { OR: [{ animalId: null }, { animal: { archived: false } }] }, orderBy: { capturedAt: "desc" }, take: 25, include: { source: true, animal: true, reviewItems: true } }),
+    prisma.sourceCapture.findMany({
+      where: { OR: [{ animalId: null }, { animal: { archived: false } }] },
+      orderBy: { capturedAt: "desc" },
+      take: 25,
+      select: {
+        captureId: true, capturedAt: true, originalFileName: true, sourceUrl: true,
+        captureType: true, animalId: true,
+        source: { select: { sourceName: true } },
+        animal: { select: { primaryName: true } },
+        reviewItems: { select: { status: true } },
+      },
+    }),
   ]);
 
   return (
@@ -60,10 +77,7 @@ export default async function UploadsPage() {
               </div>
               <div>
                 <label className="label">Link to animal (optional)</label>
-                <select name="animalId" className="input" defaultValue="">
-                  <option value="">— auto-match in review —</option>
-                  {animals.map((a) => <option key={a.id} value={a.id}>{a.primaryName}</option>)}
-                </select>
+                <AnimalSelect name="animalId" emptyLabel="Leave empty to auto-match in review" />
               </div>
             </div>
             <div>

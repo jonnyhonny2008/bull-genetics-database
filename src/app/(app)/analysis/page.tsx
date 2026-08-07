@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/aggregate-cache";
 import { CA_ROSTER } from "@/lib/roster-scope";
 import type { Prisma } from "@prisma/client";
 import { PageHeader, Card, Table, Badge, EmptyState, StatCard } from "@/components/ui";
@@ -66,9 +67,13 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // Aprils. Recomputing it from whatever the page filters currently select would
   // silently change what 100 means every time a filter moved.
   const scoredWhere: Prisma.AnimalWhereInput = { AND: [...animalAND, { proofPerformance: { not: null } }] };
-  const [totalRounds, totalAnimals, roleCounts, lineup] = await Promise.all([
-    prisma.geneticEvaluation.count({ where: { animal: animalWhere } }),
-    prisma.animal.count({ where: animalWhere }),
+  const popKey = `${roleWhere ? sp.role : ""}|${includeInactive ? "all" : "active"}|${blondin ? "blondin" : ""}`;
+  const [totalRounds, roleCounts, lineup] = await Promise.all([
+    // A semi-join across 115,401 proof rows to print one number in explanatory
+    // prose. Cohort-level, so it caches under the same key discipline as the
+    // averages below.
+    cached(`analysis:totalRounds:${popKey}`, () =>
+      prisma.geneticEvaluation.count({ where: { animal: animalWhere } })),
     // Role pill counts: the role IS the axis here, so they ignore the role filter
     // and the inactive toggle and count the whole non-archived herd — narrowed
     // to the Blondin bulls when that toggle is on, since it sits above them.
@@ -97,6 +102,18 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // Aggregates.
   const n = scored.length;
   const rated = scored.filter((x) => x.resistance != null);
+
+  // A count over 99,784 Animal rows that ONLY the empty state prints. It used to
+  // sit in the Promise.all above and run on every request, including the ones
+  // that render a full page and never look at it. In the branch that still pays
+  // for it there is nothing else on the page, so the cost lands where nobody is
+  // waiting on other content.
+  //
+  // Do NOT substitute lineup.length here: `lineup` is capped at MAX_BULLS and
+  // filtered to proofPerformance != null, so it is a different population from
+  // "how many bulls you have imported" — and this is the one sentence telling a
+  // first-time user what to do next.
+  const totalAnimals = n === 0 ? await prisma.animal.count({ where: animalWhere }) : 0;
   const avgPerf = n ? Math.round((scored.reduce((s, x) => s + (x.a.proofPerformance ?? 0), 0) / n) * 10) / 10 : null;
   // Distribution is expressed in Rollback Resistance bands, since the raw
   // retention scores all sit within a point or two of each other.
@@ -119,7 +136,21 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
     const [sampleAnimals, defMap, rbScales] = await Promise.all([
       prisma.animal.findMany({
         where: { id: { in: sampleIds } },
-        select: { id: true, evaluations: { orderBy: { evaluationDate: "asc" } } },
+        select: {
+          id: true,
+          // EXPLICIT SELECT. This used to take the whole evaluation row — all
+          // ~50 columns — for the 40 deepest-history bulls, when computeRollback
+          // below reads exactly five fields. traitsJson is the only one that is
+          // large, and pulling the rest forces Postgres to detoast every row's
+          // other JSON payloads for nothing.
+          evaluations: {
+            orderBy: { evaluationDate: "asc" },
+            select: {
+              evaluationDate: true, proofRun: true, reliabilityOverall: true,
+              runKind: true, traitsJson: true,
+            },
+          },
+        },
       }),
       traitDefMap(),
       getRollbackTraitScales(),
@@ -160,13 +191,35 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // --- Charts view data ---
   // The average a bull is compared against, over the same population the rest
   // of the page covers (active sires unless the toggle widens it).
-  const lineupAgg = await prisma.geneticEvaluation.aggregate({
-    where: { isPreferred: true, animal: animalWhere },
-    _avg: { lpi: true, proDollar: true, conf: true, milk: true, fat: true, prot: true, mamm: true, fl: true, ds: true },
-    _count: { _all: true },
-  });
-  const lineupAvg = lineupAgg._avg as Record<string, number | null>;
-  const lineupN = lineupAgg._count._all;
+  //
+  // THIS RAN ON EVERY REQUEST AND WAS THROWN AWAY IN THE DEFAULT VIEW. Nine AVGs
+  // over the 115,401-row proof table, joined to Animal, with no view guard —
+  // while every reader of it (the charts block and compareRows) is unreachable
+  // unless view === "charts". The default view is "rankings", which is what the
+  // 9.6 s measurement hit.
+  //
+  // Cached because a cohort average IS a round-level fact — it describes the
+  // population, not a bull, which is exactly what aggregate-cache.ts is for. The
+  // per-bull numbers on this page stay uncached.
+  //
+  // THE KEY MUST CARRY EVERY FILTER THAT SHAPES animalWhere. Miss one and a
+  // Blondin-only average gets served to somebody viewing the whole Lactanet
+  // population — a wrong number wearing a right one's clothes, which is worse
+  // than the 9 seconds. The three inputs are role, the inactive toggle and the
+  // Blondin toggle; they are read back from the RESOLVED values rather than the
+  // raw query string, so a junk ?role= cannot mint unbounded cache entries.
+  const lineupAgg = view === "charts"
+    ? await cached(
+        `analysis:lineupAvg:${roleWhere ? sp.role : ""}|${includeInactive ? "all" : "active"}|${blondin ? "blondin" : ""}`,
+        () => prisma.geneticEvaluation.aggregate({
+          where: { isPreferred: true, animal: animalWhere },
+          _avg: { lpi: true, proDollar: true, conf: true, milk: true, fat: true, prot: true, mamm: true, fl: true, ds: true },
+          _count: { _all: true },
+        }),
+      )
+    : null;
+  const lineupAvg = (lineupAgg?._avg ?? {}) as Record<string, number | null>;
+  const lineupN = lineupAgg?._count._all ?? 0;
 
   const pickerBulls = lineup.map((a) => ({
     id: a.id, name: a.primaryName,
