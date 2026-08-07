@@ -58,6 +58,7 @@ async function main() {
 
   let totalAnimals = 0, totalCreated = 0, totalLinked = 0, totalConflicts = 0, totalTpi = 0, totalJpi = 0;
   const touched = new Set<string>();
+  const bulkTouched: string[] = [];
 
   for (const p of pairs) {
     const id = classifyCdcbFile(p.evalF);
@@ -109,24 +110,24 @@ async function main() {
       continue;
     }
 
-    let n = 0;
-    for (const a of parsed.animals) {
-      try {
-        const r = await persist!.persistCdcbAnimal(a, id, { sourceFile: p.evalF });
-        n++;
-        touched.add(r.animalId);
-        if (r.createdAnimal) totalCreated++; else totalLinked++;
-        if (r.conflict) { totalConflicts++; if (totalConflicts <= 5) console.log(`      CONFLICT ${a.id17}: ${r.conflict}`); }
-        if (r.tpi != null) totalTpi++;
-        if (r.jpi != null) totalJpi++;
-      } catch (e) {
-        console.error(`      ERROR ${a.id17}: ${(e as Error).message}`);
-        process.exitCode = 1;
-      }
-      if (n % 2000 === 0) console.log(`      … ${n}/${parsed.animals.length}`);
-    }
-    totalAnimals += n;
-    console.log(`      wrote ${n}`);
+    // BULK path: a fixed number of queries per file rather than ~6 per animal.
+    // The Holstein round alone is 51,497 animals, so per-animal writes would be
+    // ~300,000 round-trips to a remote database.
+    const bulk = await import("../src/lib/us-cdcb/persist-bulk");
+    const r = await bulk.persistCdcbRound(parsed.animals, id, {
+      sourceFile: p.evalF,
+      onProgress: (done, total) => { if (done % 5000 === 0 || done === total) console.log(`      … ${done}/${total}`); },
+    });
+    totalAnimals += r.animals;
+    totalCreated += r.createdAnimals;
+    totalLinked += r.linked;
+    totalConflicts += r.conflicts.length;
+    totalTpi += r.withTpi;
+    totalJpi += r.withJpi;
+    for (const c of r.conflicts.slice(0, 5)) console.log(`      CONFLICT ${c.id17}: ${c.reason}`);
+    if (r.conflicts.length > 5) console.log(`      … and ${r.conflicts.length - 5} more conflicts`);
+    console.log(`      wrote ${r.evaluations} evaluations (${r.createdAnimals} new animals, ${r.linked} linked)`);
+    bulkTouched.push(...parsed.animals.map((a) => a.id17));
   }
 
   // The AI-status file, if it is sitting alongside — it decides "active" on this
