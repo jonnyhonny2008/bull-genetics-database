@@ -76,7 +76,10 @@ export function UsRolePills({
   statusRound: string | null;
 }) {
   const active = sp.role ?? "";
-  const roles = US_LIST_ROLES.filter((r) => r.kind === "basis" || statusRound);
+  // A count of -1 is a WITHHELD figure, not a small one: the proven/genomic split
+  // was reading a field that is true for every bull. Those pills are hidden rather
+  // than shown with a wrong number. See usRoleCounts.
+  const roles = US_LIST_ROLES.filter((r) => (r.kind === "basis" || statusRound) && counts[r.code] !== -1);
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Role</span>

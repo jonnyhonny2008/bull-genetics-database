@@ -22,6 +22,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "./cache";
 
 /** Where a role comes from: the evaluation basis, or CDCB's AI-status file. */
 export type UsRoleKind = "basis" | "status";
@@ -82,10 +83,19 @@ const STATUS_CODE: Record<string, string> = { active: "A", marketed: "G", foreig
  */
 export function usRoleWhere(role: string | undefined, statusRound: string | null): Prisma.UsEvaluationWhereInput | null {
   switch (role) {
+    // WITHDRAWN. These read isPtaMilk as "has a daughter proof", and it is not
+    // that: it is true for all 68,721 bulls in the April 2026 round, so the pills
+    // claimed 68,721 daughter-proven and 0 parent-average. Both numbers were
+    // fiction, and the page stated them with total confidence.
+    //
+    // The real signal is MILK reliability — genomic young bulls sit near 70-79,
+    // daughter-proven bulls 85 and up — but that lives inside relJson rather than
+    // an indexed column, so filtering on it needs a migration and a verified
+    // threshold. Until that exists these return null: no pill is better than a
+    // confident wrong one.
     case "proven":
-      return { isPtaMilk: true };
     case "genomic":
-      return { isPtaMilk: false };
+      return null;
     case "active":
     case "marketed":
     case "foreign":
@@ -124,7 +134,11 @@ export function usFavouriteWhere(userId: string): Prisma.UsEvaluationWhereInput 
 
 /** The most recent round CDCB has published an AI-status file for, if any. */
 export async function usLatestStatusRound(): Promise<string | null> {
-  const row = await prisma.usAiStatus.findFirst({ orderBy: { roundCode: "desc" }, select: { roundCode: true } });
+  // Cached: this changes only when a status file is imported, and it was costing
+  // ~1.1s on every US page view for an answer that is the same for everyone.
+  const row = await cached("us:latestStatusRound", () =>
+    prisma.usAiStatus.findFirst({ orderBy: { roundCode: "desc" }, select: { roundCode: true } }),
+  );
   return row?.roundCode ?? null;
 }
 
@@ -138,6 +152,20 @@ export async function usLatestStatusRound(): Promise<string | null> {
  * describe CDCB's population rather than this stud's.
  */
 export async function usRoleCounts(
+  base: Prisma.UsEvaluationWhereInput,
+  statusRound: string | null,
+  breed?: string,
+): Promise<Record<string, number>> {
+  // Only the UNFILTERED and breed-only cases are cached. The moment a search,
+  // specialist or favourite filter is on, the counts are specific to that query
+  // and are computed fresh — a cached count under a filter would be a wrong
+  // number rather than a slow one.
+  const cacheKey = Object.keys(base).length <= 2 ? `us:roleCounts:${breed ?? "all"}` : null;
+  if (cacheKey) return cached(cacheKey, () => roleCountsUncached(base, statusRound, breed));
+  return roleCountsUncached(base, statusRound, breed);
+}
+
+async function roleCountsUncached(
   base: Prisma.UsEvaluationWhereInput,
   statusRound: string | null,
   breed?: string,
@@ -169,8 +197,10 @@ export async function usRoleCounts(
   const nBasis = (v: boolean) => basis.find((b) => b.isPtaMilk === v)?._count._all ?? 0;
   const nStatus = (c: string) => status.find((s) => s.code === c)?.n ?? 0;
   return {
-    proven: nBasis(true),
-    genomic: nBasis(false),
+    // Withheld deliberately — see usRoleWhere. isPtaMilk does not mean what these
+    // pills claimed, so no count is offered rather than a wrong one.
+    proven: -1,
+    genomic: -1,
     active: nStatus("A"),
     marketed: nStatus("G"),
     foreign: nStatus("F"),

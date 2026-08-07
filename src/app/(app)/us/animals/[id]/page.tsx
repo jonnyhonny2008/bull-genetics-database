@@ -499,8 +499,13 @@ export default async function UsSireCard({
       {/* ===================== TYPE ===================== */}
       {tab === "type" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <StatCard label="PTAT" value={pref.ptat == null ? "—" : pref.ptat.toFixed(2)} hint="CDCB published" />
+            <StatCard
+              label="HCC (published)"
+              value={pref.hcc == null ? "—" : pref.hcc.toFixed(2)}
+              hint={pref.hcc == null ? "not published for this bull" : pref.hccSource ?? "Holstein Association USA"}
+            />
             <StatCard
               label="UDC (derived)"
               value={pref.udc == null ? "—" : pref.udc.toFixed(2)}
@@ -520,6 +525,16 @@ export default async function UsSireCard({
               tone="accent"
             />
           </div>
+
+          {pref.hcc == null && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <strong>No HCC for this bull.</strong> Holstein Association USA publishes the Conformation Composite for
+              AVAILABLE bulls only — about 4,400 of the 68,721 in a CDCB round. A blank here means &ldquo;not
+              published&rdquo;, never zero and never average. It is not computed from the linear traits below, unlike
+              UDC, FLC and BWC: HAUSA states the weights and optima but not the arithmetic, and the closest fit to
+              their own published list still misses by up to 0.84 — too far to print beside an official figure.
+            </div>
+          )}
 
           <Card title="The composites are derived, not published">
             <p className="text-sm text-slate-600">
@@ -819,7 +834,7 @@ function loadRounds(usAnimalId: string) {
       isPreferred: true, isGraduation: true, isPtaMilk: true, isPtaCt: true, blendCode: true, heterosis: true,
       chip: true, requesterId: true, dateReceived: true, current: true,
       genInb: true, pedInb: true, genFutInb: true, expFutInb: true,
-      nmDollar: true, ptat: true, udc: true, flc: true,
+      nmDollar: true, ptat: true, udc: true, flc: true, hcc: true, hccSource: true,
       tpi: true, tpiFormulaVersion: true, tpiConfidence: true, jpi: true, jpiFormulaVersion: true,
       milk: true, rpa: true, dpr: true, ccr: true,
       gptaJson: true, relJson: true, dgvJson: true, paJson: true, haplotypesJson: true,
