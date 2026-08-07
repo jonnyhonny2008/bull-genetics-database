@@ -38,7 +38,8 @@
     "test:holstein": "tsx --test src/lib/holstein-parse.test.ts",
     "test:layout": "tsx --conditions=react-server --test src/lib/lactanet-layout.test.ts",
     "test:direction": "dotenv -e .env.demo -- tsx --conditions=react-server --test src/lib/us-cdcb/specialists-direction.test.ts src/lib/us-cdcb/linear.test.ts",
-    "test:components": "tsx --tsconfig tsconfig.test.json --test src/components/LinearGraph.test.tsx"
+    "test:components": "tsx --tsconfig tsconfig.test.json --test src/components/LinearGraph.test.tsx",
+    "us:finish": "dotenv -e .env.production -- prisma db push --accept-data-loss && dotenv -e .env.production -- tsx --conditions=react-server prisma/import-cdcb.ts ./imports/cdcb && dotenv -e .env.production -- tsx --conditions=react-server prisma/pending/verify-split.mts"
   },
   "prisma": {
     "seed": "tsx prisma/seed-config.ts"
