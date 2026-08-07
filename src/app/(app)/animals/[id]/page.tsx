@@ -24,6 +24,7 @@ import {
 import { parseHolsteinProfileJson } from "@/lib/holstein-parse";
 import RefreshHolstein from "./RefreshHolstein";
 import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex, OBTAINABLE_WEIGHT } from "@/lib/pedigree";
+import CrossSystemBanner from "@/components/CrossSystemBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -261,6 +262,11 @@ export default async function AnimalProfile({
           </div>
         }
       />
+
+      {/* Whether this same bull also has a CDCB evaluation, and a link to it.
+          Existence, round count and round label only — no American value is read
+          or shown here (kg vs lb). Renders nothing if the US tables don't exist. */}
+      <CrossSystemBanner animalId={a.id} system="ca" />
 
       {/* Tabs */}
       <div className="mb-4 flex flex-wrap gap-2 text-sm">

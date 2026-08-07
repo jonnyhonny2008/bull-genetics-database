@@ -65,24 +65,35 @@ export function toSystem(pathname: string, system: GeneticSystem): string {
   const home = `${prefix}/dashboard`;
   if (bare === "/" || bare === "") return home;
 
-  // A detail page has no counterpart unless its SECTION exists on the other side.
-  const section = `/${bare.split("/").filter(Boolean)[0] ?? ""}`;
-  const nested = bare !== section;
-  if (!routeAvailable(section, system)) return home;
-  // Nested Canadian-only sub-pages (an edit form, a "new proof" screen) have no
-  // US twin even when the section does, so land on the section instead.
-  if (nested && system === "us" && !US_NESTED_ROUTES.has(bare.replace(/\/[^/]+(?=\/|$)/, "/[id]"))) {
-    return `${prefix}${section}`;
+  const seg = bare.split("/").filter(Boolean);
+  const section = `/${seg[0] ?? ""}`;
+
+  // THE ANIMAL PAGE IS THE IMPORTANT CASE. Both systems key off the SAME
+  // Animal.id — the US side is a parallel evaluation table, not a parallel
+  // animal roster — so /animals/<id> and /us/animals/<id> are the same bull.
+  // Carrying the id across is what makes the toggle mean "show me this bull's
+  // other evaluation" rather than "take me to a list".
+  if (section === "/animals" && seg.length >= 2) {
+    // Deeper Canadian sub-pages (edit, new proof, new classification) have no US
+    // twin, so those land on the bull's US card rather than a dead URL.
+    if (system === "us") return `/us/animals/${seg[1]}`;
+    return `/animals/${seg[1]}${seg.length > 2 ? `/${seg.slice(2).join("/")}` : ""}`;
   }
+
+  // Everything else: the section must exist on the other side at all.
+  if (!routeAvailable(section, system)) return home;
+
+  // A nested page under a shared section only crosses over if it really exists.
+  if (seg.length > 1 && system === "us" && !US_NESTED_ROUTES.has(bare)) return `${prefix}${section}`;
   return `${prefix}${bare}`;
 }
 
 /**
- * Nested American pages that really exist, in `/section/[id]` form. Anything else
- * under a section falls back to the section itself rather than a dead URL.
+ * Nested American pages that really exist. Anything else under a section falls
+ * back to the section itself rather than minting a dead URL. (The animal detail
+ * page is handled above, since it is keyed by id rather than being a fixed path.)
  */
 const US_NESTED_ROUTES = new Set<string>([
-  "/animals/[id]",
   "/reports/proof-changes",
   "/reports/round-summary",
   "/admin/data-quality",
