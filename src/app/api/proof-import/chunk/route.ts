@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { parseHeader, parseRow, safeProofFileName } from "@/lib/lactanet";
 import { persistBull } from "@/lib/proof-import";
 import { logAppError } from "@/lib/error-log";
+import { detectImportSystem, importSystemLabel } from "@/lib/import-file-kind";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -29,6 +30,22 @@ export async function POST(request: Request) {
   const fileName = safeProofFileName(String(body.fileName ?? "")) ?? "mass-import.csv";
   if (!header || !rows.length) return NextResponse.json({ error: "Provide a header line and at least one data row." }, { status: 400 });
   if (rows.length > 1000) return NextResponse.json({ error: "Chunk too large (max 1000 rows)." }, { status: 400 });
+
+  // This importer speaks ONE format — the Lactanet bull-proof CSV. A CDCB file
+  // selected here would not error: every column would just be read as garbage
+  // (different delimiter, different fields), which is worse than refusing
+  // outright. Checked on the first chunk only (captureId absent) so a wrongly
+  // selected file is caught before any row writes, not mid-way through.
+  const isFirstChunk = !(typeof body.captureId === "string" && body.captureId);
+  if (isFirstChunk) {
+    const detected = detectImportSystem(fileName, header);
+    if (detected !== "lactanet") {
+      const msg = detected === "cdcb"
+        ? `That file looks like a CDCB (American) export, not a Lactanet (Canadian) bull-proof CSV — this importer only handles the Canadian file. Use the CDCB import path instead.`
+        : `That file's header doesn't look like a Lactanet bull-proof CSV ("${header.slice(0, 60)}${header.length > 60 ? "…" : ""}") — refusing to import it.`;
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+  }
 
   const idx = parseHeader(header);
   const source = await prisma.source.findUnique({ where: { sourceName: "LactanetGen" }, select: { sourceId: true } });

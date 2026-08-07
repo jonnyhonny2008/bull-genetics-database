@@ -31,6 +31,7 @@ import crypto from "crypto";
 import { parseHeader, parseRow, type ParsedBull } from "../src/lib/lactanet";
 import { packTraits } from "../src/lib/eval-traits";
 import { classifyProofFile } from "../src/lib/proof-file-kind";
+import { detectImportSystem, importSystemLabel } from "../src/lib/import-file-kind";
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { computeRollbackRatings } from "./compute-rollback";
@@ -61,8 +62,32 @@ async function insertChunked(model: { createMany: (a: { data: any[] }) => Promis
   for (let i = 0; i < rows.length; i += chunk) await model.createMany({ data: rows.slice(i, i + chunk) });
 }
 
+/** Read just the first line of a file without loading the rest of it. */
+async function peekFirstLine(path: string): Promise<string | null> {
+  const rl = readline.createInterface({ input: fs.createReadStream(path), crlfDelay: Infinity });
+  for await (const line of rl) { rl.close(); return line; }
+  rl.close();
+  return null;
+}
+
 async function main() {
   if (!fs.existsSync(fullPath)) { console.error(`[import-all] File not found: ${fullPath}`); process.exit(1); }
+
+  // This importer speaks ONE format — the Lactanet bull-proof CSV. A CDCB file
+  // handed to it would not error: parseRow would just read every column as
+  // garbage (different delimiter, different field layout), which is worse than
+  // refusing outright. Checked BEFORE any DB work, so a wrong file costs one
+  // line read, not a wasted round of breed/source/animal lookups.
+  const firstLine = await peekFirstLine(fullPath);
+  const detectedSystem = detectImportSystem(fileName, firstLine);
+  if (detectedSystem !== "lactanet") {
+    const shown = firstLine ? `"${firstLine.slice(0, 70)}${firstLine.length > 70 ? "…" : ""}"` : "(empty file)";
+    console.error(`[import-all] ${fileName} looks like ${importSystemLabel(detectedSystem)} file, not a Lactanet (Canadian) export — its first line reads ${shown}.`);
+    if (detectedSystem === "cdcb") console.error(`[import-all] Use the CDCB importer instead: npx tsx --conditions=react-server prisma/import-cdcb.ts <folder-with-extracted-csvs>`);
+    console.error(`[import-all] Refusing to import.`);
+    process.exit(1);
+  }
+
   // One file per run, so its kind is fixed for every row here. A stud proof file
   // resolves to "official"/"interim"; the whole-breed Holstein archive carries no
   // stud code and resolves to null, which is honest — it is not a Blondin
