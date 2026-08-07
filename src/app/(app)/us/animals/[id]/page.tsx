@@ -12,6 +12,8 @@ import { computeJpi, JpiUnavailable, type JpiResult } from "@/lib/us-cdcb/jpi";
 import { US_SPECIALIST_CATALOG, type UsSpecialistDirection } from "@/lib/us-cdcb/specialists";
 import { parseId17 } from "@/lib/us-cdcb/identity";
 import CrossSystemBanner from "@/components/CrossSystemBanner";
+import { LinearGraph } from "@/components/LinearGraph";
+import { usLinearGroups } from "@/lib/us-cdcb/linear";
 // Favourites are ANIMAL-level (Watchlist keyed userId+animalId, with no system on
 // it), so this is the same star the Canadian card shows. A bull starred on one
 // side is starred on the other — which is the point: one animal, two evaluations.
@@ -513,14 +515,26 @@ export default async function UsSireCard({
             </p>
           </Card>
 
-          <Card title="Linear type traits">
-            {/* No bar graph is drawn here, on purpose — see the note below. The
-                Canadian LinearGraph component takes an explicit min/max and a
-                descriptor at each end per trait, all of which Lactanet publishes.
-                Nothing in this repository establishes the equivalent bounds for the
-                CDCB scale, and the Canadian -15..+15 track is a different scale
-                entirely, so reusing it would draw every American bull's type at
-                roughly a tenth of his true position. */}
+          <Card title="Linear type profile">
+            {(() => {
+              const chart = usLinearGroups(gpta);
+              if (chart.length === 0) {
+                return <EmptyState message="No linear type traits published for this animal in this round." />;
+              }
+              return <LinearGraph groups={chart} />;
+            })()}
+            <p className="mt-4 text-xs text-slate-500">
+              Plotted on a <strong>−3 … +3</strong> track with breed average at the centre line. CDCB publishes these
+              as standardised deviations, so that range covers the working spread of the breed; a bull beyond it is
+              drawn at the rail while the figure beside his bar stays the real one. End descriptors are the breed
+              vocabulary this application already uses on the Canadian card, so one bull&rsquo;s two cards point
+              &ldquo;wide&rdquo; the same way. Favourable direction comes from the app&rsquo;s trait catalogue — green
+              is the <em>good</em> end, not merely the positive one, which matters on the traits below where the good
+              end is the low one.
+            </p>
+          </Card>
+
+          <Card title="Linear type traits — published values">
             {(() => {
               const linearGroups = groupLinear(gpta, dgv, pa);
               if (linearGroups.length === 0) {
@@ -533,15 +547,14 @@ export default async function UsSireCard({
                 </div>
               ));
             })()}
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <strong>Why there is no linear bar chart on this page.</strong> The Canadian card plots each type trait
-              on a −15…+15 track with a named descriptor at each end, because Lactanet publishes those bounds and
-              those descriptors per trait. CDCB publishes its type traits on a different scale, and this application
-              holds no verified per-trait bounds or end descriptors for it. Drawing a bar means choosing an axis, and
-              a chosen axis is an invented one — the same PTA looks modest on a wide axis and extreme on a narrow
-              one, and a reader takes the picture, not the caption. The published values are shown in full instead.
-              Reusing the Canadian −15…+15 bounds here would be the same class of error as printing a kilogram EBV in
-              a pounds column.
+            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <strong>How the directions above were set.</strong> Stature, Rump Angle and Rear Teat Placement are
+              <em> intermediate optimum</em> — the same call as the Canadian chart — along with Teat Length, Rear Legs
+              side view and Udder Depth. All six are badged <strong>opt</strong>: the middle of the scale is the
+              target, so neither end is ranked and neither is shaded good or bad. Dairy Form is the one type trait
+              here read directionally, <strong>higher is better</strong>. GTPI is unaffected — Holstein Association
+              USA&rsquo;s composite arithmetic is computed exactly as published, including its rear-teat curve,
+              because a house preference must not edit someone else&rsquo;s formula.
             </div>
           </Card>
         </div>

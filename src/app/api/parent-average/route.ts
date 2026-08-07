@@ -8,6 +8,7 @@ import {
 } from "@/lib/parent-average";
 import { ingestLactanetReg } from "@/lib/lactanet-ingest";
 import type { LinearGroup } from "@/components/LinearGraph";
+import { caFavourableEnd } from "@/lib/ca-linear";
 
 export const runtime = "nodejs";
 export const maxDuration = 180; // up to a dam + 5 live Lactanet lookups
@@ -38,7 +39,7 @@ async function linearGroupsFor(paByCode: Map<string, number>): Promise<LinearGro
     const arr = byGroup.get(g) ?? [];
     arr.push({
       order: d.displayOrder,
-      datum: { name: d.traitName, value: v, min: d.graphMin ?? -15, max: d.graphMax ?? 15, left: d.leftLabel ?? "", right: d.rightLabel ?? "", descriptor: null },
+      datum: { name: d.traitName, value: v, min: d.graphMin ?? -15, max: d.graphMax ?? 15, left: d.leftLabel ?? "", right: d.rightLabel ?? "", descriptor: null, favourable: caFavourableEnd(d.traitCode, d.traitName, d.higherIsBetter) },
     });
     byGroup.set(g, arr);
   }

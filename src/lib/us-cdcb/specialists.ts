@@ -65,13 +65,27 @@ export const WHY_UNCONFIRMED =
  *
  * INTERMEDIATE-OPTIMUM CALLS. Rump Angle is the one the product rules name, but
  * it is not alone, and the evidence is in this codebase's own index formulas:
- * index-registry.ts transforms RTP, TLG and RLS through RPstar/TLstar/SVstar —
- * curves that PEAK and then fall away — precisely because credit stops at an
- * optimum, and jpi.ts scores UDP as distance from an optimum outright. Stature
- * and Dairy Form are marked the same way on weaker but real evidence: both carry
- * a negative weight in the udder / feet-and-leg composites and a positive one in
- * body weight, so the published formulas themselves disagree about which end is
- * better. "The tallest bull" is not a selling point.
+ * index-registry.ts transforms TLG and RLS through TLstar/SVstar — curves that
+ * PEAK and then fall away — precisely because credit stops at an optimum, and
+ * jpi.ts scores UDP as distance from an optimum outright.
+ *
+ * STATURE, RUMP ANGLE AND REAR TEAT PLACEMENT ARE INTERMEDIATE OPTIMUM HERE TOO —
+ * the owner's call, 2026-08-07, and it now matches the Canadian chart exactly (see
+ * lib/ca-linear.ts). Both extremes are faults on all three: neither the tallest
+ * bull nor the shortest is the target. Dairy Form is the one trait of the four
+ * that keeps a direction — higher is better.
+ *
+ * The arithmetic agrees. index-registry.ts already runs RTP through RPstar, a
+ * curve that PEAKS at 1.0 and falls away after it, and subtracts 0.20 x STA from
+ * both UDC and FLC — published formulas that stop rewarding a trait past a point
+ * are describing an optimum, not a direction.
+ *
+ * WHAT THIS DOES NOT CHANGE: those composite formulas stay exactly as HAUSA
+ * publishes them. They are someone else's arithmetic computed on their behalf, and
+ * a house preference must never edit one.
+ *
+ * An intermediate trait is not offered as a SPECIALTY. The finder ranks bulls
+ * solidly positive on every picked trait, and on these there is no top of the list.
  */
 export const US_SPECIALIST_CATALOG: UsSpecialistTrait[] = [
   // --- Production -----------------------------------------------------------
@@ -126,6 +140,7 @@ export const US_SPECIALIST_CATALOG: UsSpecialistTrait[] = [
   { code: "UCL", name: "Udder Cleft", group: "Type — overall & udder", direction: "higher", unit: null },
   { code: "FTP", name: "Front Teat Placement", group: "Type — overall & udder", direction: "higher", unit: null },
   { code: "UDP", name: "Udder Depth", group: "Type — overall & udder", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
+  // Scale runs Wide (−) to Close (+). Both ends are faults; RPstar peaks and falls.
   { code: "RTP", name: "Rear Teat Placement", group: "Type — overall & udder", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
   { code: "TLG", name: "Teat Length", group: "Type — overall & udder", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
 
@@ -140,8 +155,9 @@ export const US_SPECIALIST_CATALOG: UsSpecialistTrait[] = [
   { code: "BDE", name: "Body Depth", group: "Type — body", direction: "higher", unit: null },
   { code: "TRW", name: "Thurl Width", group: "Type — body", direction: "higher", unit: null },
   { code: "RPA", name: "Rump Angle", group: "Type — body", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
+  // Scale runs Short (−) to Tall (+). Moderate is the target; UDC and FLC both subtract STA.
   { code: "STA", name: "Stature", group: "Type — body", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
-  { code: "DFM", name: "Dairy Form", group: "Type — body", direction: "intermediate", unit: null, excluded: WHY_INTERMEDIATE },
+  { code: "DFM", name: "Dairy Form", group: "Type — body", direction: "higher", unit: null },
 
   // --- Published, but not identified ---------------------------------------
   { code: "MSP", name: "MSP", group: "Unidentified", direction: "unknown", unit: null, excluded: WHY_UNCONFIRMED },

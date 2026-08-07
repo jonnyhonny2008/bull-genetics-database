@@ -1,0 +1,12 @@
+// Test-only compiler settings. Next.js compiles JSX with the AUTOMATIC runtime,
+// so components in src/ correctly carry no `import React`. The root tsconfig says
+// "jsx": "preserve" because Next does that transform itself — but tsx, running a
+// component under node:test, falls back to the CLASSIC runtime and then fails on
+// an undefined React. Pointing the test runner at the automatic runtime matches
+// what Next actually does, rather than adding a dead import to every component.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}

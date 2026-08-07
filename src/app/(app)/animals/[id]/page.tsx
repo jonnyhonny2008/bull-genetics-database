@@ -12,6 +12,7 @@ import { qualityFlagsFor } from "@/lib/quality";
 import { matchExistingAnimals } from "@/lib/quality";
 import { archiveAnimal, addNote } from "../actions";
 import { LinearGraph, type LinearGroup, type LinearTraitDatum } from "@/components/LinearGraph";
+import { caFavourableEnd } from "@/lib/ca-linear";
 import { TraitTrendChart, type TrendSeries } from "@/components/TraitTrendChart";
 import { computeRollback, ratingVerdict, ROLLBACK_TRAIT_LABELS, proofKind } from "@/lib/rollback";
 import { getRollbackTraitScales } from "@/lib/reference";
@@ -170,7 +171,7 @@ export default async function AnimalProfile({
     if (!d || tv.numericValue == null) continue;
     const g = d.graphGroup ?? "Type";
     const arr = linByGroup.get(g) ?? [];
-    arr.push({ order: d.displayOrder, datum: { name: d.traitName, value: tv.numericValue, min: d.graphMin ?? -15, max: d.graphMax ?? 15, left: d.leftLabel ?? "", right: d.rightLabel ?? "", descriptor: tv.textValue } });
+    arr.push({ order: d.displayOrder, datum: { name: d.traitName, value: tv.numericValue, min: d.graphMin ?? -15, max: d.graphMax ?? 15, left: d.leftLabel ?? "", right: d.rightLabel ?? "", descriptor: tv.textValue, favourable: caFavourableEnd(d.traitCode, d.traitName, d.higherIsBetter) } });
     linByGroup.set(g, arr);
   }
   const GROUP_ORDER = ["Dairy Strength", "Rump", "Feet & Legs", "Mammary System"];
