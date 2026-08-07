@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import type { Prisma } from "@prisma/client";
 import { PageHeader, Card, Table, Badge, EmptyState, StatCard } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
@@ -45,6 +46,10 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Rec
   // build on animalAND, and the nested `animal:` filters reuse animalWhere.
   const blondin = blondinWhere(sp.blondin);
   if (blondin) animalAND.push(blondin);
+  // Canadian side only — see lib/roster-scope.ts. Proof Performance and Rollback
+  // Resistance are both computed against a CANADIAN cohort, so admitting CDCB
+  // bulls here would not just lengthen the list, it would move the baseline.
+  animalAND.push(CA_ROSTER);
   const animalWhere: Prisma.AnimalWhereInput = { AND: animalAND };
 
   // Both scores are materialised on Animal by prisma/compute-rollback.ts, so this

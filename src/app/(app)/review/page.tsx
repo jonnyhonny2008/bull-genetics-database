@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { currentUser } from "@/lib/auth";
 import { can, REVIEW_STATUSES, RECORD_TYPES, label } from "@/lib/constants";
 import { PageHeader, Card, Badge, EmptyState, statusTone } from "@/components/ui";
@@ -26,7 +27,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Recor
       where, orderBy: { createdAt: "desc" },
       include: { capture: { include: { source: true } }, matchedAnimal: true },
     }),
-    prisma.animal.findMany({ where: { archived: false }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
+    prisma.animal.findMany({ where: { archived: false, ...CA_ROSTER }, orderBy: { primaryName: "asc" }, select: { id: true, primaryName: true } }),
     prisma.importReviewQueue.groupBy({ by: ["status"], _count: true }),
   ]);
   const countByStatus = new Map(counts.map((c) => [c.status, c._count]));

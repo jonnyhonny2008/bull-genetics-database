@@ -6,6 +6,7 @@ import { AnimalFilters } from "./AnimalFilters";
 import { SireRolePills, SireClassBadges, BlondinToggle } from "@/components/SireFilters";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { SEXES, can } from "@/lib/constants";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { currentUser } from "@/lib/auth";
 import { TRAIT_COLUMNS } from "@/lib/eval-traits";
 import { sireRoleWhere, blondinWhere, resolveSort } from "@/lib/sire-class";
@@ -98,6 +99,10 @@ export default async function AnimalsPage({ searchParams }: { searchParams: Reco
     AND.push({ evaluations: { some: { isPreferred: true, [filterCol]: { gte: Number(sp.traitMin) } } } });
   }
   if (sp.classMin && !isNaN(Number(sp.classMin))) AND.push({ classifications: { some: { approvalStatus: "approved", finalScore: { gte: Number(sp.classMin) } } } });
+  // THE CANADIAN LINEUP IS NOT THE WHOLE ROSTER. The CDCB import puts an Animal
+  // row in this table for every evaluated bull in America, so without this the
+  // Canadian list is ~70,000 rows of bulls that have no Canadian proof at all.
+  AND.push(CA_ROSTER);
   const where: Prisma.AnimalWhereInput = { AND };
 
   let total = 0;

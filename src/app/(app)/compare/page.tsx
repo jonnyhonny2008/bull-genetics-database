@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { PageHeader, EmptyState, Badge } from "@/components/ui";
 import { unpackTraits, type TraitDefLite } from "@/lib/eval-traits";
 import { fmtNum } from "@/lib/format";
@@ -34,7 +35,7 @@ export default async function ComparePage({ searchParams }: { searchParams: { bu
       select: { traitCode: true, traitName: true, category: true, unit: true, displayOrder: true, higherIsBetter: true },
     }),
     prisma.animal.findMany({
-      where: { sex: "M", archived: false },
+      where: { sex: "M", archived: false, ...CA_ROSTER },
       orderBy: { primaryName: "asc" },
       select: { id: true, primaryName: true },
     }),

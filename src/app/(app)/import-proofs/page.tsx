@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { listProofFiles, importsDir } from "@/lib/lactanet";
@@ -15,7 +16,7 @@ export default async function ImportProofsPage({ searchParams }: { searchParams:
   if (!can(user?.role, "record:write")) redirect("/dashboard");
 
   const files = listProofFiles();
-  const totalAnimals = await prisma.animal.count({ where: { archived: false } });
+  const totalAnimals = await prisma.animal.count({ where: { archived: false, ...CA_ROSTER } });
 
   return (
     <div>

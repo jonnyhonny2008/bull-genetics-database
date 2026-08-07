@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { PageHeader, Card, Table, Badge } from "@/components/ui";
@@ -20,7 +21,7 @@ export default async function AdminPage() {
     prisma.role.findMany({ orderBy: { displayOrder: "asc" } }),
     prisma.configValue.findMany({ orderBy: [{ category: "asc" }, { displayOrder: "asc" }] }),
     prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
-    Promise.all([prisma.animal.count({ where: { archived: false } }), prisma.user.count(), prisma.source.count(), prisma.traitDefinition.count()]),
+    Promise.all([prisma.animal.count({ where: { archived: false, ...CA_ROSTER } }), prisma.user.count(), prisma.source.count(), prisma.traitDefinition.count()]),
   ]);
   const agentCfg = await getAgentConfig();
   const envMap = new Map(env.map((e) => [e.key, e.value]));

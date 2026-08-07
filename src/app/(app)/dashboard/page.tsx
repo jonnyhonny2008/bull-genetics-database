@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import { Card, Table, EmptyState } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
 import { LineChart, type LineSeries } from "@/components/TrendCharts";
@@ -33,13 +34,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
   // Phase 1 — headline counts, breeds, the latest round on file, and the
   // trait-ranked leaderboard.
   const [totalAnimals, activeSires, avgActiveAgg, totalEvals, maxAgg, breeds, byBreedCount, topBulls] = await Promise.all([
-    prisma.animal.count({ where: { archived: false } }),
-    prisma.animal.count({ where: { archived: false, proofStatus: "active" } }),
+    // ...CANADIAN animals only. The CDCB import adds an Animal row per evaluated
+    // American bull, and counting those here would report a lineup of seventy
+    // thousand. The evaluation-based figures below are already Canada-only,
+    // because they read GeneticEvaluation; these three count Animal directly.
+    prisma.animal.count({ where: { archived: false, ...CA_ROSTER } }),
+    prisma.animal.count({ where: { archived: false, proofStatus: "active", ...CA_ROSTER } }),
     prisma.geneticEvaluation.aggregate({ _avg: { lpi: true }, where: { isPreferred: true, animal: { archived: false, proofStatus: "active" } } }),
     prisma.geneticEvaluation.count(),
     prisma.geneticEvaluation.aggregate({ _max: { evaluationDate: true } }),
     prisma.breed.findMany(),
-    prisma.animal.groupBy({ by: ["breedId"], where: { archived: false }, _count: true }),
+    prisma.animal.groupBy({ by: ["breedId"], where: { archived: false, ...CA_ROSTER }, _count: true }),
     prisma.geneticEvaluation.findMany({
       where: { isPreferred: true, animal: { archived: false }, [rCol]: { not: null } } as Prisma.GeneticEvaluationWhereInput,
       orderBy: { [rCol]: "desc" } as Prisma.GeneticEvaluationOrderByWithRelationInput,

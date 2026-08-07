@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { prisma } from "@/lib/db";
+import { CA_ROSTER } from "@/lib/roster-scope";
 import type { Prisma } from "@prisma/client";
 import { sireRoleWhere } from "@/lib/sire-class";
 import { parsePedigreeNotes, resolveAncestors, computePedigreeIndex } from "@/lib/pedigree";
@@ -100,7 +101,10 @@ const flatten = (a: Card) => ({
 
 /** Shared: animal WHERE from optional role + breed filters. */
 async function animalFilter(input: Record<string, unknown>): Promise<Prisma.AnimalWhereInput> {
-  const AND: Prisma.AnimalWhereInput[] = [{ archived: false }];
+  // Canadian animals only. Every agent tool that counts or lists sires funnels
+  // through here, so without it the assistant would answer "how many sires do we
+  // have" with the whole CDCB roster.
+  const AND: Prisma.AnimalWhereInput[] = [{ archived: false }, CA_ROSTER];
   const role = typeof input.role === "string" ? input.role : undefined;
   const rw = sireRoleWhere(role) as Prisma.AnimalWhereInput | null;
   if (rw) AND.push(rw);

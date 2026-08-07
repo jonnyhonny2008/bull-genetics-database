@@ -23,6 +23,7 @@
 // ---------------------------------------------------------------------------
 
 import { prisma } from "./db";
+import { CA_ROSTER } from "./roster-scope";
 import type { Prisma } from "@prisma/client";
 import { blondinWhere } from "./sire-class";
 import { isOfficialProof } from "./rollback";
@@ -308,7 +309,7 @@ export async function getProofChangeReport(
   const blondinFilter = blondinWhere(blondin);
   const bulls = await prisma.animal.findMany({
     where: {
-      archived: false, proofRoundCount: { gte: 2 },
+      archived: false, proofRoundCount: { gte: 2 }, ...CA_ROSTER,
       identifiers: { some: { active: true, idType: "naab" } },
       ...(blondinFilter ?? {}),
     },
