@@ -24,6 +24,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "./cache";
 
+/** MILK reliability at or above which a bull's evaluation includes daughters. */
+export const PROVEN_REL_MIN = 80;
+
 /** Where a role comes from: the evaluation basis, or CDCB's AI-status file. */
 export type UsRoleKind = "basis" | "status";
 
@@ -83,19 +86,24 @@ const STATUS_CODE: Record<string, string> = { active: "A", marketed: "G", foreig
  */
 export function usRoleWhere(role: string | undefined, statusRound: string | null): Prisma.UsEvaluationWhereInput | null {
   switch (role) {
-    // WITHDRAWN. These read isPtaMilk as "has a daughter proof", and it is not
-    // that: it is true for all 68,721 bulls in the April 2026 round, so the pills
-    // claimed 68,721 daughter-proven and 0 parent-average. Both numbers were
-    // fiction, and the page stated them with total confidence.
+    // Split on MILK RELIABILITY, which is what CDCB actually gives us. There is
+    // no boolean: IS_PTA_MILK is true for every bull, CHIP is present on every
+    // bull in a genotyped era, CURRENT is "0" throughout, and GSONS is not a
+    // count. Reading isPtaMilk as a daughter-proof flag is what made this list
+    // claim 68,721 daughter-proven bulls and 0 genomic ones.
     //
-    // The real signal is MILK reliability — genomic young bulls sit near 70-79,
-    // daughter-proven bulls 85 and up — but that lives inside relJson rather than
-    // an indexed column, so filtering on it needs a migration and a verified
-    // threshold. Until that exists these return null: no pill is better than a
-    // confident wrong one.
+    // 80% is the cut, and it is a real break rather than a round number: measured
+    // across the April 2026 round, Holstein has 51,367 bulls at or above it and
+    // 130 below. A genomic-only evaluation cannot climb far past the seventies
+    // because there are no daughter records left to add; passing 80 means
+    // daughters are in the evaluation, which is CDCB's own definition of proven.
+    //
+    // The threshold is shown on the page. A number this consequential should not
+    // be a constant only the code knows about.
     case "proven":
+      return { milkRel: { gte: PROVEN_REL_MIN } };
     case "genomic":
-      return null;
+      return { milkRel: { lt: PROVEN_REL_MIN } };
     case "active":
     case "marketed":
     case "foreign":
@@ -171,7 +179,10 @@ async function roleCountsUncached(
   breed?: string,
 ): Promise<Record<string, number>> {
   const [basis, status] = await Promise.all([
-    prisma.usEvaluation.groupBy({ by: ["isPtaMilk"], where: base, _count: { _all: true } }),
+    Promise.all([
+      prisma.usEvaluation.count({ where: { ...base, milkRel: { gte: PROVEN_REL_MIN } } }),
+      prisma.usEvaluation.count({ where: { ...base, milkRel: { lt: PROVEN_REL_MIN } } }),
+    ]),
     // A REAL JOIN, in the database. Two earlier attempts did it in JavaScript and
     // both were slow enough to notice: inlining 4,926 ids into three counts, then
     // pulling 68,721 id17s across the wire to intersect in a Set (10 seconds).
@@ -194,13 +205,11 @@ async function roleCountsUncached(
         `.then((rows) => rows.map((r) => ({ code: r.code, n: Number(r.n) })))
       : Promise.resolve([] as { code: string; n: number }[]),
   ]);
-  const nBasis = (v: boolean) => basis.find((b) => b.isPtaMilk === v)?._count._all ?? 0;
+  const nBasis = (v: boolean) => (v ? basis[0] : basis[1]);
   const nStatus = (c: string) => status.find((s) => s.code === c)?.n ?? 0;
   return {
-    // Withheld deliberately — see usRoleWhere. isPtaMilk does not mean what these
-    // pills claimed, so no count is offered rather than a wrong one.
-    proven: -1,
-    genomic: -1,
+    proven: nBasis(true),
+    genomic: nBasis(false),
     active: nStatus("A"),
     marketed: nStatus("G"),
     foreign: nStatus("F"),

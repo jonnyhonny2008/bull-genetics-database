@@ -226,6 +226,10 @@ export async function persistCdcbRound(
 
     rows.push({
       usAnimalId, id17: a.id17,
+      // Lifted out of relJson at write time: it is how proven and genomic are told
+      // apart, and CDCB ships no flag for that. Extracting it later meant a
+      // 48-second UPDATE over the whole table.
+      milkRel: a.traits.MILK?.grel ?? null,
       sourceFamily: file.family!, runKind: file.kind!, roundCode: file.roundCode, periodKey: file.periodKey!,
       evaluationDate, evalBreed: a.info.EVAL_BREED || null,
       isPtaMilk: yn(a.info.IS_PTA_MILK), isPtaCt: yn(a.info.IS_PTA_CT),

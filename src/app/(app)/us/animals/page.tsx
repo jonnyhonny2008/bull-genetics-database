@@ -11,7 +11,7 @@ import { usSpecialists, parseUsSpecialistCodes, parseUsSpecialistLevel, US_SPECI
 import { SpecialistPicker } from "@/components/SpecialistPicker";
 import { CDCB_BREEDS } from "@/lib/us-cdcb/file-kind";
 import { usRoundLabel } from "@/lib/us-cdcb/proof-change";
-import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound, usAiStatusIds } from "@/lib/us-cdcb/list-filters";
+import { usRoleWhere, usSearchWhere, usFavouriteWhere, usRoleCounts, usLatestStatusRound, usAiStatusIds, PROVEN_REL_MIN } from "@/lib/us-cdcb/list-filters";
 // Favourites are ANIMAL-level (a Watchlist row keyed userId+animalId, with no
 // system on it), so this is the same star and the same action the Canadian list
 // uses — a bull starred there is already starred here. Duplicating it per system
@@ -145,6 +145,13 @@ export default async function UsAnimalsPage({ searchParams }: { searchParams: Re
           </div>
 
           <UsRolePills sp={sp} counts={rows.roleCounts} statusRound={rows.statusRound} />
+          {/* A threshold this consequential should not be a constant only the code
+              knows about — CDCB publishes no proven/genomic flag, so this is our
+              reading of their data and the reader is entitled to see the rule. */}
+          <p className="-mt-1 mb-3 text-[11px] text-slate-400">
+            Daughter-proven means MILK reliability of {PROVEN_REL_MIN}% or more — CDCB publishes no
+            proven/genomic flag, so the split is read from reliability.
+          </p>
 
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <SpecialistPicker traits={US_SPECIALIST_TRAITS.map((t) => ({ code: t.code, name: t.name, group: t.group }))} />

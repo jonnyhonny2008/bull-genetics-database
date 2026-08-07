@@ -780,6 +780,20 @@ model UsEvaluation {
   // So this column holds the value HAUSA published, and is null for every bull
   // they did not publish. A computed stand-in would be a guess wearing a number's
   // clothes. See prisma/import-hcc.ts.
+  // --- Daughter-proven vs genomic -------------------------------------------
+  // MILK reliability, lifted out of relJson so it can be filtered and indexed.
+  //
+  // CDCB ships NO boolean for this. IS_PTA_MILK and IS_PTA_CT are true for every
+  // bull in a round; CHIP is present on all of them, because a modern round is
+  // entirely genotyped; CURRENT is "0" throughout; and GSONS is not a count
+  // despite its name. Reading isPtaMilk as "has a daughter proof" is what made
+  // the lineup claim 68,721 daughter-proven bulls and 0 genomic ones.
+  //
+  // Reliability is the real signal, and it is bimodal for a physical reason: a
+  // genomic-only evaluation ceilings in the seventies because there are no
+  // daughter records left to add, while a daughter proof carries 85+. That is
+  // also CDCB's own definition — daughters IN the evaluation, not a flag beside it.
+  milkRel           Float?
   hcc               Float?
   // Which HAUSA release the value came from, e.g. "HCC_report 2026-04".
   hccSource         String?
@@ -809,6 +823,7 @@ model UsEvaluation {
   @@index([isPreferred, nmDollar])
   @@index([isPreferred, ptat])
   @@index([isPreferred, jpi])
+  @@index([isPreferred, milkRel])
   @@index([usAnimalId, evaluationDate])
   @@index([animalId])
 }

@@ -235,6 +235,7 @@ export async function persistCdcbAnimal(
     jpi: jpi?.value ?? null,
     jpiFormulaVersion: jpi?.version.label ?? null,
     sourceFile: ctx.sourceFile,
+    milkRel: a.traits.MILK?.grel ?? null,
     createdById: ctx.userId ?? undefined,
   };
 
