@@ -12,9 +12,13 @@
 //
 // Exits non-zero if any of that is false, so a bad import fails loudly rather
 // than leaving a plausible-looking but empty site.
-import { prisma } from "../../src/lib/db";
 
 async function main() {
+  // Imported HERE, not at the top: a static named import fails under Node 24,
+  // which treats this as strict ESM while src/lib/db compiles to CommonJS — and a
+  // top-level await does not survive the CJS transform tsx applies to a .ts file.
+  // Inside an async function both problems go away, whichever Node is on PATH.
+  const { prisma } = await import("../../src/lib/db");
   const [caAnimals, usAnimals, usEvals, preferred, dual, orphanEvals, unnamed] = await Promise.all([
     prisma.animal.count(),
     prisma.usAnimal.count(),

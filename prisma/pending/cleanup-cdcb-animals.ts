@@ -21,11 +21,15 @@
 //
 // The Canadian side is untouched: after this, Animal holds only what predates the
 // American addition, which is what the owner asked for.
-import { prisma } from "../../src/lib/db";
 
 const CDCB_CREATED = { notes: { contains: "Imported from CDCB" } };
 
 async function main() {
+  // Imported HERE, not at the top: a static named import fails under Node 24,
+  // which treats this as strict ESM while src/lib/db compiles to CommonJS — and a
+  // top-level await does not survive the CJS transform tsx applies to a .ts file.
+  // Inside an async function both problems go away, whichever Node is on PATH.
+  const { prisma } = await import("../../src/lib/db");
   const unsafe = await prisma.animal.count({
     where: {
       ...CDCB_CREATED,
