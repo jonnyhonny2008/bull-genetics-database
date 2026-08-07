@@ -326,7 +326,7 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
                     const ai = aiByAnimal.get(b.animalId);
                     return (
                       <th key={b.animalId} className="min-w-[10rem] px-3 py-3 text-left align-top">
-                        <Link href={`/animals/${b.animalId}`} className="font-semibold text-brand-700 hover:underline">{b.animal.primaryName}</Link>
+                        <Link href={`/us/animals/${b.animalId}`} className="font-semibold text-brand-700 hover:underline">{b.animal.primaryName}</Link>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           {/* Proven vs genomic is CDCB's per-trait-group flag, not a
                               property of the bull — IS_PTA_MILK is the production one. */}

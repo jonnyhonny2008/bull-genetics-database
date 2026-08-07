@@ -205,7 +205,7 @@ export default async function UsAnalysisPage({ searchParams }: { searchParams: R
                 </>}>
                   {movement.top.map((m) => (
                     <tr key={m.animalId}>
-                      <td className="td"><Link href={`/animals/${m.animalId}`} className="link font-medium">{m.name}</Link></td>
+                      <td className="td"><Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link></td>
                       <td className="td text-right tabular-nums text-slate-500">{m.before}</td>
                       <td className="td text-right tabular-nums text-slate-500">{m.after}</td>
                       <td className={`td text-right tabular-nums ${m.delta > 0 ? "text-brand-700" : m.delta < 0 ? "text-red-600" : "text-slate-500"}`}>{m.delta > 0 ? `+${m.delta}` : m.delta}</td>

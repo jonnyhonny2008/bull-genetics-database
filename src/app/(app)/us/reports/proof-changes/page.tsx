@@ -39,6 +39,18 @@ export default async function UsProofChangesPage({ searchParams }: { searchParam
     return `/us/reports/proof-changes${s ? `?${s}` : ""}`;
   };
 
+  // The exports run the SAME builder over the SAME query string, so a download is
+  // the view on screen — including the round pair, the sensitivity and the breed,
+  // which re-bases the comparison group rather than merely hiding rows.
+  const exportParams = new URLSearchParams();
+  for (const k of ["from", "to", "q", "breed", "significant", "grads", "sd", "sort", "dir"]) {
+    const v = searchParams[k];
+    if (v) exportParams.set(k, v);
+  }
+  const exportQs = exportParams.toString();
+  const exportHref = `/us/reports/proof-changes/export${exportQs ? `?${exportQs}` : ""}`;
+  const htmlHref = `/us/reports/proof-changes/export?${exportQs ? `${exportQs}&` : ""}format=html`;
+
   if (report.missingTables) {
     return (
       <div>
@@ -77,6 +89,18 @@ export default async function UsProofChangesPage({ searchParams }: { searchParam
       <PageHeader
         title="US Proof Change Report"
         subtitle={`How each bull moved from ${report.fromLabel} to ${report.toLabel}. CDCB PTAs in pounds; every round here is official.`}
+        actions={
+          <div className="flex gap-2">
+            <a href={exportHref} className="btn-primary">⬇ Excel</a>
+            <a
+              href={htmlHref}
+              className="btn-secondary"
+              title="A single self-contained file you can email — opens in any browser, no login needed. Carries the pounds, calculated-GTPI and trademark notes with it."
+            >
+              ⬇ HTML
+            </a>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -255,7 +279,7 @@ export default async function UsProofChangesPage({ searchParams }: { searchParam
                 {report.rows.map((r) => (
                   <tr key={r.animalId} className="align-top hover:bg-slate-50">
                     <td className="td">
-                      <Link href={`/animals/${r.animalId}`} className="link font-medium">{r.name}</Link>
+                      <Link href={`/us/animals/${r.animalId}`} className="link font-medium">{r.name}</Link>
                       {r.graduated && <span className="ml-1.5"><Badge tone="orange">graduation</Badge></span>}
                       <span className="mt-0.5 block font-mono text-[10px] text-slate-400">
                         {r.naab ? `NAAB ${r.naab}` : r.id17}

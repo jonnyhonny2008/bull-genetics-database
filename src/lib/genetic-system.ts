@@ -45,15 +45,48 @@ export function systemFromPathname(pathname: string | null | undefined): Genetic
 }
 
 /**
- * Move a path to the other system, preserving the page where one exists.
- * `/animals` <-> `/us/animals`.
+ * Move a path to the other system, preserving the page where one exists and
+ * FALLING BACK TO THAT SYSTEM'S DASHBOARD where it does not.
+ *
+ * The fallback is the whole point. The two sides are not mirror images: Canada
+ * has pages America will never have (interim proofs, the mating program, live
+ * Lactanet lookups, the whole Data In and Configuration groups), and America has
+ * one Canada does not (/specialists). Mapping the path across blindly mints URLs
+ * for pages that do not exist, so the toggle would 404 from roughly half the app
+ * — including every animal detail page, which is exactly where someone is most
+ * likely to want the other country's view.
+ *
+ * Matching is on the FIRST path segment, so deep paths (/animals/abc123/edit)
+ * resolve on whether that section exists rather than the exact page.
  */
 export function toSystem(pathname: string, system: GeneticSystem): string {
   const bare = pathname === "/us" ? "/" : pathname.startsWith("/us/") ? pathname.slice(3) : pathname;
   const prefix = systemPrefix(system);
-  if (bare === "/" || bare === "") return prefix || "/dashboard";
+  const home = `${prefix}/dashboard`;
+  if (bare === "/" || bare === "") return home;
+
+  // A detail page has no counterpart unless its SECTION exists on the other side.
+  const section = `/${bare.split("/").filter(Boolean)[0] ?? ""}`;
+  const nested = bare !== section;
+  if (!routeAvailable(section, system)) return home;
+  // Nested Canadian-only sub-pages (an edit form, a "new proof" screen) have no
+  // US twin even when the section does, so land on the section instead.
+  if (nested && system === "us" && !US_NESTED_ROUTES.has(bare.replace(/\/[^/]+(?=\/|$)/, "/[id]"))) {
+    return `${prefix}${section}`;
+  }
   return `${prefix}${bare}`;
 }
+
+/**
+ * Nested American pages that really exist, in `/section/[id]` form. Anything else
+ * under a section falls back to the section itself rather than a dead URL.
+ */
+const US_NESTED_ROUTES = new Set<string>([
+  "/animals/[id]",
+  "/reports/proof-changes",
+  "/reports/round-summary",
+  "/admin/data-quality",
+]);
 
 /** Prefix a system-relative href, e.g. ("/animals","us") -> "/us/animals". */
 export function systemHref(href: string, system: GeneticSystem): string {
@@ -76,6 +109,7 @@ export const US_ROUTES = new Set<string>([
   "/compare",
   "/specialists",
   "/reports",
+  "/admin/data-quality",
 ]);
 
 /**

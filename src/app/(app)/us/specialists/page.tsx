@@ -157,7 +157,7 @@ export default async function UsSpecialistsPage({ searchParams }: { searchParams
               {result.rows.map((r) => (
                 <tr key={r.animalId} className="hover:bg-slate-50">
                   <td className="td">
-                    <Link href={`/animals/${r.animalId}`} className="link font-medium">{r.name}</Link>
+                    <Link href={`/us/animals/${r.animalId}`} className="link font-medium">{r.name}</Link>
                     {r.naabCode && <span className="mt-0.5 block font-mono text-[10px] text-slate-400">NAAB {r.naabCode}</span>}
                   </td>
                   <td className="td text-xs text-slate-500">{r.evalBreed ?? "—"}</td>

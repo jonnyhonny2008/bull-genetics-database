@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
-import { prisma } from "@/lib/db";
 import { PageHeader, Card, StatCard, EmptyState, Badge, Table } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
-import { cdcbRoundLabel } from "@/lib/us-cdcb/file-kind";
+import {
+  getUsRoundSummary, isUnusualMover, SD_MULT, TOP_MOVER_LIMIT, LIST_LIMIT,
+  type Mover,
+} from "@/lib/us-cdcb/round-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -14,73 +16,32 @@ export const dynamic = "force-dynamic";
 // Never GeneticEvaluation: a Lactanet EBV in kg landing in a column headed GTPI
 // would be the worst bug this product could ship.
 //
-// Three things make this NOT a translation of the Canadian page:
+// The digest itself — the rounds, the movers, the cohort statistics and every
+// ordering — is built by getUsRoundSummary() in src/lib/us-cdcb/round-summary.ts,
+// whose header carries the reasoning: only official rounds count, graduating
+// bulls are held out of every statistic, and GTPI is ours rather than CDCB's.
+// It lives there because this page, its Excel export and its emailable HTML
+// export all render that ONE object, so a figure on screen and the same figure in
+// a customer's attachment cannot disagree. Anything recomputed here would be a
+// fourth opinion.
 //
-//   * ONLY OFFICIAL ROUNDS COUNT. CDCB ships one file per triannual round, and
-//     the monthly/weekly adds are provisional values for animals that had none
-//     before. Comparing a bull's provisional February figure to its official
-//     April one measures the publication, not the bull, so those rows are
-//     excluded from both sides of every comparison here.
-//   * GRADUATING BULLS GET THEIR OWN SECTION. A bull moving from a genomic
-//     evaluation to a daughter-proven one moves roughly six times a normal
-//     round. That is the most informative signal on this side, but it is also
-//     entirely expected — mixing it into "moved unusually" would bury the
-//     genuinely surprising bulls under a list of bulls doing exactly what a
-//     first crop of daughters does.
-//   * GTPI IS OURS, NOT CDCB'S. Every figure below is computed (see
-//     index-registry.ts) and is only computed for Holstein, so this digest is a
-//     Holstein digest whatever else the round contains.
+// All this file decides is presentation, and how far down each already-ordered
+// list to go.
 // ---------------------------------------------------------------------------
-
-// One SD flags about a third of a normal distribution. That is a usable
-// sensitivity on the Canadian lineup of a few hundred NAAB bulls; on a full CDCB
-// round — tens of thousands of animals — it would produce a "notable movers"
-// list nobody could read. 1.5 keeps the section to the genuinely unusual.
-const SD_MULT = 1.5;
 
 const signed = (n: number | null | undefined) =>
   n == null ? "—" : `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtNum(Math.abs(Math.round(n)))}`;
-
-/** Human label for a triannual round code (YYMM), via the shared formatter. */
-const labelRound = (roundCode: string) =>
-  cdcbRoundLabel({
-    family: "all_evaluated",
-    kind: "official",
-    breed: null,
-    roundCode,
-    periodKey: `R${roundCode}`,
-    date: roundCode,
-  }) ?? roundCode;
-
-interface Mover {
-  animalId: string;
-  name: string;
-  naabCode: string | null;
-  evalBreed: string | null;
-  previous: number;
-  latest: number;
-  delta: number;
-  graduating: boolean;
-  z: number | null;
-}
 
 export default async function UsRoundSummaryPage() {
   const user = currentUser();
   if (!can(user?.role, "compare:read")) redirect("/dashboard");
 
-  let data: Awaited<ReturnType<typeof loadDigest>> | null = null;
-  let missingTables = false;
-  try {
-    data = await loadDigest();
-  } catch (e) {
-    // The US tables are created by `prisma db push`. Until that has run, say so
-    // plainly rather than rendering a 500 — this is a setup state, not a fault.
-    if (/does not exist|relation .* does not exist|P2021/i.test(String((e as Error)?.message))) {
-      missingTables = true;
-    } else throw e;
-  }
+  // The US tables are created by `prisma db push`. Until that has run they do not
+  // exist, and getUsRoundSummary reports that rather than throwing — a setup
+  // state, not a fault, so it gets an explanation instead of a 500.
+  const data = await getUsRoundSummary();
 
-  if (missingTables) {
+  if (data.missingTables) {
     return (
       <div>
         <PageHeader title="What changed this round" subtitle="CDCB evaluations" />
@@ -100,14 +61,14 @@ export default async function UsRoundSummaryPage() {
 
   // Two official rounds are the minimum: one round on its own has nothing to
   // have changed FROM, and a provisional add is not a substitute for one.
-  if (!data || !data.latestRound || !data.previousRound) {
+  if (!data.latestRound || !data.previousRound) {
     return (
       <div>
         <PageHeader
           title="What changed this round"
           subtitle={
-            data?.latestRound
-              ? `${labelRound(data.latestRound)} is the only official round on file.`
+            data.latestRound
+              ? `${data.latestLabel} is the only official round on file.`
               : "CDCB evaluations — April / August / December"
           }
         />
@@ -116,16 +77,13 @@ export default async function UsRoundSummaryPage() {
     );
   }
 
-  const { latestRound, previousRound, updated, ordinary, graduates, mean, sd } = data;
-  const deltas = ordinary.map((m) => m.delta);
-  const avg = deltas.length ? Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length) : null;
-  const up = deltas.filter((d) => d > 0).length;
-  const down = deltas.filter((d) => d < 0).length;
-
-  const flagged = ordinary.filter((m) => m.z != null && Math.abs(m.z) >= SD_MULT - 1e-9);
-  const gainers = [...ordinary].sort((a, b) => b.delta - a.delta).slice(0, 10).filter((m) => m.delta > 0);
-  const drops = [...ordinary].sort((a, b) => a.delta - b.delta).slice(0, 10).filter((m) => m.delta < 0);
-  const topGraduates = [...graduates].sort((a, b) => b.latest - a.latest).slice(0, 25);
+  // Every list arrives already ordered by the report. All the page decides is how
+  // far down each one to go — and it says so wherever the cut is visible. The
+  // exports read the same lists and go further.
+  const { latestLabel, previousLabel, updated, ordinary, graduates, mean, sd, avg, up, down, flagged } = data;
+  const gainers = data.gainers.slice(0, TOP_MOVER_LIMIT);
+  const drops = data.drops.slice(0, TOP_MOVER_LIMIT);
+  const topGraduates = graduates.slice(0, LIST_LIMIT);
 
   const MoverTable = ({ list, showFlag = true }: { list: Mover[]; showFlag?: boolean }) => (
     <Table
@@ -143,7 +101,7 @@ export default async function UsRoundSummaryPage() {
           <td className="td">
             <Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link>
             {m.naabCode && <span className="mt-0.5 block font-mono text-[10px] text-slate-400">NAAB {m.naabCode}</span>}
-            {showFlag && m.z != null && Math.abs(m.z) >= SD_MULT - 1e-9 && (
+            {showFlag && isUnusualMover(m) && (
               <span className="ml-2 align-middle"><Badge tone="amber">moved ≥{SD_MULT} SD</Badge></span>
             )}
           </td>
@@ -163,9 +121,21 @@ export default async function UsRoundSummaryPage() {
         title="What changed this round"
         subtitle={
           <span>
-            {labelRound(latestRound)} <Badge tone="blue">Official</Badge> — each bull&rsquo;s{" "}
-            <strong>calculated</strong> GTPI against its {labelRound(previousRound)} figure.
+            {latestLabel} <Badge tone="blue">Official</Badge> — each bull&rsquo;s{" "}
+            <strong>calculated</strong> GTPI against its {previousLabel} figure.
           </span>
+        }
+        actions={
+          <div className="flex gap-2">
+            <a href="/us/reports/round-summary/export" className="btn-primary">⬇ Excel</a>
+            <a
+              href="/us/reports/round-summary/export?format=html"
+              className="btn-secondary"
+              title="A single self-contained file you can email — opens in any browser, no login needed. Carries the pounds, calculated-GTPI and trademark notes with it."
+            >
+              ⬇ HTML
+            </a>
+          </div>
         }
       />
 
@@ -174,7 +144,7 @@ export default async function UsRoundSummaryPage() {
       ) : (
         <>
           <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
-            <StatCard label="Bulls updated" value={fmtNum(updated)} hint={`GTPI in ${labelRound(latestRound)}`} />
+            <StatCard label="Bulls updated" value={fmtNum(updated)} hint={`GTPI in ${latestLabel}`} />
             <StatCard
               label="Avg GTPI move"
               value={signed(avg)}
@@ -210,9 +180,7 @@ export default async function UsRoundSummaryPage() {
               <Card title={`Notable movers — ${fmtNum(flagged.length)} bull${flagged.length === 1 ? "" : "s"} moved unusually on GTPI`}>
                 <ul className="divide-y divide-slate-100 text-sm">
                   {flagged
-                    .slice()
-                    .sort((a, b) => Math.abs(b.z as number) - Math.abs(a.z as number))
-                    .slice(0, 25)
+                    .slice(0, LIST_LIMIT)
                     .map((m) => (
                       <li key={m.animalId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
                         <Link href={`/us/animals/${m.animalId}`} className="link font-medium">{m.name}</Link>
@@ -263,86 +231,4 @@ export default async function UsRoundSummaryPage() {
       )}
     </div>
   );
-}
-
-/**
- * Load the newest official round, the official round before it, and every bull
- * that carries a calculated GTPI in both.
- *
- * The previous side is the previous ROUND, not each bull's own previous
- * evaluation. On this side that is the same thing in practice: `all_evaluated`
- * republishes the whole reference population every round, and a bull graduating
- * out of `young_pub` was published in the same previous round by the other
- * family. Pinning it to one round also keeps this to two indexed reads instead
- * of walking every bull's history.
- */
-async function loadDigest() {
-  const rounds = await prisma.usEvaluation.groupBy({
-    by: ["roundCode"],
-    where: { runKind: "official", approvalStatus: "approved", roundCode: { not: null } },
-    orderBy: { roundCode: "desc" },
-    take: 2,
-  });
-  // roundCode is YYMM, so a lexical sort is a chronological one.
-  const latestRound = rounds[0]?.roundCode ?? null;
-  const previousRound = rounds[1]?.roundCode ?? null;
-  if (!latestRound || !previousRound) {
-    return { latestRound, previousRound, updated: 0, ordinary: [] as Mover[], graduates: [] as Mover[], mean: 0, sd: 0 };
-  }
-
-  const [latestRows, previousRows] = await Promise.all([
-    prisma.usEvaluation.findMany({
-      where: { roundCode: latestRound, runKind: "official", approvalStatus: "approved", tpi: { not: null } },
-      // A bull can appear in both triannual families for one round with identical
-      // values; ordering by family makes the de-duplication below deterministic
-      // and prefers the daughter-proven publication.
-      orderBy: { sourceFamily: "asc" },
-      select: {
-        animalId: true, tpi: true, isGraduation: true, naabCode: true, evalBreed: true,
-        animal: { select: { primaryName: true } },
-      },
-    }),
-    prisma.usEvaluation.findMany({
-      where: { roundCode: previousRound, runKind: "official", approvalStatus: "approved", tpi: { not: null } },
-      orderBy: { sourceFamily: "asc" },
-      select: { animalId: true, tpi: true },
-    }),
-  ]);
-
-  const previousTpi = new Map<string, number>();
-  for (const r of previousRows) if (r.tpi != null && !previousTpi.has(r.animalId)) previousTpi.set(r.animalId, r.tpi);
-
-  const seen = new Set<string>();
-  const movers: Mover[] = [];
-  let updated = 0;
-  for (const r of latestRows) {
-    if (seen.has(r.animalId)) continue;
-    seen.add(r.animalId);
-    updated++;
-    const previous = previousTpi.get(r.animalId);
-    if (previous == null || r.tpi == null) continue;
-    movers.push({
-      animalId: r.animalId,
-      name: r.animal.primaryName,
-      naabCode: r.naabCode,
-      evalBreed: r.evalBreed,
-      previous,
-      latest: r.tpi,
-      delta: r.tpi - previous,
-      graduating: r.isGraduation,
-      z: null,
-    });
-  }
-
-  const graduates = movers.filter((m) => m.graduating);
-  const ordinary = movers.filter((m) => !m.graduating);
-
-  // The cohort is the ordinary movers alone. Graduates would inflate the SD by
-  // several times and hide the bulls that actually moved unexpectedly.
-  const n = ordinary.length;
-  const mean = n ? ordinary.reduce((s, m) => s + m.delta, 0) / n : 0;
-  const sd = n > 1 ? Math.sqrt(ordinary.reduce((s, m) => s + (m.delta - mean) ** 2, 0) / n) : 0;
-  if (n >= 3 && sd > 0) for (const m of ordinary) m.z = (m.delta - mean) / sd;
-
-  return { latestRound, previousRound, updated, ordinary, graduates, mean, sd };
 }
