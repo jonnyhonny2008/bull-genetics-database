@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { applyReviewApproval } from "@/lib/review-apply";
 import { approveImportReview, denyImportReview, restoreImportReview } from "@/lib/import-staging";
 import { revalidatePath } from "next/cache";
+import { clearAggregateCache } from "@/lib/aggregate-cache";
 
 // Batch-import review rows (Proof Import / large Animal Import) are managed ONLY
 // by approveImport/denyImport (admin, record:approve). The generic per-record
@@ -86,6 +87,11 @@ export async function approveImport(fd: FormData) {
   if (!can(user?.role, "record:approve")) throw new Error("Only an admin can approve imports.");
   const res = await approveImportReview(String(fd.get("reviewId")), user);
   if (!res.ok) throw new Error(res.message);
+  // revalidatePath only clears Next's ROUTE cache; the dashboards' aggregate
+  // cache is a plain in-process Map and would keep serving pre-import numbers for
+  // up to its TTL. In serverless this only clears THIS warm instance — others
+  // still expire on their own — so the TTL remains the real bound, not this call.
+  clearAggregateCache();
   revalidatePath("/review");
   revalidatePath("/animals");
   revalidatePath("/dashboard");
@@ -96,6 +102,11 @@ export async function denyImport(fd: FormData) {
   if (!can(user?.role, "record:approve")) throw new Error("Only an admin can deny imports.");
   const res = await denyImportReview(String(fd.get("reviewId")), user);
   if (!res.ok) throw new Error(res.message);
+  // revalidatePath only clears Next's ROUTE cache; the dashboards' aggregate
+  // cache is a plain in-process Map and would keep serving pre-import numbers for
+  // up to its TTL. In serverless this only clears THIS warm instance — others
+  // still expire on their own — so the TTL remains the real bound, not this call.
+  clearAggregateCache();
   revalidatePath("/review");
   revalidatePath("/animals");
   revalidatePath("/dashboard");
@@ -106,6 +117,11 @@ export async function restoreImport(fd: FormData) {
   if (!can(user?.role, "record:approve")) throw new Error("Only an admin can restore imports.");
   const res = await restoreImportReview(String(fd.get("reviewId")), user);
   if (!res.ok) throw new Error(res.message);
+  // revalidatePath only clears Next's ROUTE cache; the dashboards' aggregate
+  // cache is a plain in-process Map and would keep serving pre-import numbers for
+  // up to its TTL. In serverless this only clears THIS warm instance — others
+  // still expire on their own — so the TTL remains the real bound, not this call.
+  clearAggregateCache();
   revalidatePath("/review");
   revalidatePath("/animals");
   revalidatePath("/dashboard");

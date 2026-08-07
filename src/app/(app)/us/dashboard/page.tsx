@@ -2,12 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/aggregate-cache";
 import { currentUser } from "@/lib/auth";
 import { PageHeader, Card, StatCard, Badge, Table, EmptyState } from "@/components/ui";
 import { fmtNum, relTime } from "@/lib/format";
 import { INDEX_REGISTRY, resolveTpiFormula, formulaConfidence } from "@/lib/us-cdcb/index-registry";
 import { JPI_REGISTRY, resolveJpiFormula } from "@/lib/us-cdcb/jpi";
 import { CDCB_BREEDS, cdcbRoundLabel, cdcbRunKindLabel } from "@/lib/us-cdcb/file-kind";
+import { PROVEN_REL_MIN } from "@/lib/us-cdcb/list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +46,13 @@ export default async function UsDashboardPage() {
   let data: Awaited<ReturnType<typeof load>> | null = null;
   let missingTables = false;
   try {
-    data = await load();
+    // CACHED, and the reason is measured: this was the slowest page in the app at
+    // 8.1 s while emitting only 97 KB, so essentially all of it was database time
+    // — eight aggregates over 70,571 rows plus a correlated AI-status subquery,
+    // and on a pool pinned to ONE connection (src/lib/db.ts) they run head to
+    // tail rather than together. Every figure is a ROUND-LEVEL aggregate that
+    // changes only when an import runs; no bull's own card reads from this.
+    data = await cached("us:dashboard", load);
   } catch (e) {
     // The US tables are created by `prisma db push`. Until that has run, say so
     // plainly rather than rendering a 500 — this is a setup state, not a fault.
@@ -73,7 +81,13 @@ export default async function UsDashboardPage() {
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Bulls in lineup" value={fmtNum(total)} tone="good" hint="preferred official round" href="/us/animals" />
         <StatCard label="Evaluation round" value={roundLabel(currentRound)} hint={`${fmtNum(rounds.length)} official round${rounds.length === 1 ? "" : "s"} on file`} />
-        <StatCard label="Daughter-proven (milk)" value={fmtNum(proven)} hint={`${fmtNum(genomic)} genomic · ${fmtNum(unstated)} unstated`} />
+        {/* `unstated` is bulls with NO milk reliability at all, which is a
+            different thing from genomic and is only mentioned when it happens. */}
+        <StatCard
+          label="Daughter-proven (milk)"
+          value={fmtNum(proven)}
+          hint={`${fmtNum(genomic)} genomic · MILK reliability ${PROVEN_REL_MIN}%+${unstated ? ` · ${fmtNum(unstated)} unstated` : ""}`}
+        />
         <StatCard label="Active AI" value={ai ? fmtNum(ai.A) : "—"} tone="accent" hint={ai ? `${fmtNum(ai.G)} marketed young · ${fmtNum(ai.F)} foreign` : "no AI-status file imported"} />
       </div>
 
@@ -225,11 +239,27 @@ async function load() {
       _count: { _all: true },
       _avg: { tpi: true, nmDollar: true },
     }),
-    prisma.usEvaluation.groupBy({
-      by: ["evalBreed", "isPtaMilk"],
-      where: officialPreferred,
-      _count: { _all: true },
-    }),
+    // PROVEN vs GENOMIC IS READ FROM MILK RELIABILITY, NOT FROM isPtaMilk.
+    // This grouped on isPtaMilk and that flag is TRUE FOR EVERY BULL CDCB ships,
+    // so this page claimed 68,721 daughter-proven and 0 genomic while /us/animals
+    // — already corrected — reported 63,793 and 4,928. Two pages, same database,
+    // different answers to the same question.
+    //
+    // CDCB publishes no proven/genomic flag at all; MILK reliability is the real
+    // signal and PROVEN_REL_MIN is the shared threshold, so both pages now read
+    // the same rule from the same constant. Raw SQL because the grouping key is a
+    // PREDICATE on milkRel, which Prisma's groupBy cannot express.
+    //
+    // GROUP BY 1, 2 — BY ORDINAL, and it has to be. Repeating the expression
+    // instead ("GROUP BY "evalBreed", ("milkRel" >= ${PROVEN_REL_MIN})") makes
+    // Prisma emit the parameter TWICE, as $1 in the SELECT and $2 in the GROUP BY.
+    // Postgres then sees two different expressions and rejects the query with
+    // 42803, "column must appear in the GROUP BY clause".
+    prisma.$queryRaw<{ evalBreed: string | null; proven: boolean; n: bigint }[]>`
+      SELECT "evalBreed", ("milkRel" >= ${PROVEN_REL_MIN}) AS proven, COUNT(*)::bigint AS n
+        FROM "UsEvaluation"
+       WHERE "isPreferred" = true AND "runKind" = 'official' AND "approvalStatus" = 'approved'
+       GROUP BY 1, 2`,
     prisma.usEvaluation.findMany({
       where: { ...officialPreferred, tpi: { not: null } },
       orderBy: { tpi: "desc" }, take: TOP_N, select: topSelect,
@@ -262,12 +292,14 @@ async function load() {
   const provenByBreed = new Map<string, number>();
   let proven = 0, genomic = 0, unstated = 0;
   for (const g of provenGroups) {
-    const n = g._count._all;
+    const n = Number(g.n);
     const breed = g.evalBreed ?? "—";
-    if (g.isPtaMilk === true) {
+    // A NULL milkRel is neither: the comparison yields NULL, so those rows land
+    // here and are reported as "unstated" rather than silently counted as genomic.
+    if (g.proven === true) {
       proven += n;
       provenByBreed.set(breed, (provenByBreed.get(breed) ?? 0) + n);
-    } else if (g.isPtaMilk === false) genomic += n;
+    } else if (g.proven === false) genomic += n;
     else unstated += n;
   }
 
@@ -310,16 +342,27 @@ interface AiCounts { roundCode: string; A: number; G: number; F: number; total: 
  * population rather than this stud's.
  */
 async function loadAiStatus(roundCode: string): Promise<AiCounts | null> {
-  const groups = await prisma.usAiStatus.groupBy({
-    by: ["code"],
-    where: {
-      roundCode,
-      animal: { is: { usEvaluations: { some: { isPreferred: true, runKind: "official", approvalStatus: "approved" } } } },
-    },
-    _count: { _all: true },
-  });
-  const of = (code: string) => groups.find((g) => g.code === code)?._count._all ?? 0;
-  const total = groups.reduce((s, g) => s + g._count._all, 0);
+  // A RAW JOIN, not a nested relation filter. This used to read
+  //
+  //   where: { roundCode, animal: { is: { usEvaluations: { some: {...} } } } }
+  //
+  // which is a correlated subquery per status row, AND it routed through
+  // `animal` — the OPTIONAL Canadian bridge — rather than through id17. That is
+  // the same mistake that once made every AI-status filter on /us/animals return
+  // zero: the Canadian row is null for 99.8% of American bulls, so the counts
+  // were both slow and wrong. The join is on id17, which is CDCB's own key and
+  // is present on every row.
+  const rows = await prisma.$queryRaw<{ code: string; n: bigint }[]>`
+    SELECT s."code", COUNT(*)::bigint AS n
+      FROM "UsAiStatus" s
+      JOIN "UsEvaluation" e ON e."id17" = s."id17"
+     WHERE s."roundCode" = ${roundCode}
+       AND e."isPreferred" = true
+       AND e."runKind" = 'official'
+       AND e."approvalStatus" = 'approved'
+     GROUP BY s."code"`;
+  const of = (code: string) => Number(rows.find((r) => r.code === code)?.n ?? 0);
+  const total = rows.reduce((s, r) => s + Number(r.n), 0);
   if (total === 0) return null;
   return { roundCode, A: of("A"), G: of("G"), F: of("F"), total };
 }

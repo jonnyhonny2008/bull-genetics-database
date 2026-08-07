@@ -4,11 +4,10 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { CA_ROSTER } from "@/lib/roster-scope";
 import { PageHeader, EmptyState, Badge } from "@/components/ui";
 import { unpackTraits, type TraitDefLite } from "@/lib/eval-traits";
 import { fmtNum } from "@/lib/format";
-import ComparePicker from "@/components/ComparePicker";
+import BullComparePicker from "@/components/BullComparePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -29,15 +28,13 @@ export default async function ComparePage({ searchParams }: { searchParams: { bu
 
   const ids = (searchParams.bulls ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, MAX);
 
-  const [richDefs, allBulls, animals] = await Promise.all([
+  // The whole male roster used to be loaded here and handed to the picker for a
+  // native datalist. At 63,049 bulls that alone was most of this page's 10,977 KB
+  // of HTML; the picker now searches server-side (/api/bull-search).
+  const [richDefs, animals] = await Promise.all([
     prisma.traitDefinition.findMany({
       where: { domain: "genetic" },
       select: { traitCode: true, traitName: true, category: true, unit: true, displayOrder: true, higherIsBetter: true },
-    }),
-    prisma.animal.findMany({
-      where: { sex: "M", archived: false, ...CA_ROSTER },
-      orderBy: { primaryName: "asc" },
-      select: { id: true, primaryName: true },
     }),
     ids.length
       ? prisma.animal.findMany({
@@ -101,7 +98,7 @@ export default async function ComparePage({ searchParams }: { searchParams: { bu
       />
 
       <div className="mb-4">
-        <ComparePicker selected={selected} all={allBulls.map((b) => ({ id: b.id, name: b.primaryName }))} max={MAX} />
+        <BullComparePicker selected={selected} system="ca" basePath="/compare" max={MAX} />
       </div>
 
       {bulls.length < 2 ? (

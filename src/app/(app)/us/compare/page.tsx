@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/aggregate-cache";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui";
 import { US_KEY_TRAITS, formatUsTrait, type UsKeyTrait } from "@/lib/us-cdcb/key-traits";
-import UsComparePicker from "@/components/UsComparePicker";
+import BullComparePicker from "@/components/BullComparePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -239,7 +240,7 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
     );
   }
 
-  const { bulls, pickerBulls, aiByAnimal } = data;
+  const { bulls, aiByAnimal, hasOfficialRound } = data;
   const selected = bulls.map((b) => ({ id: b.usAnimalId, name: (b.usAnimal.name ?? b.usAnimal.id17) }));
 
   // code -> value per bull, one map each, so a row lookup is O(1) per column.
@@ -300,13 +301,13 @@ export default async function UsComparePage({ searchParams }: { searchParams: { 
       />
 
       <div className="mb-4">
-        <UsComparePicker selected={selected} all={pickerBulls} max={MAX} />
+        <BullComparePicker selected={selected} system="us" basePath="/us/compare" max={MAX} />
       </div>
 
       {bulls.length < 2 ? (
         <EmptyState
           message={
-            pickerBulls.length === 0
+            !hasOfficialRound
               ? "No bulls have an official CDCB round yet. Run a CDCB round through the importer to populate this page."
               : bulls.length === 1
                 ? "Add at least one more bull to compare."
@@ -409,23 +410,25 @@ async function load(ids: string[]) {
   // preferred recompute cannot quietly admit a provisional monthly here.
   const officialPreferred = { isPreferred: true, runKind: "official", approvalStatus: "approved" };
 
-  const [pickerRows, rows] = await Promise.all([
-    prisma.usEvaluation.findMany({
-      where: officialPreferred,
-      orderBy: { animal: { primaryName: "asc" } },
-      select: { usAnimalId: true, id17: true, usAnimal: { select: { name: true, id17: true } } },
-    }),
+  const rows =
     ids.length
-      ? prisma.usEvaluation.findMany({
-          where: { ...officialPreferred, animalId: { in: ids } },
+      ? await prisma.usEvaluation.findMany({
+          // THIS FILTERED ON `animalId` AND THAT WAS A BUG, not an inefficiency.
+          // `animalId` is the OPTIONAL bridge to the Canadian Animal row and is
+          // null for 68,581 of the 68,721 preferred bulls, while the picker emits
+          // `usAnimalId`. So every id the picker produced matched nothing, and
+          // this page returned an empty comparison for any bull that is not also
+          // registered in Canada — which is virtually all of them. Verified
+          // against production: `animalId: { in: [two real picker ids] }` returns
+          // 0 rows, `usAnimalId` returns 2.
+          where: { ...officialPreferred, usAnimalId: { in: ids } },
           select: {
             usAnimalId: true, id17: true, evalBreed: true, naabCode: true, roundCode: true, isPtaMilk: true,
             tpi: true, jpi: true, udc: true, flc: true, gptaJson: true, relJson: true,
             usAnimal: { select: { name: true, id17: true } },
           },
         })
-      : Promise.resolve([]),
-  ]);
+      : [];
 
   // Preserve the order the bulls were listed in the URL.
   const byId = new Map(rows.map((r) => [r.usAnimalId, r]));
@@ -444,9 +447,14 @@ async function load(ids: string[]) {
   const aiByAnimal = new Map<string, string>();
   for (const r of aiRows) if (!aiByAnimal.has(r.id17)) aiByAnimal.set(r.id17, r.code);
 
-  return {
-    bulls,
-    pickerBulls: pickerRows.map((r) => ({ id: r.usAnimalId, name: (r.usAnimal.name ?? r.usAnimal.id17) })),
-    aiByAnimal,
-  };
+  // "Nothing imported yet" and "you have not picked anyone" are different states
+  // and must not share a message. This used to fall out of the picker list, which
+  // no longer exists; one cached existence check replaces it rather than a count
+  // over 68,721 rows on every view.
+  const hasOfficialRound = await cached(
+    "us:hasOfficialRound",
+    async () => (await prisma.usEvaluation.findFirst({ where: officialPreferred, select: { usEvaluationId: true } })) != null,
+  );
+
+  return { bulls, aiByAnimal, hasOfficialRound };
 }

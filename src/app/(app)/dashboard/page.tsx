@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/aggregate-cache";
 import { CA_ROSTER } from "@/lib/roster-scope";
 import { Card, Table, EmptyState } from "@/components/ui";
 import { fmtNum } from "@/lib/format";
@@ -31,84 +32,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
   const cCol = chartTrait.col;
   const rCol = rankTrait.col;
 
-  // Phase 1 — headline counts, breeds, the latest round on file, and the
-  // trait-ranked leaderboard.
-  const [totalAnimals, activeSires, avgActiveAgg, totalEvals, maxAgg, breeds, byBreedCount, topBulls] = await Promise.all([
-    // ...CANADIAN animals only. The CDCB import adds an Animal row per evaluated
-    // American bull, and counting those here would report a lineup of seventy
-    // thousand. The evaluation-based figures below are already Canada-only,
-    // because they read GeneticEvaluation; these three count Animal directly.
-    prisma.animal.count({ where: { archived: false, ...CA_ROSTER } }),
-    prisma.animal.count({ where: { archived: false, proofStatus: "active", ...CA_ROSTER } }),
-    prisma.geneticEvaluation.aggregate({ _avg: { lpi: true }, where: { isPreferred: true, animal: { archived: false, proofStatus: "active" } } }),
-    prisma.geneticEvaluation.count(),
-    prisma.geneticEvaluation.aggregate({ _max: { evaluationDate: true } }),
-    prisma.breed.findMany(),
-    prisma.animal.groupBy({ by: ["breedId"], where: { archived: false, ...CA_ROSTER }, _count: true }),
-    prisma.geneticEvaluation.findMany({
-      where: { isPreferred: true, animal: { archived: false }, [rCol]: { not: null } } as Prisma.GeneticEvaluationWhereInput,
-      orderBy: { [rCol]: "desc" } as Prisma.GeneticEvaluationOrderByWithRelationInput,
-      take: 10,
-      select: {
-        lpi: true, conf: true, proDollar: true, milk: true, fat: true, prot: true,
-        animal: { select: { id: true, primaryName: true, identifiers: { where: { idType: "naab", active: true }, take: 1, select: { idValue: true } } } },
-      },
-    }),
-  ]);
+  // ---------------------------------------------------------------------------
+  // THE LOAD IS CACHED, and the reason is measured: this page took 7.2 s while
+  // emitting only 84 KB, so essentially all of it was database time. Every figure
+  // on it is a ROUND-LEVEL aggregate that changes only when an import runs, which
+  // is exactly what src/lib/aggregate-cache.ts is for. No bull's own card reads
+  // from it.
+  //
+  // The key carries the LEADERBOARD trait only. The chart trait does not belong
+  // in it: `rounds` already returns an average for every chartable column, so
+  // switching the chart re-reads the same cached rows. The leaderboard is a
+  // different ten bulls per trait and genuinely needs its own entry.
+  // ---------------------------------------------------------------------------
+  const {
+    totalAnimals, activeSires, avgLpiActive, totalEvals, maxDate, windowStart, breedRows, topBulls, rounds,
+  } = await cached(`ca:dashboard:${rankTrait.key}`, () => loadDashboard(rCol));
 
-  const maxDate = maxAgg._max.evaluationDate;
-  // The chart window: the same month a year before the most recent round on
-  // file (so it always shows the last ~12 months of ACTUAL data).
-  const windowStart = maxDate ? new Date(Date.UTC(maxDate.getUTCFullYear() - 1, maxDate.getUTCMonth(), 1)) : new Date(0);
-
-  const topBreedIds = [...byBreedCount]
-    .sort((a, b) => b._count - a._count)
-    .slice(0, 6)
-    .map((g) => g.breedId)
-    .filter((id): id is string => !!id);
-
-  // Phase 2 — per-round trait averages across the window, and per-breed avg LPI.
-  // A month can now carry BOTH the official and the interim file for a bull, so
-  // averaging the raw rows would count him twice and blend the two files. Collapse
-  // to one canonical row per (bull, round) first — the official one where it
-  // exists — so each sire counts once and the average reflects the settled proof.
-  // `hasOfficial` marks a round that actually shipped an official file, which is
-  // what the OFFICIAL badge should mean now that the field, not the month, decides.
-  type RoundRow = {
-    evaluationDate: Date; lpi: number | null; proDollar: number | null; conf: number | null;
-    milk: number | null; fat: number | null; prot: number | null; n: number; hasOfficial: boolean;
-  };
-  const [rounds, breedAvgs] = await Promise.all([
-    prisma.$queryRawUnsafe<RoundRow[]>(
-      `WITH canon AS (
-         SELECT DISTINCT ON (g."animalId", g."evaluationDate")
-                g."evaluationDate", g."lpi", g."proDollar", g."conf", g."milk", g."fat", g."prot", g."runKind"
-         FROM "GeneticEvaluation" g
-         JOIN "Animal" a ON a."id" = g."animalId"
-         WHERE g."evaluationDate" >= $1 AND a."archived" = false
-         ORDER BY g."animalId", g."evaluationDate",
-                  CASE g."runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
-                  g."lpi" DESC NULLS LAST
-       )
-       SELECT "evaluationDate",
-              AVG("lpi")::float AS "lpi", AVG("proDollar")::float AS "proDollar",
-              AVG("conf")::float AS "conf", AVG("milk")::float AS "milk",
-              AVG("fat")::float AS "fat", AVG("prot")::float AS "prot",
-              COUNT(*)::int AS "n",
-              bool_or("runKind" = 'official') AS "hasOfficial"
-       FROM canon GROUP BY "evaluationDate" ORDER BY "evaluationDate" ASC`,
-      windowStart,
-    ),
-    Promise.all(topBreedIds.map((id) => prisma.geneticEvaluation.aggregate({ _avg: { lpi: true }, where: { isPreferred: true, animal: { archived: false, breedId: id } } }))),
-  ]);
-
-  const breedName = new Map(breeds.map((b) => [b.breedId, b.breedName]));
-  const countById = new Map(byBreedCount.map((g) => [g.breedId, g._count]));
-  const breedRows = topBreedIds.map((id, i) => ({
-    name: breedName.get(id) ?? "Unknown",
-    count: countById.get(id) ?? 0,
-    avgLpi: breedAvgs[i]._avg.lpi != null ? Math.round(breedAvgs[i]._avg.lpi as number) : null,
-  }));
 
   // Chart: one point per proof round in the window, y = the round's average of
   // the selected trait. Every round is plotted — official and interim alike, one
@@ -164,7 +103,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
           icon={<><path d="M3.5 5c2.2 0 3.9 1 4.9 2.8" /><path d="M20.5 5c-2.2 0-3.9 1-4.9 2.8" /><path d="M6.5 7.5h11V10a5.5 5.5 0 0 1-11 0z" /><path d="M9 13.7c0-1.4 1.3-2.3 3-2.3s3 .9 3 2.3-1.3 2.4-3 2.4-3-1-3-2.4z" /><path d="M11 13.8v.01" /><path d="M13 13.8v.01" /></>} />
         <IconStat tone="navy" label="Active sires" value={fmtNum(activeSires)}
           icon={<><path d="M3 12h4l2-5 4 10 2-5h6" /></>} />
-        <IconStat tone="orange" label="Avg LPI (active)" value={avgActiveAgg._avg.lpi != null ? fmtNum(Math.round(avgActiveAgg._avg.lpi)) : "—"}
+        <IconStat tone="orange" label="Avg LPI (active)" value={avgLpiActive != null ? fmtNum(avgLpiActive) : "—"}
           icon={<><path d="M4 16l5-5 4 4 7-7" /><path d="M17 8h4v4" /></>} />
         <IconStat tone="red" label="Proof records" value={fmtNum(totalEvals)}
           icon={<><path d="M12 3l9 5-9 5-9-5 9-5z" /><path d="M3 12l9 5 9-5" /><path d="M3 16l9 5 9-5" /></>} />
@@ -252,6 +191,124 @@ export default async function DashboardPage({ searchParams }: { searchParams: Re
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Every query this page needs. Kept out of the component so the whole thing can
+// sit behind one cache entry rather than eight.
+//
+// NOTE ON Promise.all HERE: it does NOT make these run in parallel. src/lib/db.ts
+// pins connection_limit=1 on Vercel, so they queue and the page pays the SUM of
+// their latencies either way. It is kept because it is the clearer shape, and
+// because the fix that actually matters is not running them at all on the second
+// view. What DID matter was the per-breed N+1 below.
+// ---------------------------------------------------------------------------
+async function loadDashboard(rCol: string) {
+  // Phase 1 — headline counts, breeds, the latest round on file, and the
+  // trait-ranked leaderboard.
+  const [totalAnimals, activeSires, avgActiveAgg, totalEvals, maxAgg, breeds, byBreedCount, topBulls] = await Promise.all([
+    // ...CANADIAN animals only. The CDCB import adds an Animal row per evaluated
+    // American bull, and counting those here would report a lineup of seventy
+    // thousand. The evaluation-based figures below are already Canada-only,
+    // because they read GeneticEvaluation; these three count Animal directly.
+    prisma.animal.count({ where: { archived: false, ...CA_ROSTER } }),
+    prisma.animal.count({ where: { archived: false, proofStatus: "active", ...CA_ROSTER } }),
+    prisma.geneticEvaluation.aggregate({ _avg: { lpi: true }, where: { isPreferred: true, animal: { archived: false, proofStatus: "active" } } }),
+    prisma.geneticEvaluation.count(),
+    prisma.geneticEvaluation.aggregate({ _max: { evaluationDate: true } }),
+    prisma.breed.findMany(),
+    prisma.animal.groupBy({ by: ["breedId"], where: { archived: false, ...CA_ROSTER }, _count: true }),
+    prisma.geneticEvaluation.findMany({
+      where: { isPreferred: true, animal: { archived: false }, [rCol]: { not: null } } as Prisma.GeneticEvaluationWhereInput,
+      orderBy: { [rCol]: "desc" } as Prisma.GeneticEvaluationOrderByWithRelationInput,
+      take: 10,
+      select: {
+        lpi: true, conf: true, proDollar: true, milk: true, fat: true, prot: true,
+        animal: { select: { id: true, primaryName: true, identifiers: { where: { idType: "naab", active: true }, take: 1, select: { idValue: true } } } },
+      },
+    }),
+  ]);
+
+  const maxDate = maxAgg._max.evaluationDate;
+  // The chart window: the same month a year before the most recent round on
+  // file (so it always shows the last ~12 months of ACTUAL data).
+  const windowStart = maxDate ? new Date(Date.UTC(maxDate.getUTCFullYear() - 1, maxDate.getUTCMonth(), 1)) : new Date(0);
+
+  const topBreedIds = [...byBreedCount]
+    .sort((a, b) => b._count - a._count)
+    .slice(0, 6)
+    .map((g) => g.breedId)
+    .filter((id): id is string => !!id);
+
+  // Phase 2 — per-round trait averages across the window, and per-breed avg LPI.
+  // A month can now carry BOTH the official and the interim file for a bull, so
+  // averaging the raw rows would count him twice and blend the two files. Collapse
+  // to one canonical row per (bull, round) first — the official one where it
+  // exists — so each sire counts once and the average reflects the settled proof.
+  // `hasOfficial` marks a round that actually shipped an official file, which is
+  // what the OFFICIAL badge should mean now that the field, not the month, decides.
+  type RoundRow = {
+    evaluationDate: Date; lpi: number | null; proDollar: number | null; conf: number | null;
+    milk: number | null; fat: number | null; prot: number | null; n: number; hasOfficial: boolean;
+  };
+  const [rounds, breedAvgs] = await Promise.all([
+    prisma.$queryRawUnsafe<RoundRow[]>(
+      `WITH canon AS (
+         SELECT DISTINCT ON (g."animalId", g."evaluationDate")
+                g."evaluationDate", g."lpi", g."proDollar", g."conf", g."milk", g."fat", g."prot", g."runKind"
+         FROM "GeneticEvaluation" g
+         JOIN "Animal" a ON a."id" = g."animalId"
+         WHERE g."evaluationDate" >= $1 AND a."archived" = false
+         ORDER BY g."animalId", g."evaluationDate",
+                  CASE g."runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
+                  g."lpi" DESC NULLS LAST
+       )
+       SELECT "evaluationDate",
+              AVG("lpi")::float AS "lpi", AVG("proDollar")::float AS "proDollar",
+              AVG("conf")::float AS "conf", AVG("milk")::float AS "milk",
+              AVG("fat")::float AS "fat", AVG("prot")::float AS "prot",
+              COUNT(*)::int AS "n",
+              bool_or("runKind" = 'official') AS "hasOfficial"
+       FROM canon GROUP BY "evaluationDate" ORDER BY "evaluationDate" ASC`,
+      windowStart,
+    ),
+    // THIS WAS AN N+1: one aggregate per breed, each joining GeneticEvaluation to
+    // Animal across 63,052 rows, and on a pool pinned to ONE connection those six
+    // queries ran strictly head to tail. It is one grouped query now.
+    //
+    // Raw SQL because the grouping column lives on the RELATION — Prisma's groupBy
+    // can only group by fields of the model being grouped, and `breedId` is on
+    // Animal, not on GeneticEvaluation.
+    topBreedIds.length
+      ? prisma.$queryRawUnsafe<{ breedId: string; avgLpi: number | null }[]>(
+          `SELECT a."breedId" AS "breedId", AVG(g."lpi")::float AS "avgLpi"
+             FROM "GeneticEvaluation" g
+             JOIN "Animal" a ON a."id" = g."animalId"
+            WHERE g."isPreferred" = true
+              AND a."archived" = false
+              AND a."breedId" = ANY($1::text[])
+            GROUP BY a."breedId"`,
+          topBreedIds,
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const breedName = new Map(breeds.map((b) => [b.breedId, b.breedName]));
+  const countById = new Map(byBreedCount.map((g) => [g.breedId, g._count]));
+  const avgByBreed = new Map(breedAvgs.map((r) => [r.breedId, r.avgLpi]));
+  const breedRows = topBreedIds.map((id) => {
+    const avg = avgByBreed.get(id);
+    return {
+      name: breedName.get(id) ?? "Unknown",
+      count: countById.get(id) ?? 0,
+      avgLpi: avg != null ? Math.round(avg) : null,
+    };
+  });
+
+  return {
+    totalAnimals, activeSires, totalEvals, maxDate, windowStart, breedRows, topBulls, rounds,
+    avgLpiActive: avgActiveAgg._avg.lpi != null ? Math.round(avgActiveAgg._avg.lpi) : null,
+  };
 }
 
 // Haystack-style KPI tile: a coloured icon square beside a label and big value.

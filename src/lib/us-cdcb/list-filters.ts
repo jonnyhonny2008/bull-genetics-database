@@ -22,7 +22,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { cached } from "./cache";
+import { cached } from "../aggregate-cache";
 
 /** MILK reliability at or above which a bull's evaluation includes daughters. */
 export const PROVEN_REL_MIN = 80;
