@@ -434,6 +434,50 @@ export default async function UsSireCard({
             />
           </Card>
 
+          {/* --- HCC: published by HAUSA, and NOT part of the index above ----
+              It sits here, straight after the GTPI breakdown, because that is
+              where the question it answers arises: having just read what DOES go
+              into the index, the next thing to know about a composite is that
+              this one does NOT. It is also on the Type tab, where a conformation
+              buyer looks for it — the same deliberate repetition the lead traits
+              already get between Main and Genetics. */}
+          <Card title="Conformation Composite (HCC)">
+            <div className="flex flex-wrap items-start gap-6">
+              <div>
+                <div className="text-3xl font-bold tabular-nums text-slate-900">
+                  {pref.hcc == null ? "—" : pref.hcc.toFixed(2)}
+                </div>
+                <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {pref.hcc == null ? "not published" : "published figure"}
+                </div>
+              </div>
+              <dl className="min-w-[16rem] flex-1 space-y-2 text-sm">
+                <Row k="Source" v={pref.hcc == null ? "—" : pref.hccSource ?? "Holstein Association USA"} />
+                <Row k="Counts toward GTPI?" v="No — standalone" />
+                <Row k="Computed here?" v="No — taken as published" />
+              </dl>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              <strong>This is the one composite on the page that is not our arithmetic.</strong> GTPI, UDC, FLC and
+              BWC are all computed by Blondin Sires from CDCB traits using Holstein Association USA&rsquo;s published
+              formulas. HCC is different: HAUSA states its weights and optima but not the arithmetic, and the closest
+              fit to their own released list still misses by up to 0.84 — near enough to rank roughly, nowhere near
+              enough to print beside an official figure. So the value here is the one HAUSA published, or nothing.
+              {" "}
+              <strong>It does not feed the GTPI above</strong>, and adding it to any index on this page would be wrong.
+            </p>
+
+            {pref.hcc == null && (
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <strong>No HCC for this bull.</strong> HAUSA publishes the Conformation Composite for AVAILABLE bulls
+                only — about 4,400 of the 68,721 in a CDCB round, of which 1,037 matched a bull we hold. A blank means
+                &ldquo;not published&rdquo;: never zero, never average, and not a statement about his conformation.
+                His PTAT and the individual linear traits below are unaffected.
+              </div>
+            )}
+          </Card>
+
           {/* --- Everything CDCB publishes for him -------------------------- */}
           <Card title="Every published trait">
             <p className="mb-3 text-xs text-slate-500">
