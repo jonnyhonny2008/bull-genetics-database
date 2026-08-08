@@ -35,6 +35,7 @@ import { detectImportSystem, importSystemLabel } from "../src/lib/import-file-ki
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { normalizePreferred } from "./normalize-preferred";
+import { vacuumAfterImport } from "./vacuum-after-import";
 import { computeRollbackRatings } from "./compute-rollback";
 import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
@@ -275,6 +276,11 @@ async function main() {
   console.log(`[import-all]   rollback — ${rb.scored} scored, ${rb.rated} rated (base ${Math.round(rb.mean * 10) / 10}, SD ${Math.round(rb.sd * 100) / 100})`);
   const pi = await computePedigreeIndexAll(prisma);
   console.log(`[import-all]   pedigree index — ${pi.withIndex}/${pi.animals} animals (${pi.highConfidence} high confidence)`);
+
+  // Reclaim this round's dead tuples and refresh planner stats before anyone
+  // queries the new data — see prisma/vacuum-after-import.ts.
+  console.log(`[import-all] vacuum + analyze…`);
+  await vacuumAfterImport(prisma, { log: (m) => console.log(`[import-all] ${m}`) });
 
   await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `Bulk import ${fileName}: ${newBulls} new bulls, ${newEvals} new proofs, ${skipped} skipped; refreshed ${cls.active + cls.inactive} sire classifications, ${rb.scored} rollback scores` } });
   console.log(`\n[import-all] DONE — new bulls ${newBulls}, new proofs ${newEvals}, NAAB codes backfilled ${newNaab}, skipped ${skipped}, no NAAB code (dropped) ${noNaab}, processed ${processed}`);

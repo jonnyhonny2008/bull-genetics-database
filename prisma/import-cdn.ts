@@ -18,6 +18,7 @@ import { classifyProofFile, type ProofRunKind } from "../src/lib/proof-file-kind
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
 import { normalizePreferred } from "./normalize-preferred";
+import { vacuumAfterImport } from "./vacuum-after-import";
 import { computeRollbackRatings } from "./compute-rollback";
 import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
@@ -212,6 +213,9 @@ async function main() {
   // Re-estimate the pedigree index now that new ancestors may be resolvable.
   const pi = await computePedigreeIndexAll(prisma);
   console.log(`[cdn] pedigree index: ${pi.withIndex}/${pi.animals} animals got an index (${pi.highConfidence} at ≥85% confidence)`);
+
+  console.log(`[cdn] vacuum + analyze…`);
+  await vacuumAfterImport(prisma, { log: (m) => console.log(`[cdn] ${m}`) });
 
   await prisma.auditLog.create({ data: { entityType: "system", action: "import", notes: `CDN import: ${newAnimals} animals, ${newEvals} proof rounds from ${files.length} files` } });
   const kinds = Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(", ") || "none";

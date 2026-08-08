@@ -60,19 +60,37 @@ export async function classifySires(prisma: Client): Promise<{
     FROM latest l
     JOIN agg g ON g."animalId" = l."animalId"
     WHERE a."id" = l."animalId"
+      -- Skip rows already holding the right values. A round ships 4-5 files and
+      -- this runs once per file, so without the guard files 2-5 rewrite all
+      -- ~99,793 Animal rows to change nothing. Animal carries 11 indexes, so
+      -- those are non-HOT updates: dead tuples plus index churn, for no effect.
+      -- On the FIRST file of a round almost everything genuinely does change and
+      -- this guard saves little — that is expected and honest.
+      AND (a."sireType", a."latestProofDate", a."latestProofRun",
+           a."latestActivityCode", a."rollbackCount", a."proofRoundCount")
+          IS DISTINCT FROM
+          (l."sireType", l."evaluationDate", l."proofRun",
+           l."activityCode", g.rollbacks, g.rounds)
   `);
 
   // proofStatus (active / inactive) is NOT proof-derived: a sire is ACTIVE when
   // he carries a NAAB stud (semen) code — i.e. he is available to breed to — and
   // INACTIVE when he does not, regardless of how recent his proof is. Set it for
   // every animal in one pass so the rule is uniform.
+  // Change-only: computing the value in a subquery and comparing lets Postgres
+  // skip rows that already hold it. Unguarded, this rewrote EVERY non-archived
+  // animal (~99,793 row versions x 11 indexes) on every run, to flip a handful.
   await prisma.$executeRawUnsafe(`
-    UPDATE "Animal" a SET "proofStatus" =
-      CASE WHEN EXISTS (
-        SELECT 1 FROM "AnimalIdentifier" i
-        WHERE i."animalId" = a."id" AND i."idType" = 'naab' AND i."active" = true
-      ) THEN 'active' ELSE 'inactive' END
-    WHERE a."archived" = false
+    UPDATE "Animal" a SET "proofStatus" = x.v
+    FROM (
+      SELECT "id",
+             CASE WHEN EXISTS (
+               SELECT 1 FROM "AnimalIdentifier" i
+               WHERE i."animalId" = "Animal"."id" AND i."idType" = 'naab' AND i."active" = true
+             ) THEN 'active' ELSE 'inactive' END AS v
+      FROM "Animal" WHERE "archived" = false
+    ) x
+    WHERE a."id" = x."id" AND a."proofStatus" IS DISTINCT FROM x.v
   `);
 
   // Animals with no approved proof at all keep no sire type / counts (proofStatus
@@ -85,6 +103,11 @@ export async function classifySires(prisma: Client): Promise<{
       SELECT 1 FROM "GeneticEvaluation" e
       WHERE e."animalId" = a."id" AND e."approvalStatus" = 'approved'
     )
+      -- Only rows that still carry stale values; without this the clear-out
+      -- rewrites every proofless animal on every run to set NULL over NULL.
+      AND (a."sireType" IS NOT NULL OR a."latestProofDate" IS NOT NULL
+           OR a."latestProofRun" IS NOT NULL OR a."latestActivityCode" IS NOT NULL
+           OR a."rollbackCount" <> 0 OR a."proofRoundCount" <> 0)
   `);
 
   const rows = (await prisma.$queryRawUnsafe(`
