@@ -272,7 +272,20 @@ export async function recomputeUsPreferredBulk(usAnimalIds: string[]): Promise<n
   let set = 0;
   for (let i = 0; i < usAnimalIds.length; i += 2000) {
     const slice = usAnimalIds.slice(i, i + 2000);
-    await prisma.usEvaluation.updateMany({ where: { usAnimalId: { in: slice } }, data: { isPreferred: false } });
+    // BOTH updates are guarded on the flag ALREADY BEING WRONG. Without the
+    // guards this rewrites every UsEvaluation row these animals have EVER had,
+    // in every round, on every import — cost O(animals x rounds-ever), growing
+    // without bound as history accumulates. `isPreferred` leads five indexes
+    // (see schema.prisma), so none of those updates can be HOT: each one drags
+    // five index insertions and a dead tuple behind it. That is the same write
+    // amplification that burst pg_wal on the Canadian side.
+    //
+    // With the guards, only rows that genuinely flip are written, and
+    // re-importing an already-imported round costs nothing.
+    await prisma.usEvaluation.updateMany({
+      where: { usAnimalId: { in: slice }, isPreferred: true },
+      data: { isPreferred: false },
+    });
     const rows = await prisma.usEvaluation.findMany({
       where: { usAnimalId: { in: slice }, runKind: "official", approvalStatus: "approved" },
       orderBy: [{ evaluationDate: "desc" }, { sourceFamily: "asc" }],
@@ -282,9 +295,14 @@ export async function recomputeUsPreferredBulk(usAnimalIds: string[]): Promise<n
     for (const r of rows) if (!winner.has(r.usAnimalId)) winner.set(r.usAnimalId, r.usEvaluationId);
     const ids = [...winner.values()];
     for (let k = 0; k < ids.length; k += 1000) {
-      const res = await prisma.usEvaluation.updateMany({ where: { usEvaluationId: { in: ids.slice(k, k + 1000) } }, data: { isPreferred: true } });
-      set += res.count;
+      await prisma.usEvaluation.updateMany({
+        where: { usEvaluationId: { in: ids.slice(k, k + 1000) }, isPreferred: false },
+        data: { isPreferred: true },
+      });
     }
+    // Count the animals that HAVE a preferred evaluation, not the rows physically
+    // written — otherwise the guards above would make a correct re-run report 0.
+    set += ids.length;
   }
   return set;
 }

@@ -17,6 +17,7 @@ import { packTraits } from "../src/lib/eval-traits";
 import { classifyProofFile, type ProofRunKind } from "../src/lib/proof-file-kind";
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
+import { normalizePreferred } from "./normalize-preferred";
 import { computeRollbackRatings } from "./compute-rollback";
 import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
@@ -194,23 +195,13 @@ async function main() {
   // proof). A single window-function pass is correct regardless of file order and
   // covers both this run's rows and any pre-existing ones. (`unprefer` set kept for
   // clarity but superseded by this authoritative recompute.)
-  void unprefer;
-  await prisma.$executeRawUnsafe(`UPDATE "GeneticEvaluation" SET "isPreferred" = false WHERE "isPreferred" = true`);
   // An OFFICIAL round outranks an INTERIM one of the same date. Both kinds carry
-  // the same evaluationDate, so without this tiebreak the winner came down to
-  // "lpi DESC" — i.e. whichever file happened to flatter the bull.
-  await prisma.$executeRawUnsafe(`
-    WITH ranked AS (
-      SELECT "evaluationId",
-             ROW_NUMBER() OVER (PARTITION BY "animalId"
-               ORDER BY "evaluationDate" DESC,
-                        CASE "runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
-                        "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
-      FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
-    )
-    UPDATE "GeneticEvaluation" g SET "isPreferred" = true
-    FROM ranked r WHERE g."evaluationId" = r."evaluationId" AND r.rn = 1
-  `);
+  // the same evaluationDate, so without that tiebreak the winner came down to
+  // "lpi DESC" — i.e. whichever file happened to flatter the bull. The rule, and
+  // the change-only chunked flip that applies it, live in one shared place now:
+  // see prisma/normalize-preferred.ts.
+  void unprefer;
+  await normalizePreferred(prisma, { log: (m) => console.log(m) });
   // Re-derive proven/genomic, active/inactive and the April rollback tally for
   // every sire now that this round's proofs are in.
   await classifySires(prisma);

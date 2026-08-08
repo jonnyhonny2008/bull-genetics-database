@@ -34,6 +34,7 @@ import { classifyProofFile } from "../src/lib/proof-file-kind";
 import { detectImportSystem, importSystemLabel } from "../src/lib/import-file-kind";
 import { classifyRound, isGenotyped } from "../src/lib/sire-class";
 import { classifySires } from "./classify-sires";
+import { normalizePreferred } from "./normalize-preferred";
 import { computeRollbackRatings } from "./compute-rollback";
 import { computePedigreeIndexAll } from "./compute-pedigree-index";
 
@@ -251,22 +252,12 @@ async function main() {
   }
 
   // Enforce the invariant: exactly ONE preferred eval per bull (latest approved
-  // round). Single window-function pass — correct regardless of file/import order.
+  // round, official outranking interim on a shared date). Shared with
+  // prisma/import-cdn.ts and runnable standalone — see prisma/normalize-preferred.ts
+  // for why it is change-only and chunked (it is the step that burst pg_wal).
   void unprefer;
-  await prisma.$executeRawUnsafe(`UPDATE "GeneticEvaluation" SET "isPreferred" = false WHERE "isPreferred" = true`);
-  await prisma.$executeRawUnsafe(`
-    WITH ranked AS (
-      SELECT "evaluationId",
-             ROW_NUMBER() OVER (PARTITION BY "animalId"
-               ORDER BY "evaluationDate" DESC,
-                        CASE "runKind" WHEN 'official' THEN 0 WHEN 'interim' THEN 1 ELSE 2 END,
-                        "lpi" DESC NULLS LAST, "evaluationId" DESC) AS rn
-      FROM "GeneticEvaluation" WHERE "approvalStatus" = 'approved'
-    )
-    UPDATE "GeneticEvaluation" g SET "isPreferred" = true
-    FROM ranked r WHERE g."evaluationId" = r."evaluationId" AND r.rn = 1
-  `);
-  console.log(`\n[import-all] normalized preferred flag to latest round per bull (official outranks interim on a shared date)`);
+  const pref = await normalizePreferred(prisma, { log: (m) => console.log(m) });
+  console.log(`\n[import-all] preferred flag: ${pref.flipped} changed, ${pref.preferred} preferred evaluations set`);
 
   // ---------------------------------------------------------------------
   // Refresh every derived column the app filters and reports on. Without
