@@ -253,6 +253,17 @@ export default async function AnimalProfile({
             <FavouriteStar animalId={a.id} initial={isFav} size="lg" />
             {writable && caReg && <RefreshHolstein reg={caReg} />}
             <Link href={`/compare?bulls=${a.id}`} className="btn-secondary">Compare</Link>
+            {/* Proof Card export — only when there is a real preferred proof to
+                render (same condition the Summary tab already gates its
+                "Genetic indices" panel on). A bull with no approved proof gets
+                no button at all, never a link that 404s. */}
+            {pref && (
+              <>
+                <a href={`/animals/${a.id}/proof-card?format=pdf&locale=en`} className="btn-secondary" title="Download Proof Card PDF (English)">⬇ PDF</a>
+                <a href={`/animals/${a.id}/proof-card?format=pdf&locale=fr`} className="btn-secondary" title="Télécharger la fiche de saillie (français)">FR</a>
+                <a href={`/animals/${a.id}/proof-card?format=xlsx`} className="btn-secondary" title="Download Proof Card as Excel">⬇ XLSX</a>
+              </>
+            )}
             {writable && <Link href={`/animals/${a.id}/edit`} className="btn-secondary">Edit</Link>}
             {writable && (
               <form action={archiveAnimal}>

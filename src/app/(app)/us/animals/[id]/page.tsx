@@ -138,6 +138,16 @@ export default async function UsSireCard({
       <FavouriteStar animalId={animal.id} initial={isFav} size="lg" />
       <Link href="/us/animals" className="btn-secondary btn-sm">‹ American lineup</Link>
       <Link href={`/us/compare?bulls=${animal.id}`} className="btn-secondary btn-sm">Compare</Link>
+      {/* Proof Card export — pref is null in both the "missing tables" and "no
+          CDCB round" early-return states above, so this naturally renders
+          nothing (not a 404-ing link) whenever there is no round to export. */}
+      {pref && (
+        <>
+          <a href={`/us/animals/${animal.id}/proof-card?format=pdf&locale=en`} className="btn-secondary btn-sm" title="Download Proof Card PDF (English)">⬇ PDF</a>
+          <a href={`/us/animals/${animal.id}/proof-card?format=pdf&locale=fr`} className="btn-secondary btn-sm" title="Télécharger la fiche de saillie (français)">FR</a>
+          <a href={`/us/animals/${animal.id}/proof-card?format=xlsx`} className="btn-secondary btn-sm" title="Download Proof Card as Excel">⬇ XLSX</a>
+        </>
+      )}
     </div>
   );
 
