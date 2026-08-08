@@ -57,36 +57,56 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
   type Score = { perf: number; perfSteps: number; rbRaw: number | null; rbSteps: number };
   const scores = new Map<string, Score>();
 
-  // Pass 1: load every qualifying bull's rounds ONCE, and collect — per
-  // zero-centred trait — how much it moves round-to-round across the whole lineup.
-  // That spread (one "step SD" per trait) is what lets those traits be scored on a
-  // scale-free footing instead of by percent-of-previous (which blows up near zero).
-  const evalsById = new Map<string, EvalLite[]>();
-  const allDeltas: Record<string, number[]> = {};
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const batch = ids.slice(i, i + CHUNK);
-    const animals = await prisma.animal.findMany({
-      where: { id: { in: batch } },
-      // Approved rows only — matches prisma/classify-sires.ts, so the two derived
-      // columns are computed from an identical row set. computeRollback then
-      // collapses each round to its official row where one exists.
-      select: { id: true, evaluations: { where: { approvalStatus: "approved" }, orderBy: { evaluationDate: "asc" } } },
-    });
-    for (const a of animals) {
-      const lites: EvalLite[] = attachTraits(a.evaluations, defMap).map((e) => ({
-        evaluationDate: e.evaluationDate, proofRun: e.proofRun,
-        reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
-      }));
-      evalsById.set(a.id, lites);
-      const d = traitStepDeltas(lites);
-      for (const [code, arr] of Object.entries(d)) (allDeltas[code] ??= []).push(...arr);
+  // MEMORY DISCIPLINE — WHY THIS STREAMS TWICE INSTEAD OF CACHING ONCE.
+  //
+  // Both passes need every qualifying bull's rounds, so the obvious shape is to
+  // load them once into a Map and reuse it. That shape OOMs. Qualification is
+  // "has more than one round", which today is 924 bulls — but every bull gets a
+  // new evaluation every round, so at the very next import ALL ~99,000 qualify.
+  // Each evaluation carries an unpacked traitValues array of ~50 objects (~10 KB
+  // in V8), so retaining them all is ~99,000 x 2 rounds x 10 KB ~= 2 GB of heap,
+  // and it grows by another ~1 GB every round after that.
+  //
+  // So the per-animal rows are read in chunks, consumed, and DROPPED. Pass 1 keeps
+  // only the per-trait delta arrays (numbers, not trait objects); pass 2 re-reads
+  // the same chunks and keeps only the four scalars per bull it actually stores.
+  // That costs one extra streamed read of the table — chunked, not per row — and
+  // holds memory flat regardless of how many rounds accumulate.
+  async function forEachAnimalChunk(fn: (animalId: string, lites: EvalLite[]) => void): Promise<void> {
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const batch = ids.slice(i, i + CHUNK);
+      const animals = await prisma.animal.findMany({
+        where: { id: { in: batch } },
+        // Approved rows only — matches prisma/classify-sires.ts, so the two derived
+        // columns are computed from an identical row set. computeRollback then
+        // collapses each round to its official row where one exists.
+        select: { id: true, evaluations: { where: { approvalStatus: "approved" }, orderBy: { evaluationDate: "asc" } } },
+      });
+      for (const a of animals) {
+        fn(a.id, attachTraits(a.evaluations, defMap).map((e) => ({
+          evaluationDate: e.evaluationDate, proofRun: e.proofRun,
+          reliabilityOverall: e.reliabilityOverall, runKind: e.runKind, traitValues: e.traitValues,
+        })));
+      }
+      // `animals` goes out of scope here and becomes collectable before the next
+      // chunk is fetched — that is the whole point of the chunked shape.
     }
   }
+
+  // Pass 1: collect — per zero-centred trait — how much it moves round-to-round
+  // across the whole lineup. That spread (one "step SD" per trait) is what lets
+  // those traits be scored on a scale-free footing instead of by
+  // percent-of-previous (which blows up near zero).
+  const allDeltas: Record<string, number[]> = {};
+  await forEachAnimalChunk((_id, lites) => {
+    const d = traitStepDeltas(lites);
+    for (const [code, arr] of Object.entries(d)) (allDeltas[code] ??= []).push(...arr);
+  });
   const traitScales = deltaScalesFrom(allDeltas);
 
   // Pass 2: score each bull, now that a zero-centred move can be measured against
   // the lineup's typical movement for that trait.
-  for (const [id, lites] of evalsById) {
+  await forEachAnimalChunk((id, lites) => {
     const r = computeRollback(lites, { traitScales });
     if (r.proofPerformance != null) {
       scores.set(id, {
@@ -94,7 +114,7 @@ export async function computeRollbackRatings(prisma: PrismaClient): Promise<{
         rbRaw: r.rollbackRaw, rbSteps: r.rollbackSteps,
       });
     }
-  }
+  });
 
   // Baseline for Rollback Resistance: EVERY sire that has been through at least
   // one April, STRATIFIED BY HOW MANY. A bull with 3 rollbacks is measured
